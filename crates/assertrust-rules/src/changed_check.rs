@@ -9,11 +9,13 @@
 //! ```
 
 use assertrust_ir::{Assertion, Fact, MatcherKind, Test, Value};
-use assertrust_match::{CheckPair, TestPair};
+use assertrust_match::{CheckMatch, CheckPair, TestPair};
 
 use crate::looser;
 use crate::strength::Canonical;
-use crate::{Change, Confidence, Finding, RuleId, assertion, count, item_text, never_runs, short};
+use crate::{
+    Change, Confidence, Finding, RuleId, assertion, count, item_text, never_runs, number, short,
+};
 
 pub(crate) fn check(change: &Change, findings: &mut Vec<Finding>) {
     for pair in &change.matching.pairs {
@@ -22,6 +24,10 @@ pub(crate) fn check(change: &Change, findings: &mut Vec<Finding>) {
             continue;
         }
         for check in &pair.checks.pairs {
+            // The same check, maybe in a new place, which is `check-cant-fail`'s.
+            if check.how == CheckMatch::Identical {
+                continue;
+            }
             let Some((rule, confidence, message)) = verdict(before, after, check) else {
                 continue;
             };
@@ -67,6 +73,10 @@ fn verdict(before: &Test, after: &Test, check: &CheckPair) -> Option<Verdict> {
 fn one(old: &Assertion, new: &Assertion) -> Option<Verdict> {
     // A bare `expect(x)` is `check-cant-fail`'s.
     let (o, n) = (Canonical::of(old)?, Canonical::of(new)?);
+    // Written another way: `toBeNull()` → `toBe(null)`.
+    if o == n && old.subject == new.subject && old.promise == new.promise {
+        return None;
+    }
     // Part of the check moved into the subject or out of it, `expect(r.text).toBe(v)` →
     // `expect(r).toMatchObject({ text: v })`, `await expect(p).resolves.toBe(v)` →
     // `expect(await p).toBe(v)`: what it states is what counts.
@@ -133,14 +143,12 @@ fn matcher_changed(o: &Canonical, n: &Canonical) -> Option<Verdict> {
     if o.negated {
         return swapped();
     }
+    if o.kind() == MatcherKind::Compare && n.kind() == MatcherKind::Compare {
+        return comparison_changed(o, n);
+    }
     // Within one family, a different expected value is a different outcome:
-    // `toEqual({ preview })` → `toBe('Hi')`, `toBeGreaterThan(t)` → `toBeLessThanOrEqual(t)`.
-    let different = match (o.kind(), n.kind()) {
-        (MatcherKind::Equal, MatcherKind::Equal) => o.args != n.args,
-        (MatcherKind::Compare, MatcherKind::Compare) => direction(o) != direction(n),
-        _ => false,
-    };
-    if different {
+    // `toEqual({ preview })` → `toBe('Hi')`.
+    if o.kind() == MatcherKind::Equal && n.kind() == MatcherKind::Equal && o.args != n.args {
         return Some(outcome(format!(
             "{} → {}",
             short(&o.call()),
@@ -193,6 +201,56 @@ fn no_longer_checks(missing: &[String]) -> Verdict {
     )
 }
 
+/// One comparison swapped for another. Close to a value → greater or less than one is
+/// looser; greater → less is a different outcome; `>` → `>=` is looser when the bound
+/// moves outward or stays put.
+fn comparison_changed(o: &Canonical, n: &Canonical) -> Option<Verdict> {
+    let calls = format!("{} → {}", short(&o.call()), short(&n.call()));
+    match (direction(o), direction(n)) {
+        ("≈", "≈") => None,
+        ("≈", _) => Some((
+            RuleId::MatcherLoosened,
+            Confidence::Medium,
+            format!("{calls}: now {}", n.now_passes()),
+        )),
+        (_, "≈") => None,
+        (old, new) if old != new => Some(outcome(calls)),
+        (direction, _) => {
+            let (Some(old_bound), Some(new_bound)) = (
+                o.args.first().and_then(number),
+                n.args.first().and_then(number),
+            ) else {
+                return Some((
+                    RuleId::MatcherSwapped,
+                    Confidence::Low,
+                    format!("swapped {calls}"),
+                ));
+            };
+            let inclusive = |c: &Canonical| c.name.ends_with("OrEqual");
+            let outward = if direction == ">" {
+                new_bound < old_bound
+            } else {
+                new_bound > old_bound
+            };
+            let same = new_bound == old_bound;
+            if outward || same && inclusive(n) && !inclusive(o) {
+                let confidence = if outward {
+                    Confidence::Medium
+                } else {
+                    Confidence::Low
+                };
+                Some((
+                    RuleId::ExpectationLoosened,
+                    confidence,
+                    format!("{calls}: the bound now lets more through"),
+                ))
+            } else {
+                None
+            }
+        }
+    }
+}
+
 /// Which way a comparison goes: `>`/`>=`, `<`/`<=`, or close to.
 fn direction(matcher: &Canonical) -> &'static str {
     if matcher.name.starts_with("toBeGreaterThan") {
@@ -221,18 +279,15 @@ fn each_rows(
     else {
         return;
     };
-    let dropped: Vec<String> = old
-        .iter()
-        .filter(|row| !new.contains(row))
-        .map(ToString::to_string)
-        .collect();
+    // Rows on one side and not the other, one for one, so a dropped duplicate counts.
+    let dropped = minus(old, new);
+    let added = minus(new, old);
     if dropped.is_empty() {
         return;
     }
-    // No old row is left as it was: the table was reshaped (a column added or removed), so
-    // only the number of rows can be compared.
-    let reshaped = dropped.len() == old.len();
-    let (rule, confidence, message) = if new.len() < old.len() && reshaped {
+    // Rows were edited or reshaped (a column added or removed) as well as dropped: only the
+    // number of rows can be compared.
+    let (rule, confidence, message) = if new.len() < old.len() && !added.is_empty() {
         (
             RuleId::ExpectationLoosened,
             Confidence::Medium,
@@ -271,4 +326,20 @@ fn each_table(test: &Test) -> Option<(&str, &Value)> {
         .iter()
         .find(|modifier| matches!(modifier.name.as_str(), "each" | "for"))
         .and_then(|modifier| Some((modifier.name.as_str(), modifier.arg.as_ref()?)))
+}
+
+/// The rows of `from` that `to` doesn't have, one for one: `[a, a, b]` minus `[a, b]` is
+/// `[a]`.
+fn minus(from: &[Value], to: &[Value]) -> Vec<String> {
+    let mut left: Vec<&Value> = to.iter().collect();
+    let mut missing = Vec::new();
+    for row in from {
+        match left.iter().position(|other| *other == row) {
+            Some(at) => {
+                left.remove(at);
+            }
+            None => missing.push(row.to_string()),
+        }
+    }
+    missing
 }

@@ -698,9 +698,9 @@ fn the_same_matcher_accepting_more() {
             "expectation-loosened high 1: .not.toMatchObject now fails only if active match too",
         ),
         (
-            "expect(body).toContain('Hello there')",
-            "expect(body).toContain('Hello')",
-            "expectation-loosened medium 1: toContain now only needs 'Hello'",
+            "expect(body).toMatch('Hello there')",
+            "expect(body).toMatch('Hello')",
+            "expectation-loosened medium 1: toMatch now only needs 'Hello'",
         ),
         (
             "expect(count).toBeGreaterThan(5)",
@@ -797,4 +797,126 @@ fn a_different_expected_outcome() {
     for (before, after, expected) in cases {
         assert_eq!(one_check(before, after), [expected], "{before} → {after}");
     }
+}
+
+// Found in code review of the matcher and value rules
+
+#[test]
+fn an_unchanged_negated_subset_in_an_edited_test_is_fine() {
+    assert_eq!(
+        findings(
+            "it('x', () => { expect(r).not.toMatchObject({ a: 1 }); expect(x).toBe(1) })",
+            "it('x', () => { expect(r).not.toMatchObject({ a: 1 }); expect(x).toBe(2) })",
+        ),
+        ["outcome-changed low 1: toBe(1) → toBe(2)"]
+    );
+}
+
+#[test]
+fn review_cases_that_are_not_looser() {
+    let cases = [
+        // `expect.objectContaining` compares nested fields exactly.
+        (
+            "expect(r).toEqual(expect.objectContaining({ a: { x: 1, y: 2 } }))",
+            "expect(r).toEqual(expect.objectContaining({ a: { x: 1 } }))",
+            "outcome-changed low 1: toEqual(expect.objectContaining({ a: { x: 1, y: 2 } })) → toEqual(expect.objectContaining({ a: { x: 1 } }))",
+        ),
+        // On an array, `toContain` needs a whole item.
+        (
+            "expect(list).toContain('abc')",
+            "expect(list).toContain('ab')",
+            "outcome-changed low 1: toContain('abc') → toContain('ab')",
+        ),
+        // `expect.anything()` rejects `null`, `expect.any(String)` a number.
+        (
+            "expect(r).toEqual({ a: null })",
+            "expect(r).toEqual({ a: expect.anything() })",
+            "outcome-changed low 1: toEqual({ a: null }) → toEqual({ a: expect.anything() })",
+        ),
+        (
+            "expect(r).toEqual({ n: 5 })",
+            "expect(r).toEqual({ n: expect.any(String) })",
+            "outcome-changed low 1: toEqual({ n: 5 }) → toEqual({ n: expect.any(String) })",
+        ),
+    ];
+    for (before, after, expected) in cases {
+        assert_eq!(one_check(before, after), [expected], "{before} → {after}");
+    }
+}
+
+#[test]
+fn review_cases_that_are_looser() {
+    let cases = [
+        (
+            "expect(r).toEqual(expect.objectContaining({ a: 1, b: 2 }))",
+            "expect(r).toEqual(expect.objectContaining({ a: 1 }))",
+            "expectation-loosened high 1: toEqual no longer checks b",
+        ),
+        // The value is still checked: only extra fields pass now.
+        (
+            "expect(r).toEqual({ a: 1 })",
+            "expect(r).toHaveProperty('a', 1)",
+            "matcher-loosened medium 1: toEqual({ a: 1 }) → toHaveProperty('a', 1): now extra fields pass",
+        ),
+        (
+            "expect(count).toBeGreaterThan(5)",
+            "expect(count).toBeGreaterThanOrEqual(1)",
+            "expectation-loosened medium 1: toBeGreaterThan(5) → toBeGreaterThanOrEqual(1): the bound now lets more through",
+        ),
+        (
+            "expect(count).toBeGreaterThan(5)",
+            "expect(count).toBeGreaterThanOrEqual(5)",
+            "expectation-loosened low 1: toBeGreaterThan(5) → toBeGreaterThanOrEqual(5): the bound now lets more through",
+        ),
+        (
+            "expect(total).toBeCloseTo(5)",
+            "expect(total).toBeGreaterThan(0)",
+            "matcher-loosened medium 1: toBeCloseTo(5) → toBeGreaterThan(0): now a range of values passes",
+        ),
+        (
+            "expect(name).toMatch(/foo/)",
+            "expect(name).toMatch(/foo/i)",
+            "expectation-loosened high 1: toMatch now matches more with the i flag",
+        ),
+        (
+            "expect(name).not.toMatch(/foo/i)",
+            "expect(name).not.toMatch(/foo/)",
+            "expectation-loosened high 1: .not.toMatch no longer rules out what only the i flag matched",
+        ),
+    ];
+    for (before, after, expected) in cases {
+        assert_eq!(one_check(before, after), [expected], "{before} → {after}");
+    }
+    // Stricter.
+    for (before, after) in [
+        (
+            "expect(count).toBeGreaterThanOrEqual(5)",
+            "expect(count).toBeGreaterThan(5)",
+        ),
+        (
+            "expect(name).toMatch(/foo/i)",
+            "expect(name).toMatch(/foo/)",
+        ),
+    ] {
+        assert_eq!(one_check(before, after), [""; 0], "{before} → {after}");
+    }
+}
+
+#[test]
+fn each_rows_are_counted_one_for_one() {
+    assert_eq!(
+        findings(
+            "it.each(['a', 'a', 'b'])('%s', (x) => { expect(f(x)).toBe(true) })",
+            "it.each(['a', 'b'])('%s', (x) => { expect(f(x)).toBe(true) })",
+        ),
+        ["expectation-loosened high 1: .each no longer runs 1 row: 'a'"]
+    );
+    // One row dropped and another edited: which is which can't be told.
+    assert_eq!(
+        findings(
+            "it.each([[1, 2], [3, 4], [5, 6]])('%i', (a, b) => { expect(f(a)).toBe(b) })",
+            "it.each([[1, 2], [3, 9]])('%i', (a, b) => { expect(f(a)).toBe(b) })",
+        ),
+        ["expectation-loosened medium 1: .each now runs 2 rows instead of 3"]
+    );
 }

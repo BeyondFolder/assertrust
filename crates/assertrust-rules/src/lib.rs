@@ -26,7 +26,7 @@ mod test_disabled;
 
 use std::fmt;
 
-use assertrust_ir::{Assertion, Item, ItemKind, Test};
+use assertrust_ir::{Assertion, Item, ItemKind, Test, Value};
 use assertrust_match::{FilePair, Matching, TestPair, TestRef, match_files};
 
 pub use assertrust_match::Side;
@@ -236,6 +236,14 @@ fn item_text(item: &Item) -> String {
         text
     } else {
         format!("{text} ({})", item.context)
+    }
+}
+
+/// A number literal's value.
+fn number(value: &Value) -> Option<f64> {
+    match value {
+        Value::Number(n) => n.parse().ok(),
+        _ => None,
     }
 }
 

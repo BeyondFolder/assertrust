@@ -480,7 +480,7 @@ test/unit/inbound-body.test.ts:41  HIGH  check-removed
 4. **Another matcher:** the ladder below. Down is `matcher-loosened`, across is `matcher-swapped`, up is fine. Within one family, a different value is `outcome-changed`: `toEqual({ preview })` → `toBe('Hi')`, `toBeGreaterThan(t)` → `toBeLessThanOrEqual(t)`.
 5. **The same matcher:** the expected values, by the table under "Which direction is looser". Looser is `expectation-loosened`; different but not looser is `outcome-changed`; stricter is fine.
 
-Several checks folded into one, or one split into several, are compared by their facts the same way as in step 2. A test's `.each` table is compared too: rows dropped are `expectation-loosened`. When no row is left as it was (a column added or removed), only the count is compared, at medium: `.each now runs 4 rows instead of 5`.
+Several checks folded into one, or one split into several, are compared by their facts the same way as in step 2. A test's `.each` table is compared too, row for row: rows dropped are `expectation-loosened` (a duplicate counts). When rows were also edited or reshaped (a column added or removed), only the count is compared, at medium: `.each now runs 4 rows instead of 5`.
 
 ### Matcher strength ladder (positive checks)
 
@@ -500,12 +500,12 @@ Several checks folded into one, or one split into several, are compared by their
 
 | Matcher kind | Positive check: looser when… | Under `.not`: looser when… |
 |---|---|---|
-| Subset (`toMatchObject`, `expect.objectContaining`, nested) | keys are removed | keys are added |
-| Any expected value | it becomes `expect.any(…)` or `expect.anything()`; an exact object becomes `expect.objectContaining(…)` | n/a (it's stricter) |
-| Pattern (`toMatch`, `expect.stringMatching`) | alternatives are added (at least one kept) | alternatives are removed |
-| Text (`toContain`, `toMatch` with a string) | the text is shortened | the text is lengthened |
-| Contains (`expect.arrayContaining`) | items are removed | n/a |
-| Compare | a bound moves outward; `toBeCloseTo` keeps fewer digits | n/a |
+| Subset (`toMatchObject` at every level; `expect.objectContaining` at its own level, since its fields are compared exactly) | keys are removed | keys are added |
+| Any expected value | it becomes `expect.any(…)` or `expect.anything()` that still accepts the old value (`expect.anything()` rejects `null`, `expect.any(String)` a number: those are `outcome-changed`); an exact object becomes `expect.objectContaining(…)` | n/a (it's stricter) |
+| Pattern (`toMatch`, `expect.stringMatching`) | alternatives are added (at least one kept), or a flag that matches more (`i`, `s`, `m`) | alternatives or such a flag are removed |
+| Text (`toMatch` with a string, `toContainText`, `expect.stringContaining`) | the text is shortened | the text is lengthened |
+| Contains (`expect.arrayContaining`) | items are removed. A different `toContain` value is `outcome-changed`: on an array it needs a whole item | n/a |
+| Compare | a bound moves outward, also between `>` and `>=` (`> 5` → `>= 5` at low confidence); `toBeCloseTo` keeps fewer digits, or becomes `>` / `<` | n/a |
 | Throws, `toHaveProperty`, `toHaveAttribute` | the message or value is dropped | n/a |
 | Equal, Size, CalledWith, Snapshot | n/a (a different value is `outcome-changed`) | n/a |
 

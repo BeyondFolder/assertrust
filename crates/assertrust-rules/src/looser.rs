@@ -3,8 +3,8 @@
 
 use assertrust_ir::Value;
 
-use crate::Confidence;
 use crate::strength::Canonical;
+use crate::{Confidence, number};
 
 /// How the new expected values compare with the old ones.
 #[derive(Debug, Default)]
@@ -57,7 +57,8 @@ pub(crate) fn compare(old: &Canonical, new: &Canonical) -> Diff {
         ("toMatchObject", false) => args(a, b, Mode::Subset, &mut diff),
         ("toMatchObject", true) => negated_subset(a, b, &mut diff),
         ("toHaveProperty" | "toHaveAttribute", false) => property(a, b, &mut diff),
-        ("toMatch" | "toContain" | "toContainText" | "toHaveTextContent", negated) => {
+        // Always text. `toContain` isn't here: on an array it compares whole items.
+        ("toMatch" | "toContainText" | "toHaveTextContent", negated) => {
             text(a, b, negated, &mut diff);
         }
         ("toThrow", false) => match (a, b) {
@@ -83,12 +84,14 @@ pub(crate) fn compare(old: &Canonical, new: &Canonical) -> Diff {
     diff
 }
 
-/// Whether an object must match exactly (`toEqual`) or may have more fields
-/// (`toMatchObject`, `expect.objectContaining`).
+/// Whether an object must match exactly (`toEqual`), may have more fields at every level
+/// (`toMatchObject`), or only at its own level (`expect.objectContaining`, whose fields
+/// are compared exactly).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Mode {
     Exact,
     Subset,
+    Contains,
 }
 
 fn args(old: &[Value], new: &[Value], mode: Mode, diff: &mut Diff) {
@@ -106,21 +109,26 @@ fn value(old: &Value, new: &Value, mode: Mode, path: &str, diff: &mut Diff) {
     if old == new {
         return;
     }
-    if accepts_anything(new) && !accepts_anything(old) || is_anything(new) && is_any(old) {
+    if let Some(confidence) = wider(old, new) {
         let what = if path.is_empty() {
             "value".to_owned()
         } else {
             path.to_owned()
         };
-        diff.loosen(Confidence::High, format!("now accepts any {what} ({new})"));
+        diff.loosen(confidence, format!("now accepts any {what} ({new})"));
         return;
     }
     match (old, new) {
         (Value::Object(old), Value::Object(new)) => {
+            let inner = if mode == Mode::Contains {
+                Mode::Exact
+            } else {
+                mode
+            };
             for (key, old_value) in old {
                 match new.get(key) {
-                    Some(new_value) => value(old_value, new_value, mode, &join(path, key), diff),
-                    None if mode == Mode::Subset => diff.dropped.push(join(path, key)),
+                    Some(new_value) => value(old_value, new_value, inner, &join(path, key), diff),
+                    None if mode != Mode::Exact => diff.dropped.push(join(path, key)),
                     None => diff.changed = true,
                 }
             }
@@ -144,7 +152,7 @@ fn value(old: &Value, new: &Value, mode: Mode, path: &str, diff: &mut Diff) {
                 format!(" in {path}")
             };
             diff.loosen(Confidence::High, format!("now allows extra fields{where_}"));
-            value(old, &args[0], Mode::Subset, path, diff);
+            value(old, &args[0], Mode::Contains, path, diff);
         }
         (
             Value::Matcher {
@@ -158,7 +166,7 @@ fn value(old: &Value, new: &Value, mode: Mode, path: &str, diff: &mut Diff) {
         ) if old_name == new_name && old_args.len() == 1 && new_args.len() == 1 => {
             let (old, new) = (&old_args[0], &new_args[0]);
             match old_name.as_str() {
-                "objectContaining" => value(old, new, Mode::Subset, path, diff),
+                "objectContaining" => value(old, new, Mode::Contains, path, diff),
                 "arrayContaining" => items(old, new, path, diff),
                 "stringContaining" => substring(old, new, false, diff),
                 "stringMatching" => pattern(old, new, false, diff),
@@ -198,6 +206,9 @@ fn negated_subset(old: &[Value], new: &[Value], diff: &mut Diff) {
             .filter(|key| !old.contains_key(*key))
             .map(String::as_str)
             .collect();
+        if added.is_empty() {
+            return;
+        }
         diff.loosen(
             Confidence::High,
             format!("now fails only if {} match too", added.join(", ")),
@@ -287,9 +298,16 @@ fn pattern(old: &Value, new: &Value, negated: bool, diff: &mut Diff) {
     let kept = old_alternatives
         .iter()
         .any(|alternative| new_alternatives.contains(alternative));
-    if old_flags != new_flags || !kept {
+    let Some(flags) = flags(old_flags, new_flags, negated) else {
         diff.changed = true;
         return;
+    };
+    if !kept {
+        diff.changed = true;
+        return;
+    }
+    if let Some(flags) = flags {
+        diff.loosen(Confidence::High, flags);
     }
     let missing = |from: &[String], to: &[String]| -> Vec<String> {
         from.iter()
@@ -309,6 +327,30 @@ fn pattern(old: &Value, new: &Value, negated: bool, diff: &mut Diff) {
             Confidence::High,
             format!("no longer rules out {}", removed.join(", ")),
         );
+    }
+}
+
+/// Regex flags changed: `Some(None)` when they don't let more through, `Some(Some(how))` when
+/// they do (`i` added: any case matches), `None` when they changed some other way. Under
+/// `.not`, removing such a flag is what lets more through.
+fn flags(old: &str, new: &str, negated: bool) -> Option<Option<String>> {
+    let added: String = new.chars().filter(|flag| !old.contains(*flag)).collect();
+    let removed: String = old.chars().filter(|flag| !new.contains(*flag)).collect();
+    // The flags that make a regex match more: any case, `.` matching newlines, `^` and `$`
+    // at every line.
+    let wider = |flags: &str| flags.chars().all(|flag| "ism".contains(flag));
+    match (added.is_empty(), removed.is_empty()) {
+        (true, true) => Some(None),
+        (false, true) if wider(&added) && !negated => {
+            Some(Some(format!("now matches more with the {added} flag")))
+        }
+        (true, false) if wider(&removed) && negated => Some(Some(format!(
+            "no longer rules out what only the {removed} flag matched"
+        ))),
+        // A wider flag removed, or added under `.not`: stricter.
+        (false, true) if wider(&added) => Some(None),
+        (true, false) if wider(&removed) => Some(None),
+        _ => None,
     }
 }
 
@@ -353,24 +395,41 @@ fn bound(name: &str, old: &[Value], new: &[Value], diff: &mut Diff) {
     }
 }
 
-fn number(value: &Value) -> Option<f64> {
-    match value {
-        Value::Number(n) => n.parse().ok(),
+/// `new` is `expect.anything()` or `expect.any(T)` where `old` was a value it accepts, so it
+/// lets more through: with how sure that is. `None` when it rejects the old value
+/// (`expect.anything()` rejects `null`, `expect.any(String)` a number): that's a different
+/// outcome, not a looser one.
+fn wider(old: &Value, new: &Value) -> Option<Confidence> {
+    let Value::Matcher { name, args } = new else {
+        return None;
+    };
+    match (name.as_str(), old) {
+        ("anything", Value::Null | Value::Undefined) => None,
+        ("anything", Value::Matcher { name, .. }) => (name == "any").then_some(Confidence::High),
+        // A variable could hold `null`.
+        ("anything", Value::Opaque(_)) => Some(Confidence::Medium),
+        ("anything", _) => Some(Confidence::High),
+        ("any", _) => {
+            let Some(Value::Opaque(class)) = args.first() else {
+                return None;
+            };
+            match (class.as_str(), old) {
+                ("Number", Value::Number(_))
+                | ("String", Value::String(_) | Value::Template(_))
+                | ("Boolean", Value::Bool(_))
+                | ("Array", Value::Array(_))
+                | ("Object", Value::Object(_) | Value::Array(_)) => Some(Confidence::High),
+                ("String", Value::Matcher { name, .. })
+                    if name == "stringContaining" || name == "stringMatching" =>
+                {
+                    Some(Confidence::High)
+                }
+                (_, Value::Opaque(_)) => Some(Confidence::Medium),
+                _ => None,
+            }
+        }
         _ => None,
     }
-}
-
-/// `expect.anything()` or `expect.any(T)`.
-fn accepts_anything(value: &Value) -> bool {
-    is_anything(value) || is_any(value)
-}
-
-fn is_anything(value: &Value) -> bool {
-    matches!(value, Value::Matcher { name, .. } if name == "anything")
-}
-
-fn is_any(value: &Value) -> bool {
-    matches!(value, Value::Matcher { name, .. } if name == "any")
 }
 
 fn join(path: &str, key: &str) -> String {

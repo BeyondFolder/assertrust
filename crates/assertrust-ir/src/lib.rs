@@ -311,16 +311,27 @@ it('x', async () => {
     }
 
     #[test]
-    fn only_a_try_with_a_catch_can_swallow_a_failure() {
+    fn a_try_swallows_a_failure_only_with_a_catch_or_a_finally_that_returns() {
         let source = "
 it('x', () => {
   try { expect(a).toBe(1); } catch {}
   try { expect(b).toBe(2); } finally { cleanup(); }
+  try { expect(c).toBe(3); } finally { for (const x of xs) { if (x) break; } }
+  for (const r of rows) { try { expect(r).toBe(4); } finally { continue; } }
+  try { expect(e).toBe(5); } finally { return; }
 });
 ";
+        // A `finally` that returns (or `continue`s out of it) drops the failure too.
         assert_eq!(
             first_test_items(source),
-            ["expect(a).toBe(1) in try", "expect(b).toBe(2)"]
+            [
+                "expect(a).toBe(1) in try",
+                "expect(b).toBe(2)",
+                "expect(c).toBe(3)",
+                "expect(r).toBe(4) in loop, in try",
+                "expect(e).toBe(5) in try",
+                "EarlyReturn",
+            ]
         );
     }
 

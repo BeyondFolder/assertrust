@@ -7,6 +7,7 @@ mod changes;
 mod check_command;
 mod cli;
 mod load;
+mod output;
 mod pairs_command;
 mod tests_command;
 

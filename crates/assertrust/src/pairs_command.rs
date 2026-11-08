@@ -20,6 +20,7 @@ use assertrust_match::{
 
 use crate::cli::PairsArgs;
 use crate::load::{self, Loaded};
+use crate::output::{count, line};
 
 pub fn run(args: &PairsArgs) -> Result<(), String> {
     let mode = args.mode.to_input()?;
@@ -401,16 +402,4 @@ fn check_text(test: &Test, item: usize) -> String {
 fn modifiers(test: &Test) -> String {
     let modifiers: Vec<String> = test.modifiers.iter().map(ToString::to_string).collect();
     modifiers.join(", ")
-}
-
-fn count(n: usize, noun: &str) -> String {
-    if n == 1 {
-        format!("1 {noun}")
-    } else {
-        format!("{n} {noun}s")
-    }
-}
-
-fn line(out: &mut String, text: &str) {
-    writeln!(out, "{text}").expect("writing to a String can't fail");
 }

@@ -15,7 +15,9 @@ use std::collections::BTreeMap;
 use assertrust_ir::{ItemKind, Modifier, Test};
 use assertrust_match::DeletedTest;
 
-use crate::{Change, Confidence, Finding, RuleId, TestFile, count, item_text, short};
+use crate::{
+    Change, Confidence, Finding, RuleId, TestFile, count, item_text, never_runs, short, skipped,
+};
 
 pub(crate) fn check(change: &Change, findings: &mut Vec<Finding>) {
     modifiers(change, findings);
@@ -64,6 +66,10 @@ fn modifiers(change: &Change, findings: &mut Vec<Finding>) {
     let mut groups: BTreeMap<(usize, String), Vec<(&Test, &Test)>> = BTreeMap::new();
     for pair in &change.matching.pairs {
         let (before, after) = (change.before(pair.before), change.after(pair.after));
+        // Swapping one skip for another (`skip` → `todo`) stops nothing that ran.
+        if never_runs(before) {
+            continue;
+        }
         for modifier in &after.modifiers {
             if disabling(modifier).is_some() && !before.modifiers.contains(modifier) {
                 groups
@@ -114,6 +120,10 @@ fn with_modifiers(test: &Test) -> String {
 fn runtime_skips(change: &Change, findings: &mut Vec<Finding>) {
     for pair in &change.matching.pairs {
         let (before, after) = (change.before(pair.before), change.after(pair.after));
+        // Already not running, or skipped by a modifier, which `modifiers` reports.
+        if never_runs(before) || skipped(after) {
+            continue;
+        }
         let mut old: Vec<&ItemKind> = before
             .body
             .items
@@ -187,16 +197,22 @@ fn only(file: &TestFile, findings: &mut Vec<Finding>) {
 /// Tests deleted from a file without all their checks reappearing elsewhere. A file that's
 /// gone (deleted, or renamed out of the suite) makes one finding; otherwise each test does.
 fn deleted(change: &Change, index: usize, file: &TestFile, findings: &mut Vec<Finding>) {
+    let Some(before) = file.before else {
+        return;
+    };
+    let test = |deleted: &DeletedTest| &before.ir.tests[deleted.test.test];
+    // A test that didn't run (`it.todo('…')`) stops nothing when it goes.
     let lost: Vec<&DeletedTest> = change
         .matching
         .deleted
         .iter()
-        .filter(|deleted| deleted.test.file == index && !deleted.all_moved())
+        .filter(|deleted| {
+            deleted.test.file == index && !deleted.all_moved() && !never_runs(test(deleted))
+        })
         .collect();
-    let Some(before) = file.before.filter(|_| !lost.is_empty()) else {
+    if lost.is_empty() {
         return;
-    };
-    let test = |deleted: &DeletedTest| &before.ir.tests[deleted.test.test];
+    }
 
     let Some(after) = file.after else {
         let tests = match lost.len() {

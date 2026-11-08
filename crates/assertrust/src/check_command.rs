@@ -16,6 +16,7 @@ use assertrust_rules::Finding;
 
 use crate::cli::{CheckArgs, Format};
 use crate::load;
+use crate::output::{count, line};
 
 pub fn run(args: &CheckArgs) -> Result<(), String> {
     match args.format {
@@ -75,7 +76,12 @@ fn report<'a>(
     };
     for (comparison, commit) in comparisons {
         let loaded = load::load(repo, comparison, classifier)?;
-        report.notes.extend(loaded.notes.iter().cloned());
+        for note in &loaded.notes {
+            // The same file can be skipped in several commits.
+            if !report.notes.contains(note) {
+                report.notes.push(note.clone());
+            }
+        }
         report.findings.extend(
             assertrust_rules::check(&loaded.test_files())
                 .into_iter()
@@ -86,8 +92,8 @@ fn report<'a>(
     report
         .findings
         .sort_by_key(|located| located.finding.confidence);
-    report.notes.dedup();
-    if !analysis.skipped_merges.is_empty() {
+    // A PR-style check compares the merge-base with the head, which covers merges too.
+    if analysis.net.is_none() && !analysis.skipped_merges.is_empty() {
         report.notes.push(format!(
             "{} not checked (a PR-style check, BASE...HEAD, covers what they changed)",
             count(analysis.skipped_merges.len(), "merge commit")
@@ -99,6 +105,10 @@ fn report<'a>(
 fn render(analysis: &Analysis, report: &Report, verbose: bool) -> String {
     let mut out = String::new();
     if analysis.is_empty() {
+        // A range of merge commits only still says they were skipped.
+        for note in &report.notes {
+            line(&mut out, &format!("note: {note}"));
+        }
         line(&mut out, "nothing to check");
         return out;
     }
@@ -175,16 +185,4 @@ fn labelled(out: &mut String, label: &str, lines: &[String]) {
         let label = if i == 0 { label } else { "" };
         line(out, format!("    {label:<7} {text}").trim_end());
     }
-}
-
-fn count(n: usize, noun: &str) -> String {
-    if n == 1 {
-        format!("1 {noun}")
-    } else {
-        format!("{n} {noun}s")
-    }
-}
-
-fn line(out: &mut String, text: &str) {
-    writeln!(out, "{text}").expect("writing to a String can't fail");
 }

@@ -69,9 +69,13 @@ impl Found<'_, '_, '_> {
 
     /// The check at `item` sits somewhere new that may stop it from running or failing.
     fn context(&mut self, before: &Test, after: &Test, old: &[usize], item: usize) {
-        let was = old.iter().fold(Context::default(), |all, &old| {
-            union(all, before.body.items[old].context)
-        });
+        // What every old check had: one plain check folded into one in an `if` is now in
+        // an `if`.
+        let was = old
+            .iter()
+            .map(|&old| before.body.items[old].context)
+            .reduce(both)
+            .unwrap_or_default();
         let new_item = &after.body.items[item];
         let places = places(minus(new_item.context, was));
         let Some(&(_, consequence, _)) = places.first() else {
@@ -147,20 +151,23 @@ impl Found<'_, '_, '_> {
         );
     }
 
-    /// A `return` added before checks that used to run.
+    /// A `return` added before checks that used to run, or one that used to be inside an
+    /// `if` and no longer is.
     fn early_return(&mut self, before: &Test, after: &Test) {
         // The checks now behind a `return`, by the `return` they're behind.
         let mut behind: BTreeMap<usize, Vec<usize>> = BTreeMap::new();
         for check in &self.pair.checks.pairs {
-            if check
+            let was = check
                 .before
                 .iter()
-                .any(|&old| return_before(before, old).is_some())
-            {
-                continue;
-            }
+                .map(|&old| blocked(before, return_before(before, old)))
+                .min()
+                .unwrap_or(Blocked::No);
             for &item in &check.after {
-                if let Some(at) = return_before(after, item) {
+                let at = return_before(after, item);
+                if let Some(at) = at
+                    && blocked(after, Some(at)) > was
+                {
                     behind.entry(at).or_default().push(item);
                 }
             }
@@ -273,14 +280,15 @@ fn places(context: Context) -> Vec<(&'static str, &'static str, Confidence)> {
         .collect()
 }
 
-fn union(a: Context, b: Context) -> Context {
+/// What `a` and `b` both have.
+fn both(a: Context, b: Context) -> Context {
     Context {
-        in_if: a.in_if || b.in_if,
-        in_loop: a.in_loop || b.in_loop,
-        in_try: a.in_try || b.in_try,
-        in_catch: a.in_catch || b.in_catch,
-        in_callback: a.in_callback || b.in_callback,
-        short_circuit: a.short_circuit || b.short_circuit,
+        in_if: a.in_if && b.in_if,
+        in_loop: a.in_loop && b.in_loop,
+        in_try: a.in_try && b.in_try,
+        in_catch: a.in_catch && b.in_catch,
+        in_callback: a.in_callback && b.in_callback,
+        short_circuit: a.short_circuit && b.short_circuit,
     }
 }
 
@@ -296,11 +304,34 @@ fn minus(a: Context, b: Context) -> Context {
     }
 }
 
-/// The first early `return` before `item` in the test's body, if any.
+/// The early `return` before `item` in the test's body that's most sure to stop it: the
+/// first unconditional one, else the first one inside an `if`.
 fn return_before(test: &Test, item: usize) -> Option<usize> {
-    test.body.items[..item]
+    let mut returns = test.body.items[..item]
         .iter()
-        .position(|item| matches!(item.kind, ItemKind::EarlyReturn))
+        .enumerate()
+        .filter(|(_, item)| matches!(item.kind, ItemKind::EarlyReturn));
+    let first = returns.next()?;
+    let unconditional = std::iter::once(first)
+        .chain(returns)
+        .find(|(_, item)| item.context.is_plain());
+    Some(unconditional.unwrap_or(first).0)
+}
+
+/// Whether a `return` stops a check: not at all, sometimes, or always.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum Blocked {
+    No,
+    Sometimes,
+    Always,
+}
+
+fn blocked(test: &Test, at: Option<usize>) -> Blocked {
+    match at {
+        None => Blocked::No,
+        Some(at) if test.body.items[at].context.is_plain() => Blocked::Always,
+        Some(_) => Blocked::Sometimes,
+    }
 }
 
 /// The test's first `expect.assertions(n)` / `expect.hasAssertions()`, with `n`.

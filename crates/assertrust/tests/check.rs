@@ -215,3 +215,75 @@ fn nothing_to_check() {
     assert_eq!(run.code, 0, "{}", run.stderr);
     assert_eq!(run.stdout, "nothing to check\n");
 }
+
+// Found in code review
+
+#[test]
+fn a_pr_style_check_covers_merges() {
+    let mut repo = TestRepo::new();
+    repo.write("test/a.test.ts", "it('a', () => { expect(a).toBe(1) });\n");
+    repo.commit("Add a test");
+    repo.branch("feature");
+    repo.write("test/b.test.ts", "it('b', () => { expect(b).toBe(1) });\n");
+    repo.commit("Add another test");
+    repo.switch("main");
+    repo.write("src/app.ts", "export const a = 1;\n");
+    repo.commit("Change the app");
+    repo.switch("feature");
+    repo.merge("main", "Merge main");
+    let run = repo.assertrust(&["check", "--range", "main...HEAD"]);
+    assert_eq!(run.code, 0, "{}", run.stderr);
+    assert_eq!(run.stdout, "no findings\n");
+}
+
+#[test]
+fn a_range_of_merges_only_says_they_were_skipped() {
+    let mut repo = TestRepo::new();
+    repo.write("test/a.test.ts", "it('a', () => { expect(a).toBe(1) });\n");
+    repo.commit("Add a test");
+    repo.branch("feature");
+    repo.write("src/app.ts", "export const a = 1;\n");
+    repo.commit("Change the app");
+    repo.switch("main");
+    repo.write("src/other.ts", "export const b = 1;\n");
+    repo.commit("Change something else");
+    // Another branch already has both sides, so the range holds only the merge on main.
+    repo.branch("other");
+    let base = repo.merge("feature", "Merge feature into other");
+    repo.switch("main");
+    repo.merge("feature", "Merge feature");
+    let run = repo.assertrust(&["check", "--range", &format!("{base}..HEAD")]);
+    assert_eq!(run.code, 0, "{}", run.stderr);
+    assert_eq!(
+        run.stdout,
+        "note: 1 merge commit not checked (a PR-style check, BASE...HEAD, covers what they changed)\n\
+         nothing to check\n"
+    );
+}
+
+#[test]
+fn a_file_skipped_in_several_commits_is_noted_once() {
+    let mut repo = TestRepo::new();
+    repo.write("test/a.test.ts", "it('a', () => {})\n");
+    repo.write("test/b.test.ts", "it('b', () => {})\n");
+    let base = repo.commit("Add tests");
+    repo.write("test/a.test.ts", "it('a', () => {\n");
+    repo.write("test/b.test.ts", "it('b', () => {\n");
+    repo.commit("Break both");
+    repo.write("test/a.test.ts", "it('a', () => { x\n");
+    repo.write("test/b.test.ts", "it('b', () => { y\n");
+    repo.commit("Still broken");
+    let run = repo.assertrust(&["check", "--range", &format!("{base}..HEAD")]);
+    assert_eq!(run.code, 0, "{}", run.stderr);
+    let notes: Vec<&str> = run
+        .stdout
+        .lines()
+        .filter(|l| l.starts_with("note:"))
+        .collect();
+    let mut unique = notes.clone();
+    unique.sort_unstable();
+    unique.dedup();
+    assert_eq!(notes.len(), unique.len(), "{}", run.stdout);
+    // Each file, once per version that doesn't parse.
+    assert_eq!(notes.len(), 4, "{}", run.stdout);
+}

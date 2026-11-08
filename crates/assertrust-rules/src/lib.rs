@@ -179,12 +179,23 @@ impl<'a> Change<'_, 'a> {
     }
 }
 
-/// The test is skipped for good (`skip`, `todo`, `fixme`, with no condition), so what
-/// changed inside it doesn't matter: `test-disabled` reports the skip.
-fn never_runs(test: &Test) -> bool {
+/// The test is skipped for good by a modifier: `skip`, `todo` or `fixme`, with no condition.
+fn skipped(test: &Test) -> bool {
     test.modifiers.iter().any(|modifier| {
         matches!(modifier.name.as_str(), "skip" | "todo" | "fixme") && modifier.arg.is_none()
     })
+}
+
+/// The test's checks don't run: it's skipped for good, or it skips itself while running
+/// with no condition (`ctx.skip()` outside any `if`). What changes inside such a test
+/// doesn't matter, and `test-disabled` reports the skip.
+fn never_runs(test: &Test) -> bool {
+    skipped(test)
+        || test
+            .body
+            .items
+            .iter()
+            .any(|item| matches!(item.kind, ItemKind::RuntimeSkip(None)) && item.context.is_plain())
 }
 
 /// The check at `item` in a test's body.

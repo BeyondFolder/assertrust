@@ -13,10 +13,11 @@ use std::collections::HashSet;
 
 use oxc::allocator::Allocator;
 use oxc::ast::ast::{
-    ArrowFunctionExpression, AwaitExpression, BindingPattern, CallExpression,
-    ConditionalExpression, DoWhileStatement, Expression, ForInStatement, ForOfStatement,
-    ForStatement, FormalParameters, Function, FunctionBody, IfStatement, LogicalExpression,
-    ReturnStatement, Statement, SwitchStatement, TryStatement, WhileStatement,
+    ArrowFunctionExpression, AwaitExpression, BindingPattern, BlockStatement, BreakStatement,
+    CallExpression, ConditionalExpression, ContinueStatement, DoWhileStatement, Expression,
+    ForInStatement, ForOfStatement, ForStatement, FormalParameters, Function, FunctionBody,
+    IfStatement, LogicalExpression, ReturnStatement, Statement, SwitchStatement, TryStatement,
+    WhileStatement,
 };
 use oxc::ast_visit::{Visit, walk};
 use oxc::parser::{ParseOptions, Parser};
@@ -544,8 +545,9 @@ impl<'a> Visit<'a> for Collector<'_> {
     }
 
     fn visit_try_statement(&mut self, it: &TryStatement<'a>) {
-        // Without a `catch` (`try { … } finally { … }`), a failure still reaches the test.
-        let catches = it.handler.is_some();
+        // Without a `catch` (`try { … } finally { … }`), a failure still reaches the test,
+        // unless the `finally` block returns, which drops it.
+        let catches = it.handler.is_some() || it.finalizer.as_deref().is_some_and(leaves_early);
         self.scoped(
             |context| context.in_try |= catches,
             |this| this.visit_block_statement(&it.block),
@@ -603,6 +605,59 @@ impl<'a> Visit<'a> for Collector<'_> {
     fn visit_arrow_function_expression(&mut self, it: &ArrowFunctionExpression<'a>) {
         self.nested_function(|this| walk::walk_arrow_function_expression(this, it));
     }
+}
+
+/// The block has a `return`, or a `break` / `continue` that leaves it. In a `finally`
+/// block, that drops the error being thrown.
+fn leaves_early(block: &BlockStatement) -> bool {
+    #[derive(Default)]
+    struct Finder {
+        found: bool,
+        /// Loops and `switch`es inside the block, which an unlabelled `break` stays in.
+        inner: u32,
+    }
+    impl Finder {
+        fn inside(&mut self, walk: impl FnOnce(&mut Self)) {
+            self.inner += 1;
+            walk(self);
+            self.inner -= 1;
+        }
+    }
+    impl<'a> Visit<'a> for Finder {
+        fn visit_return_statement(&mut self, _: &ReturnStatement<'a>) {
+            self.found = true;
+        }
+        fn visit_break_statement(&mut self, it: &BreakStatement<'a>) {
+            self.found |= self.inner == 0 || it.label.is_some();
+        }
+        fn visit_continue_statement(&mut self, it: &ContinueStatement<'a>) {
+            self.found |= self.inner == 0 || it.label.is_some();
+        }
+        fn visit_for_statement(&mut self, it: &ForStatement<'a>) {
+            self.inside(|this| walk::walk_for_statement(this, it));
+        }
+        fn visit_for_in_statement(&mut self, it: &ForInStatement<'a>) {
+            self.inside(|this| walk::walk_for_in_statement(this, it));
+        }
+        fn visit_for_of_statement(&mut self, it: &ForOfStatement<'a>) {
+            self.inside(|this| walk::walk_for_of_statement(this, it));
+        }
+        fn visit_while_statement(&mut self, it: &WhileStatement<'a>) {
+            self.inside(|this| walk::walk_while_statement(this, it));
+        }
+        fn visit_do_while_statement(&mut self, it: &DoWhileStatement<'a>) {
+            self.inside(|this| walk::walk_do_while_statement(this, it));
+        }
+        fn visit_switch_statement(&mut self, it: &SwitchStatement<'a>) {
+            self.inside(|this| walk::walk_switch_statement(this, it));
+        }
+        // A `return` in a nested function returns from that function.
+        fn visit_function(&mut self, _: &Function<'a>, _: ScopeFlags) {}
+        fn visit_arrow_function_expression(&mut self, _: &ArrowFunctionExpression<'a>) {}
+    }
+    let mut finder = Finder::default();
+    finder.visit_block_statement(block);
+    finder.found
 }
 
 /// A function passed to `describe`, `it`, a hook or `test.step`.

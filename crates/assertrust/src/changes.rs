@@ -10,11 +10,10 @@
 //!     M test         test/a.test.ts
 //! ```
 
-use std::fmt::Write as _;
-
 use assertrust_git::{Analysis, Classifier, FileChange, ModeKind, Repo};
 
 use crate::cli::ChangesArgs;
+use crate::output::line;
 
 pub fn run(args: &ChangesArgs) -> Result<(), String> {
     let mode = args.mode.to_input()?;
@@ -85,8 +84,4 @@ fn files(out: &mut String, files: &[FileChange], indent: &str) {
             ),
         );
     }
-}
-
-fn line(out: &mut String, text: &str) {
-    writeln!(out, "{text}").expect("writing to a String can't fail");
 }

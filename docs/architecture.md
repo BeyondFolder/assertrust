@@ -224,7 +224,7 @@ test "emails a confirmation … and only forwards once confirmed"
   - the matcher: its raw name plus its kind
   - the arguments as values
   - its facts: what it states, in a form that doesn't depend on how it's written (see "Rewritten checks" in step 4)
-  - context: inside an if (or `? :` or `switch` case), loop, try, catch, callback or short-circuit. "Try" means a `try` with a `catch`: `try { … } finally { … }` still lets a failure through. A `test.step` callback runs right away, so it isn't a callback. Neither is the function in an awaited `vi.waitFor`, `vi.waitUntil` or Testing Library `waitFor`: they retry it and fail the test if it never passes. Not awaited, the test may end first, so it's a callback.
+  - context: inside an if (or `? :` or `switch` case), loop, try, catch, callback or short-circuit. "Try" means a `try` with a `catch`, or with a `finally` that returns (or `break`s / `continue`s out), which drops the failure. A plain `try { … } finally { cleanup() }` still lets a failure through. A `test.step` callback runs right away, so it isn't a callback. Neither is the function in an awaited `vi.waitFor`, `vi.waitUntil` or Testing Library `waitFor`: they retry it and fail the test if it never passes. Not awaited, the test may end first, so it's a callback.
   - a span, used for reporting and never compared
 - **Values:** null, undefined, bool, number, string, template, regex (with its top-level alternatives split by oxc's regex parser), object (keys compared as a set), array, nested matcher (`expect.objectContaining(…)`), or opaque (any other expression, as normalized source).
 
@@ -451,7 +451,7 @@ test/unit/inbound-body.test.ts:41  HIGH  check-removed
 - Checks that moved to another test in the same change (step 4) don't count.
 - The message adds "the test has no checks left" when that's the case, and the words the test's name dropped.
 - **Medium** when the test also gained checks matching couldn't pair: it was rewritten, and the new checks may cover the old ones in a way matching can't see (a mock renamed from `fetch` to `resolver`).
-- A test that's now skipped for good (`skip`, `todo`, `fixme`) isn't looked into: `test-disabled` reports the skip.
+- A test whose checks no longer run (skipped for good with `skip`, `todo` or `fixme`, or skipping itself with no condition, like `ctx.skip()` outside any `if`) isn't looked into: `test-disabled` reports the skip.
 
 **`test-disabled`:**
 
@@ -459,12 +459,13 @@ test/unit/inbound-body.test.ts:41  HIGH  check-removed
 - **A skip added inside the test** (`test.skip(cond)`, `ctx.skip()`): high when unconditional, medium with a condition or inside an `if`.
 - **A `.only`** in a file that had none: one finding saying how many other tests stop running. A new file doesn't count, since none of its tests ran before.
 - **A deleted test** whose checks didn't all move to other tests. A deleted test without checks counts too: a smoke test still fails when the code throws. **Medium** when the file gained tests that didn't pair, since the test may have been rewritten under another name (Mailyond `49a44d2`).
+- **A test that didn't run before** (skipped, or skipping itself) stops nothing: deleting it, or swapping one skip for another (`skip` → `todo`), isn't flagged.
 - **A deleted test file**, or one renamed to a name that isn't a test file name (`dca.test.ts` → `dca.ts`, `a.test.ts` → `a.test.ts.disabled`): one finding for the file. Step 1 keeps a renamed file's stronger kind, so the file is still loaded, and its tests count as gone after the change.
 
 **`check-cant-fail`:**
 
-- **A check in a new place** where it may not run or fail: a callback, a `catch`, a `try` with a `catch`, an `if` or `? :`, after `&&`/`||`/`??` (medium), or a loop that may run zero times (low). Places that still fail the test aren't flagged: `try { … } finally { … }`, `test.step`, and an awaited `vi.waitFor` / `waitFor`, which retries and then fails the test (step 3).
-- **A `return` added before checks:** high when it's unconditional (they never run), medium inside an `if`.
+- **A check in a new place** where it may not run or fail (when checks are folded into one, any of them that wasn't there before counts): a callback, a `catch`, a `try` with a `catch`, an `if` or `? :`, after `&&`/`||`/`??` (medium), or a loop that may run zero times (low). Places that still fail the test aren't flagged: `try { … } finally { … }`, `test.step`, and an awaited `vi.waitFor` / `waitFor`, which retries and then fails the test (step 3).
+- **A `return` added before checks,** or one moved out of an `if`: high when it's unconditional (they never run), medium inside an `if`.
 - **`await` dropped from a check that returns a promise:** `.resolves` / `.rejects`, `expect.poll`, and Playwright's web-first matchers (`toBeVisible`, `toHaveText`, …). The test may end before it fails. On a plain `toBe`, `await` did nothing, so dropping it is fine.
 - **A matcher dropped:** `expect(total).toBe(3)` → `expect(total)` checks nothing.
 - **`expect.assertions(n)`** removed, lowered, or replaced with `expect.hasAssertions()` (medium).
@@ -531,7 +532,7 @@ There's at least one fixture that must be flagged and one that must not, per rul
 
 **In one sentence:** show each finding where the person or agent will see it, in the terminal, on the PR, or as JSON for tools, and never block anything unless the repo opts in.
 
-**Built so far:** the terminal format and `-v`, always warn-only (exit 0). A per-commit check names each finding's commit. A PR-style check doesn't yet: tracing a finding back to its commit, hiding transient findings, the other formats, allow comments and config come with the output PR. Until then `--format json`, `--format github` and `--show-transient` exit with 2. Files that couldn't be checked are listed as notes before the summary, e.g. `note: test/a.test.ts (1a2b3c4): skipped, doesn't parse (…)`.
+**Built so far:** the terminal format and `-v`, always warn-only (exit 0). A per-commit check names each finding's commit. A PR-style check doesn't yet: tracing a finding back to its commit, hiding transient findings, the other formats, allow comments and config come with the output PR. Until then `--format json`, `--format github` and `--show-transient` exit with 2. Files that couldn't be checked are listed as notes before the summary, e.g. `note: test/a.test.ts (1a2b3c4): skipped, doesn't parse (…)`, and so are merge commits a per-commit check skipped.
 
 ### Terminal (default): short, two lines per finding
 

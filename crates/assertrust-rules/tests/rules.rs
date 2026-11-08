@@ -436,3 +436,68 @@ describe('billing', () => {
     let after = "describe('billing',()=>{it.skipIf(isCI)('refunds',async()=>{if(ready){expect(res.status).toBe(200);}\nawait expect(load()).resolves.toEqual({id:1,ok:true});});});";
     assert_eq!(findings(before, after), [""; 0]);
 }
+
+// Found in code review
+
+#[test]
+fn a_test_that_did_not_run_stops_nothing() {
+    // A placeholder deleted, and one skip swapped for another.
+    assert_eq!(
+        findings(
+            "it.todo('handles refunds');\nit.skip('retries', () => { expect(a).toBe(1) });\nit('keeps', () => {});",
+            "it.todo('retries');\nit('keeps', () => {});",
+        ),
+        [""; 0]
+    );
+    // A deleted file whose tests were all skipped.
+    let before = ir("it.skip('a', () => { expect(a).toBe(1) });");
+    assert_eq!(
+        render(&[TestFile {
+            before: Some(Side {
+                path: "a.test.ts",
+                ir: &before,
+            }),
+            after: None,
+            renamed_out: None,
+        }]),
+        [""; 0]
+    );
+}
+
+#[test]
+fn a_test_that_skips_itself_while_running_is_one_finding() {
+    assert_eq!(
+        findings(
+            "it('a', (ctx) => { expect(a).toBe(1); expect(b).toBe(2) });\nit('b', (ctx) => { expect(c).toBe(3) });",
+            "it('a', (ctx) => { ctx.skip(); expect(a).toBe(1) });\nit.skip('b', (ctx) => { ctx.skip(); expect(c).toBe(3) });",
+        ),
+        [
+            "test-disabled high 1: now skipped while running",
+            "test-disabled high 2: now skipped (skip)",
+        ]
+    );
+}
+
+#[test]
+fn a_return_that_is_no_longer_conditional() {
+    assert_eq!(
+        findings(
+            "it('x', () => {\n  if (!res) return;\n  expect(res.status).toBe(200);\n});",
+            "it('x', () => {\n  return;\n  expect(res.status).toBe(200);\n});",
+        ),
+        ["check-cant-fail high 2: a return now comes before 1 check: it never runs"]
+    );
+}
+
+#[test]
+fn a_plain_check_folded_into_one_inside_an_if() {
+    assert_eq!(
+        findings(
+            "it('x', () => {\n  expect(r.a).toBe(1);\n  if (x) { expect(r.b).toBe(2) }\n});",
+            "it('x', () => {\n  if (y) {\n    expect(r).toMatchObject({ a: 1, b: 2 });\n  }\n});",
+        ),
+        [
+            "check-cant-fail medium 3: expect(r).toMatchObject({ a: 1, b: 2 }) is now inside an if: it may not run"
+        ]
+    );
+}

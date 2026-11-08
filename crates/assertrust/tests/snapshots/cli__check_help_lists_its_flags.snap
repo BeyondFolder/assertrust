@@ -7,8 +7,8 @@ Check a change for weakened tests
 Usage: assertrust check [OPTIONS]
 
 Options:
-      --range <BASE..HEAD>
-          Check each commit in a range, e.g. origin/main..HEAD
+      --range <RANGE>
+          BASE..HEAD checks each commit; BASE...HEAD checks it like a PR (what HEAD adds since it split off from BASE)
 
       --pr <NUMBER>
           Check a GitHub pull request (merge-base to head)

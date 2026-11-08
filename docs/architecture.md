@@ -54,8 +54,20 @@ So:
 | Claude Code hook | worktree | `HEAD` → files on disk |
 | backtest | both | PR mode for each merge commit, per-commit for direct pushes to `main` |
 
+On the command line, these map to:
+
+| Flag | Mode |
+|---|---|
+| `--range BASE..HEAD` | per commit, every commit `HEAD` adds |
+| `--range BASE...HEAD` | PR-style: merge-base → `HEAD`, plus every commit (the same meaning as `git diff A...B`) |
+| no flag | PR-style, from the default branch (what `origin/HEAD` points to, else `main` or `master`) to `HEAD` |
+| `--staged`, `--worktree` | staged, worktree (worktree includes untracked files) |
+| `--pr N` | becomes `base...head`; built with the GitHub Action (step 8) |
+
+`assertrust changes` (same flags) prints what a check would look at: the commits, plus each changed file with its kind. It checks nothing, and it's for debugging the input layer.
+
 - **Why the merge-base and not the base branch's latest commit:** if `main` moved on after the branch was cut, comparing against its latest commit would count `main`'s newer changes as part of the PR. GitHub's PR diff works the same way.
-- **Merge commits are skipped in per-commit mode.** Their changes were already checked commit by commit, and checking them again would report everything twice.
+- **Merge commits are skipped** when walking commits. Their changes were already checked commit by commit, and checking them again would report everything twice. When `main` is merged into a branch halfway through, `main`'s commits aren't counted as part of the PR either.
 - **Renames are followed** (`git diff -M`), so a moved test file isn't reported as one test deleted and a new one added.
 
 ### Which files
@@ -65,12 +77,12 @@ Every changed path is recorded and labelled:
 | Kind | Default patterns (configurable) | Contents loaded |
 |---|---|---|
 | Test | `**/*.{test,spec}.{ts,tsx,js,jsx,mts,cts}`, `**/__tests__/**` | yes |
-| Test support | files in `test/`, `tests/`, `__tests__/` or `e2e/`, or imported by a test file through a relative path | yes |
+| Test support | code files in `test/`, `tests/`, `__tests__/`, `__mocks__/` or `e2e/`. Files elsewhere that a test imports through a relative path get added when helpers are linked (step 2). | yes |
 | Gate | `.github/workflows/*.yml`, `{vitest,jest,playwright}.config.*`, `package.json` | yes |
 | Source | other code files | only when asked (step 7) |
 | Other | everything else | no |
 
-Contents are read lazily, so the cost stays proportional to the test and gate files that changed.
+Contents are read lazily, so the cost stays proportional to the test and gate files that changed. (Reading contents arrives with parsing, step 2.)
 
 ### Data handed to step 2
 
@@ -89,7 +101,9 @@ _Sketch only. Exact types are settled in the implementation PR._
 
 ### Implementation notes
 
-- **Shell out to `git`** (`rev-list`, `merge-base`, `diff-tree -M`, `show rev:path`) rather than using the `gix` library. Git is always present in CI, and it's easier to read and debug. We can switch later if speed ever matters.
+- **Shell out to `git`** (`log`, `merge-base`, `diff-tree -M`, `show rev:path`) rather than using the `gix` library. Git is always present in CI, and it's easier to read and debug. We can switch later if speed ever matters.
+- **Read-only and safe next to an agent:** git runs with `GIT_OPTIONAL_LOCKS=0`, so it never takes the index lock while an editor or coding agent is using the repo.
+- **No option injection:** user-supplied revisions are resolved to SHAs behind `--end-of-options`, so a "revision" like `--output=file` is rejected instead of being passed to git as an option.
 - **GitHub Action gotcha:** `actions/checkout` fetches one commit by default. The Action needs `fetch-depth: 0`, or there's no history to walk.
 - **Recommended Action triggers:** `pull_request`, plus `push` to `main` only. Otherwise a push to a branch with an open PR is checked twice.
 

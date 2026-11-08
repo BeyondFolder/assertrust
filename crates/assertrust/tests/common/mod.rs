@@ -40,9 +40,16 @@ pub struct Run {
     pub stderr: String,
 }
 
-/// Runs `assertrust` with `args` outside any repo (for `--help`, `--version`, flag errors).
+/// Runs `assertrust` with `args` in an empty temp dir, outside any git repo (for `--help`,
+/// `--version`, flag errors, and the "not inside a git repository" error).
 pub fn assertrust(args: &[&str]) -> Run {
-    run(Command::new(BINARY).args(args))
+    let dir = tempfile::tempdir().expect("create temp dir");
+    let parent = dir.path().parent().expect("temp dir has a parent");
+    run(Command::new(BINARY)
+        .args(args)
+        .current_dir(dir.path())
+        // Stop git from finding a repo in a parent directory.
+        .env("GIT_CEILING_DIRECTORIES", parent))
 }
 
 /// A git repo in a temp dir, deleted when the value is dropped.

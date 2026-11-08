@@ -3,6 +3,7 @@
 //! How it works is described in `docs/architecture.md`. This binary is the entry point:
 //! it parses the command line and maps the outcome to an exit code.
 
+mod changes;
 mod cli;
 
 use std::process::ExitCode;
@@ -19,13 +20,21 @@ const EXIT_TOOL_ERROR: u8 = 2;
 fn main() -> ExitCode {
     let cli = Cli::parse();
 
-    match cli.command {
-        Command::Check(_) => not_implemented("check"),
-        Command::Ir(_) => not_implemented("ir"),
+    let result = match cli.command {
+        Command::Check(_) => Err(not_implemented("check")),
+        Command::Changes(args) => changes::run(&args),
+        Command::Ir(_) => Err(not_implemented("ir")),
+    };
+
+    match result {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(message) => {
+            eprintln!("assertrust: {message}");
+            ExitCode::from(EXIT_TOOL_ERROR)
+        }
     }
 }
 
-fn not_implemented(command: &str) -> ExitCode {
-    eprintln!("assertrust: `{command}` is not implemented yet (see the roadmap in README.md)");
-    ExitCode::from(EXIT_TOOL_ERROR)
+fn not_implemented(command: &str) -> String {
+    format!("`{command}` is not implemented yet (see the roadmap in README.md)")
 }

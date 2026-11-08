@@ -7,9 +7,10 @@ Catch changes that quietly weaken your test suite
 Usage: assertrust <COMMAND>
 
 Commands:
-  check  Check a change for weakened tests
-  ir     Print the tests and checks found in one file, as JSON (for debugging)
-  help   Print this message or the help of the given subcommand(s)
+  check    Check a change for weakened tests
+  changes  Show which commits and files a check would look at (for debugging)
+  ir       Print the tests and checks found in one file, as JSON (for debugging)
+  help     Print this message or the help of the given subcommand(s)
 
 Options:
   -h, --help     Print help

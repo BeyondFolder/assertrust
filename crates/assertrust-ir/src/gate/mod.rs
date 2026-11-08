@@ -10,7 +10,7 @@ use std::fmt;
 use crate::ParseError;
 use crate::value::Value;
 
-pub(crate) use self::command::is_test_script;
+pub(crate) use self::command::{Shell, is_test_script};
 
 /// One CI or test config file, as the facts that decide whether a failing test fails the
 /// build.
@@ -101,6 +101,8 @@ pub struct Script {
     pub line: u32,
     /// What it does, when it calls a test runner itself.
     pub command: Option<Command>,
+    /// It only prints or passes: `echo skip`, `exit 0`, `true`.
+    pub noop: bool,
 }
 
 /// Reads one gate file. `path` picks how: a workflow (`.yml` / `.yaml`), `package.json`,
@@ -141,7 +143,8 @@ fn package(source: &str) -> Result<Package, ParseError> {
                 name: name.clone(),
                 run: run.to_owned(),
                 line: line_of(source, &format!("\"{name}\"")),
-                command: command::analyze(run),
+                command: command::analyze(run, Shell::KeepGoing),
+                noop: command::does_nothing(run),
             });
         }
     }
@@ -196,6 +199,31 @@ fn json_value(json: &serde_json::Value) -> Value {
                 .collect::<BTreeMap<_, _>>(),
         ),
     }
+}
+
+/// The first line from `from` (1-based) on where `key` starts a YAML mapping entry:
+/// `test:` but not `run: npm run test:unit` or `test:unit:`.
+fn key_line(source: &str, key: &str, from: u32) -> u32 {
+    source
+        .lines()
+        .enumerate()
+        .skip(from.saturating_sub(1) as usize)
+        .find(|(_, line)| {
+            let line = line.trim_start();
+            [
+                format!("{key}:"),
+                format!("\"{key}\":"),
+                format!("'{key}':"),
+            ]
+            .iter()
+            .any(|entry| {
+                line.strip_prefix(entry.as_str())
+                    .is_some_and(|rest| rest.is_empty() || rest.starts_with([' ', '\t', '#']))
+            })
+        })
+        .map_or(from.max(1), |(i, _)| {
+            u32::try_from(i + 1).unwrap_or(u32::MAX)
+        })
 }
 
 /// The first line containing `text`, for reporting. 1 if there's none.

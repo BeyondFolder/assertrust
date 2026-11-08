@@ -3,7 +3,7 @@
 
 use yaml_rust2::{Yaml, YamlLoader};
 
-use super::{Job, TestStep, Workflow, command, line_after};
+use super::{Job, Shell, TestStep, Workflow, command, key_line, line_after};
 use crate::ParseError;
 
 pub(super) fn parse(source: &str) -> Result<Workflow, ParseError> {
@@ -15,17 +15,17 @@ pub(super) fn parse(source: &str) -> Result<Workflow, ParseError> {
     let Some(jobs) = docs.first().and_then(|doc| doc["jobs"].as_hash()) else {
         return Ok(workflow);
     };
-    let jobs_line = line_after(source, "jobs:", 1);
+    let jobs_line = key_line(source, "jobs", 1);
     for (id, job) in jobs {
         let Some(id) = id.as_str() else { continue };
-        let line = line_after(source, &format!("{id}:"), jobs_line);
+        let line = key_line(source, id, jobs_line);
         let mut steps = Vec::new();
         let mut from = line;
         for step in job["steps"].as_vec().into_iter().flatten() {
             let Some(run) = step["run"].as_str() else {
                 continue;
             };
-            let Some(command) = command::analyze(run) else {
+            let Some(command) = command::analyze(run, Shell::StopOnError) else {
                 continue;
             };
             let run = run.trim().to_owned();

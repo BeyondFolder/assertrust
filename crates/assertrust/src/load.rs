@@ -101,8 +101,13 @@ pub fn load(
     };
     for file in &comparison.files {
         if file.kind == FileKind::Gate {
-            let before = read_gate(repo, &comparison.before, file.path_before.as_deref())?;
-            let after = read_gate(repo, &comparison.after, file.path_after.as_deref())?;
+            // A workflow renamed or moved where it doesn't run (`ci.yml` → `ci.yml.disabled`)
+            // is as good as gone on that side, like a test file renamed out.
+            let is_gate = |path: &&str| classifier.classify(path) == FileKind::Gate;
+            let path_before = file.path_before.as_deref().filter(is_gate);
+            let path_after = file.path_after.as_deref().filter(is_gate);
+            let before = read_gate(repo, &comparison.before, path_before)?;
+            let after = read_gate(repo, &comparison.after, path_after)?;
             match (before, after) {
                 (Ok(before), Ok(after)) if before.is_some() || after.is_some() => {
                     loaded.gates.push(LoadedGate { before, after });

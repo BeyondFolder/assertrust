@@ -13,7 +13,7 @@
 use std::fmt::Write as _;
 use std::fs;
 
-use assertrust_git::{Repo, Rev};
+use assertrust_git::{Classifier, FileKind, Repo, Rev};
 use assertrust_ir::{Body, Command, FileIr, Gate, ItemKind, ParseError};
 
 use crate::cli::TestsArgs;
@@ -21,7 +21,7 @@ use crate::output::{count, line};
 
 pub fn run(args: &TestsArgs) -> Result<(), String> {
     let file = read(args)?;
-    if is_gate(&file.path) {
+    if Classifier::default().classify(&file.path) == FileKind::Gate {
         let output = match assertrust_ir::parse_gate(&file.path, &file.source) {
             Ok(gate) => render_gate(&file.label, &gate),
             Err(err) => format!("{}: skipped, {err}\n", file.label),
@@ -39,7 +39,8 @@ pub fn run(args: &TestsArgs) -> Result<(), String> {
 }
 
 struct File {
-    /// The path, for picking the language.
+    /// The path in the repository when it's in one, for picking the language and telling a
+    /// CI or test config file (step 1's Gate kind) from a test file.
     path: String,
     /// The path plus where it was read from, e.g. `test/a.test.ts (HEAD~1)`.
     label: String,
@@ -49,11 +50,16 @@ struct File {
 /// Reads the file from disk, or from git with `--rev` / `--staged`.
 fn read(args: &TestsArgs) -> Result<File, String> {
     if args.rev.is_none() && !args.staged {
-        let path = args.file.display().to_string();
+        let label = args.file.display().to_string();
         let source = fs::read_to_string(&args.file)
-            .map_err(|err| format!("couldn't read `{path}`: {err}"))?;
+            .map_err(|err| format!("couldn't read `{label}`: {err}"))?;
+        let path = std::env::current_dir()
+            .ok()
+            .and_then(|dir| Repo::open(&dir).ok())
+            .and_then(|repo| repo.path_in_repo(&args.file).ok())
+            .unwrap_or_else(|| label.trim_start_matches("./").to_owned());
         return Ok(File {
-            label: path.clone(),
+            label,
             path,
             source,
         });
@@ -153,22 +159,6 @@ fn body(out: &mut String, body: &Body) {
         }
         line(out, &text);
     }
-}
-
-/// A CI or test config file, by its name (step 1's Gate kind).
-fn is_gate(path: &str) -> bool {
-    let name = path.rsplit(['/', '\\']).next().unwrap_or(path);
-    let in_workflows = path.replace('\\', "/").contains(".github/workflows/");
-    name == "package.json"
-        || in_workflows && (name.ends_with(".yml") || name.ends_with(".yaml"))
-        || [
-            "vitest.config.",
-            "jest.config.",
-            "playwright.config.",
-            "vitest.workspace.",
-        ]
-        .iter()
-        .any(|prefix| name.starts_with(prefix))
 }
 
 /// ```text

@@ -367,6 +367,38 @@ fn ci_and_test_config_that_let_failures_through() {
 }
 
 #[test]
+fn a_workflow_renamed_or_moved_so_it_no_longer_runs() {
+    let mut repo = TestRepo::new();
+    let workflow = "jobs:\n  test:\n    steps:\n      - run: npm test\n";
+    repo.write(".github/workflows/ci.yml", workflow);
+    let e2e = workflow.replace("npm test", "npx playwright test");
+    repo.write(".github/workflows/e2e.yml", &e2e);
+    let base = repo.commit("Add CI");
+    repo.git(&[
+        "mv",
+        ".github/workflows/ci.yml",
+        ".github/workflows/ci.yml.disabled",
+    ]);
+    repo.remove(".github/workflows/e2e.yml");
+    repo.write(".github/parked/e2e.yml", &e2e);
+    let head = repo.commit("Park CI");
+    let run = repo.assertrust(&["check", "--range", &format!("{base}..HEAD")]);
+    assert_eq!(run.code, 0, "{}", run.stderr);
+    let sha = &head[..7];
+    assert_eq!(
+        run.stdout,
+        format!(
+            ".github/workflows/ci.yml  HIGH  gate-loosened\n\
+             \x20 job test removed: its tests (npm test) no longer run · {sha}\n\
+             .github/workflows/e2e.yml  HIGH  gate-loosened\n\
+             \x20 job test removed: its tests (npx playwright test) no longer run · {sha}\n\
+             \n\
+             2 findings · warn-only (exit 0)\n"
+        )
+    );
+}
+
+#[test]
 fn a_gate_file_that_does_not_parse_is_noted() {
     let mut repo = TestRepo::new();
     repo.write(

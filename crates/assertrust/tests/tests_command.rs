@@ -213,3 +213,27 @@ fn gate_facts_of_a_workflow_a_config_and_package_json() {
          \x20  4  test: vitest run --passWithNoTests  (passes with no tests)\n"
     );
 }
+
+#[test]
+fn a_workflow_github_does_not_run_is_not_a_gate() {
+    let repo = TestRepo::new();
+    let workflow = "jobs:\n  test:\n    steps:\n      - run: npm test\n";
+    repo.write(".github/workflows/old/ci.yml", workflow);
+    repo.write(".github/workflows/ci.yml", workflow);
+    repo.write("src/app.ts", "export {};\n");
+    let run = repo.assertrust(&["tests", ".github/workflows/old/ci.yml"]);
+    assert_eq!(run.code, 2);
+    assert_eq!(
+        run.stderr,
+        "assertrust: `.github/workflows/old/ci.yml` isn't a JS or TS file\n"
+    );
+    // From a subfolder, by a relative path.
+    let run = repo.assertrust_in("src", &["tests", "../.github/workflows/ci.yml"]);
+    assert_eq!(run.code, 0, "{}", run.stderr);
+    assert!(
+        run.stdout
+            .starts_with("../.github/workflows/ci.yml: 1 job runs tests\n"),
+        "{}",
+        run.stdout
+    );
+}

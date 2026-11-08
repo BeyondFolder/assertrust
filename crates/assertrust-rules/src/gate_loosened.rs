@@ -8,7 +8,7 @@
 
 use std::collections::BTreeMap;
 
-use assertrust_ir::{Command, Gate, Job, Package, Setting, TestStep, Value, Workflow};
+use assertrust_ir::{Command, Gate, Job, Package, Script, Setting, TestStep, Value, Workflow};
 
 use crate::{Confidence, Finding, GateFile, RuleId, number, short};
 
@@ -67,13 +67,14 @@ impl Found<'_> {
                 None => unpaired.push(job),
             }
         }
-        // A job renamed: the new one runs one of the same test commands.
+        // A job renamed: the new one runs tests the same way (`npm test`, `npx playwright test`).
         for job in unpaired.into_iter().filter(|job| !job.steps.is_empty()) {
             let renamed = new_jobs.iter().position(|other| {
-                other
-                    .steps
-                    .iter()
-                    .any(|step| job.steps.iter().any(|old| old.run == step.run))
+                other.steps.iter().any(|step| {
+                    job.steps
+                        .iter()
+                        .any(|old| old.command.runner == step.command.runner)
+                })
             });
             match renamed {
                 Some(at) => self.job(job, new_jobs.remove(at)),
@@ -109,20 +110,11 @@ impl Found<'_> {
             old.continue_on_error.as_deref(),
             new.continue_on_error.as_deref(),
         );
-        let mut new_steps: Vec<&TestStep> = new.steps.iter().collect();
-        let mut unpaired = Vec::new();
-        for step in &old.steps {
-            match new_steps.iter().position(|other| other.run == step.run) {
-                Some(at) => self.step(&new.id, step, new_steps.remove(at)),
-                None => unpaired.push(step),
-            }
-        }
-        // One step whose command changed.
-        if let ([step], [other]) = (unpaired.as_slice(), new_steps.as_slice()) {
+        let (pairs, removed) = pair_steps(&old.steps, &new.steps);
+        for (step, other) in pairs {
             self.step(&new.id, step, other);
-            return;
         }
-        for step in unpaired {
+        for step in removed {
             self.push(
                 Some(new.line),
                 Confidence::High,
@@ -161,7 +153,7 @@ impl Found<'_> {
     /// `if:` added or changed: the job or step may not run.
     fn condition(&mut self, at: &str, line: u32, old: Option<&str>, new: Option<&str>) {
         let Some(new) = new else { return };
-        if old == Some(new) || is_true(new) {
+        if old == Some(new) || runs_anyway(new) {
             return;
         }
         let (confidence, message) = if is_false(new) {
@@ -235,16 +227,17 @@ impl Found<'_> {
                 ),
             ));
         }
-        let narrowed: Vec<&String> = new
-            .filters
-            .iter()
-            .filter(|filter| !old.filters.contains(filter))
-            .collect();
-        if !narrowed.is_empty() {
-            let narrowed: Vec<&str> = narrowed.iter().map(|s| s.as_str()).collect();
+        let (only, dropped) = narrowed(&old.filters, &new.filters);
+        if !only.is_empty() {
             changes.push((
                 Confidence::Medium,
-                format!("now runs only {}", narrowed.join(", ")),
+                format!("now runs only {}", only.join(", ")),
+            ));
+        }
+        if !dropped.is_empty() {
+            changes.push((
+                Confidence::Medium,
+                format!("no longer runs {}", dropped.join(", ")),
             ));
         }
         let skipped: Vec<&str> = new
@@ -278,24 +271,71 @@ impl Found<'_> {
     }
 
     fn package(&mut self, old: &Package, new: &Package) {
-        for script in &new.scripts {
-            let Some(command) = &script.command else {
+        let mut added: Vec<&Script> = new
+            .scripts
+            .iter()
+            .filter(|script| !old.scripts.iter().any(|other| other.name == script.name))
+            .collect();
+        for before in &old.scripts {
+            let Some(old_command) = &before.command else {
                 continue;
             };
-            let Some(before) = old.scripts.iter().find(|other| other.name == script.name) else {
+            let after = new
+                .scripts
+                .iter()
+                .find(|script| script.name == before.name)
+                .or_else(|| {
+                    // Renamed: a new script that runs the tests the same way.
+                    let at = added.iter().position(|script| {
+                        script
+                            .command
+                            .as_ref()
+                            .is_some_and(|command| command.runner == old_command.runner)
+                    })?;
+                    Some(added.remove(at))
+                });
+            let Some(after) = after else {
+                // Medium: CI calling the script now fails loudly, so it may not have run there.
+                self.push(
+                    None,
+                    Confidence::Medium,
+                    format!(
+                        "script {} removed: its tests ({}) no longer run from it",
+                        before.name,
+                        short(&before.run)
+                    ),
+                    vec![before.run.clone()],
+                    Vec::new(),
+                );
                 continue;
             };
-            if before.run == script.run {
+            if after.run == before.run {
                 continue;
             }
-            self.command(
-                &format!("script {}", script.name),
-                script.line,
-                &before.run,
-                &script.run,
-                before.command.as_ref(),
-                command,
-            );
+            let at = format!("script {}", after.name);
+            match &after.command {
+                Some(command) => self.command(
+                    &at,
+                    after.line,
+                    &before.run,
+                    &after.run,
+                    Some(old_command),
+                    command,
+                ),
+                // `echo skip` passes without testing anything; another command (`turbo
+                // test`) may still run the tests in a way assertrust doesn't follow.
+                None => self.push(
+                    Some(after.line),
+                    if after.noop {
+                        Confidence::High
+                    } else {
+                        Confidence::Medium
+                    },
+                    format!("{at}: no longer runs {}", old_command.runner),
+                    vec![before.run.clone()],
+                    vec![after.run.clone()],
+                ),
+            }
         }
         self.settings(&old.jest, &new.jest);
     }
@@ -360,6 +400,88 @@ impl Found<'_> {
                 );
             }
         }
+    }
+}
+
+/// Pairs each old test step with what it became: the same script, else the same name,
+/// else the same runner (`npm test` → `npm test || true`), else the one step left on each
+/// side. The old steps left over were removed.
+fn pair_steps<'s>(
+    old: &'s [TestStep],
+    new: &'s [TestStep],
+) -> (Vec<(&'s TestStep, &'s TestStep)>, Vec<&'s TestStep>) {
+    let mut left: Vec<&TestStep> = old.iter().collect();
+    let mut new: Vec<&TestStep> = new.iter().collect();
+    let mut pairs = Vec::new();
+    let ways: [fn(&TestStep, &TestStep) -> bool; 3] = [
+        |a, b| a.run == b.run,
+        |a, b| a.name.is_some() && a.name == b.name,
+        |a, b| a.command.runner == b.command.runner,
+    ];
+    for same in ways {
+        left.retain(
+            |step| match new.iter().position(|other| same(step, other)) {
+                Some(at) => {
+                    pairs.push((*step, new.remove(at)));
+                    false
+                }
+                None => true,
+            },
+        );
+    }
+    if let ([step], [other]) = (left.as_slice(), new.as_slice()) {
+        pairs.push((step, other));
+        left.clear();
+    }
+    (pairs, left)
+}
+
+/// Which filters make a test run smaller: the ones it now runs only (`test/unit` where
+/// there was no path), and the ones it dropped (`test/api` from `test/unit test/api`).
+/// Paths and `--project` add up, so another one runs more. A name pattern (`-t`,
+/// `--grep`) or `--changed` narrows the run whenever it's new.
+fn narrowed<'f>(old: &'f [String], new: &'f [String]) -> (Vec<&'f str>, Vec<&'f str>) {
+    let kind = |filter: &str| -> String {
+        if filter.starts_with('-') {
+            filter.split(' ').next().unwrap_or(filter).to_owned()
+        } else {
+            String::new()
+        }
+    };
+    let adds_up = |kind: &str| kind.is_empty() || kind == "--project";
+    let has = |filters: &[String], wanted: &str| filters.iter().any(|f| kind(f) == wanted);
+    let only = new
+        .iter()
+        .filter(|filter| !old.contains(filter))
+        .filter(|filter| {
+            let kind = kind(filter);
+            !adds_up(&kind) || !has(old, &kind)
+        })
+        .map(String::as_str)
+        .collect();
+    let dropped = old
+        .iter()
+        .filter(|filter| !new.contains(filter))
+        .filter(|filter| {
+            let kind = kind(filter);
+            adds_up(&kind) && has(new, &kind)
+        })
+        .map(String::as_str)
+        .collect();
+    (only, dropped)
+}
+
+/// Whether a pattern setting picks which test files run (or count for coverage): vitest's
+/// `test.include` / `test.exclude` and `test.coverage.exclude`, jest's and Playwright's
+/// top-level `testMatch`, `testIgnore`, `testPathIgnorePatterns`, …, also inside a project.
+/// Not Vite's `optimizeDeps.exclude` or `server.watch.exclude`.
+fn picks_tests(path: &str) -> bool {
+    let local = path.rsplit_once("].").map_or(path, |(_, rest)| rest);
+    let local = local.strip_prefix("jest.").unwrap_or(local);
+    match local.rsplit_once('.') {
+        Some((place, "include" | "exclude")) => matches!(place, "test" | "test.coverage"),
+        Some(_) => false,
+        None => !matches!(local, "include" | "exclude"),
     }
 }
 
@@ -429,7 +551,9 @@ fn loosened(
                 _ => None,
             }
         }
-        "exclude" | "testIgnore" | "testPathIgnorePatterns" | "coveragePathIgnorePatterns" => {
+        "exclude" | "testIgnore" | "testPathIgnorePatterns" | "coveragePathIgnorePatterns"
+            if picks_tests(path) =>
+        {
             let added = items(new_value)
                 .into_iter()
                 .filter(|item| !items(old_value).contains(item))
@@ -444,7 +568,7 @@ fn loosened(
                 Some((Confidence::High, format!("now skips {list}")))
             }
         }
-        "include" | "testMatch" | "testRegex" | "roots" if !coverage => {
+        "include" | "testMatch" | "testRegex" | "roots" if !coverage && picks_tests(path) => {
             let removed = items(old_value)
                 .into_iter()
                 .filter(|item| !items(new_value).contains(item))
@@ -456,7 +580,7 @@ fn loosened(
                 )
             })
         }
-        "testDir" if old_value.is_some() && new_value.is_some() => Some((
+        "testDir" if old_value.is_some() && new_value.is_some() && picks_tests(path) => Some((
             Confidence::Medium,
             format!(
                 "tests now come from {} instead of {}",
@@ -481,10 +605,38 @@ fn show(value: Option<&Value>, missing: &str) -> String {
     value.map_or_else(|| missing.to_owned(), |value| short(&value.to_string()))
 }
 
+/// A condition that doesn't stop anything running: `always()`, `!cancelled()`,
+/// `success()` (the default), `true`.
+fn runs_anyway(condition: &str) -> bool {
+    let compact: String = bare(condition)
+        .chars()
+        .filter(|c| !c.is_whitespace())
+        .collect();
+    matches!(
+        compact.as_str(),
+        "true"
+            | "always()"
+            | "!cancelled()"
+            | "success()"
+            | "success()||failure()"
+            | "failure()||success()"
+    )
+}
+
 fn is_true(value: &str) -> bool {
-    matches!(value, "true" | "${{ true }}")
+    bare(value) == "true"
 }
 
 fn is_false(value: &str) -> bool {
-    matches!(value, "false" | "${{ false }}")
+    bare(value) == "false"
+}
+
+/// An expression without its `${{ }}`.
+fn bare(value: &str) -> &str {
+    let value = value.trim();
+    value
+        .strip_prefix("${{")
+        .and_then(|inner| inner.strip_suffix("}}"))
+        .unwrap_or(value)
+        .trim()
 }

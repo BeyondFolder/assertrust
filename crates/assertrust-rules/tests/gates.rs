@@ -232,3 +232,268 @@ fn a_deleted_workflow_or_config() {
         ["job test removed: its tests (npm test) no longer run"]
     );
 }
+
+#[test]
+fn what_the_shell_does_with_a_failing_test_step() {
+    let before = workflow("      - run: npm test\n");
+    let swallowed = [
+        "npm test 2>&1 || true",
+        "npm test | tee test.log || true",
+        "npm test && echo passed || true",
+    ];
+    for run in swallowed {
+        assert_eq!(
+            findings(
+                WORKFLOW,
+                &before,
+                &workflow(&format!("      - run: {run}\n"))
+            ),
+            [format!(
+                "high 7: job test, step \"{run}\": failures no longer fail it"
+            )],
+            "{run}"
+        );
+    }
+    // Still fails the step: a redirect, a handler that exits non-zero, and `bash -e`
+    // stopping at the failing test before `exit 0` or a later `set +e`.
+    let still_failing = [
+        "      - run: npm test > test.log 2>&1\n",
+        "      - run: 'npm test || { cat test.log; exit 1; }'\n",
+        "      - run: npm test || (echo failed && exit 1)\n",
+        "      - run: npm test || exit 2\n",
+        "      - run: npm test; exit 0\n",
+        "      - run: |\n          set +e\n          npm test\n",
+        "      - run: |\n          npm test\n          set +e\n          ./cleanup.sh\n",
+    ];
+    for after in still_failing {
+        assert_eq!(
+            findings(WORKFLOW, &before, &workflow(after)),
+            [""; 0],
+            "{after}"
+        );
+    }
+    assert_eq!(
+        findings(
+            WORKFLOW,
+            &before,
+            &workflow(
+                "      - run: |\n          set +e\n          npm test\n          ./cleanup.sh\n"
+            )
+        ),
+        ["high 9: job test, step \"set +e\": failures no longer fail it"]
+    );
+    assert_eq!(
+        findings(
+            WORKFLOW,
+            &before,
+            &workflow("      - run: npm test || npm test\n")
+        ),
+        ["high 7: job test, step \"npm test || npm test\": retries raised from 0 to 1"]
+    );
+}
+
+#[test]
+fn test_steps_run_through_wrappers_and_workspaces() {
+    for run in [
+        "xvfb-run -a npx playwright test",
+        "pnpm --filter web test",
+        "timeout 600 npm test",
+        "npx -y vitest run",
+        "./node_modules/.bin/vitest run",
+    ] {
+        assert_eq!(
+            findings(
+                WORKFLOW,
+                &workflow(&format!("      - run: {run}\n")),
+                &workflow(&format!("      - run: {run} || true\n")),
+            ),
+            [format!(
+                "high 7: job test, step \"{run} || true\": failures no longer fail it"
+            )],
+            "{run}"
+        );
+    }
+    for run in ["npm run test-unit", "npm run tests"] {
+        assert_eq!(
+            findings(
+                WORKFLOW,
+                &workflow(&format!("      - run: {run}\n")),
+                &workflow("      - run: npm run lint\n"),
+            ),
+            [format!("high 3: job test: test step \"{run}\" removed")],
+            "{run}"
+        );
+    }
+}
+
+#[test]
+fn several_test_steps_changed_at_once() {
+    let before = workflow("      - run: npm test\n      - run: npm run test:e2e\n");
+    let after = workflow("      - run: npm test || true\n      - run: npm run test:e2e || true\n");
+    assert_eq!(
+        findings(WORKFLOW, &before, &after),
+        [
+            "high 7: job test, step \"npm test || true\": failures no longer fail it",
+            "high 8: job test, step \"npm run test:e2e || true\": failures no longer fail it",
+        ]
+    );
+    // Renamed as well.
+    assert_eq!(
+        findings(
+            WORKFLOW,
+            "jobs:\n  test:\n    steps:\n      - run: npm test\n",
+            "jobs:\n  unit:\n    steps:\n      - run: npm test -- --passWithNoTests\n",
+        ),
+        [
+            "high 4: job unit, step \"npm test -- --passWithNoTests\": passes when no tests are found"
+        ]
+    );
+}
+
+#[test]
+fn which_tests_a_step_runs() {
+    let step = |run: &str| workflow(&format!("      - run: {run}\n"));
+    let cases = [
+        // More paths or projects run more tests.
+        (
+            "npx vitest run test/unit",
+            "npx vitest run test/unit test/api",
+            None,
+        ),
+        (
+            "npx playwright test --project chromium",
+            "npx playwright test --project chromium --project firefox",
+            None,
+        ),
+        (
+            "npx vitest run test/unit test/api",
+            "npx vitest run test/unit",
+            Some("no longer runs test/api"),
+        ),
+        (
+            "npx vitest run test/unit",
+            "npx vitest run test/unit -t refunds",
+            Some("now runs only -t refunds"),
+        ),
+    ];
+    for (before, after, change) in cases {
+        let expected: Vec<String> = change
+            .map(|change| format!("medium 7: job test, step \"{after}\": {change}"))
+            .into_iter()
+            .collect();
+        assert_eq!(
+            findings(WORKFLOW, &step(before), &step(after)),
+            expected,
+            "{after}"
+        );
+    }
+}
+
+#[test]
+fn conditions_that_still_run_the_step() {
+    let before = workflow("      - run: npm test\n");
+    for condition in ["always()", "${{ !cancelled() }}", "success() || failure()"] {
+        assert_eq!(
+            findings(
+                WORKFLOW,
+                &before,
+                &workflow(&format!("      - run: npm test\n        if: {condition}\n"))
+            ),
+            [""; 0],
+            "{condition}"
+        );
+    }
+}
+
+#[test]
+fn a_job_is_reported_at_its_own_line() {
+    let before = "jobs:\n  unit:\n    steps:\n      - run: npm run test:unit\n  test:\n    steps:\n      - run: npm test\n";
+    let after = "jobs:\n  unit:\n    steps:\n      - run: npm run test:unit\n  test:\n    continue-on-error: true\n    steps:\n      - run: npm test\n";
+    assert_eq!(
+        findings(WORKFLOW, before, after),
+        ["high 5: job test: continue-on-error lets failures through"]
+    );
+}
+
+#[test]
+fn settings_that_are_not_about_tests() {
+    assert_eq!(
+        findings(
+            "vitest.config.ts",
+            "export default defineConfig({ optimizeDeps: { include: ['vue', 'pinia'] }, test: { include: ['test/**'] } });",
+            "export default defineConfig({
+  optimizeDeps: { include: ['vue'], exclude: ['fsevents'] },
+  server: { watch: { exclude: ['dist/**'] } },
+  test: { include: ['test/**'], typecheck: { exclude: ['legacy/**'] } },
+});",
+        ),
+        [""; 0]
+    );
+}
+
+#[test]
+fn a_vitest_workspace_losing_a_project() {
+    let before = "export default defineWorkspace([
+  'packages/web',
+  { test: { name: 'api', include: ['api/**/*.test.ts'] } },
+]);";
+    assert_eq!(
+        findings(
+            "vitest.workspace.ts",
+            before,
+            "export default defineWorkspace([\n  'packages/web',\n]);"
+        ),
+        ["high -: projects[api] removed: its tests no longer run"]
+    );
+    assert_eq!(
+        findings(
+            "vitest.workspace.ts",
+            before,
+            "export default [\n  { test: { name: 'api', include: ['api/**/*.test.ts'] } },\n];"
+        ),
+        ["high -: projects[packages/web] removed: its tests no longer run"]
+    );
+    // vitest 3's `test.projects`, mixing folders and inline projects.
+    assert_eq!(
+        findings(
+            "vitest.config.ts",
+            "export default defineConfig({ test: { projects: ['packages/*', { test: { name: 'unit' } }] } });",
+            "export default defineConfig({ test: { projects: [{ test: { name: 'unit' } }] } });",
+        ),
+        ["high -: test.projects[packages/*] removed: its tests no longer run"]
+    );
+}
+
+#[test]
+fn a_test_script_emptied_or_removed() {
+    let before = r#"{ "scripts": { "test": "vitest run", "test:e2e": "playwright test" } }"#;
+    assert_eq!(
+        findings(
+            "package.json",
+            before,
+            r#"{ "scripts": { "test": "echo skip" } }"#
+        ),
+        [
+            "high 1: script test: no longer runs vitest",
+            "medium -: script test:e2e removed: its tests (playwright test) no longer run from it",
+        ]
+    );
+    // Another command may still run the tests, in a way assertrust doesn't follow.
+    assert_eq!(
+        findings(
+            "package.json",
+            before,
+            r#"{ "scripts": { "test": "turbo test", "test:e2e": "playwright test" } }"#
+        ),
+        ["medium 1: script test: no longer runs vitest"]
+    );
+    // Renamed.
+    assert_eq!(
+        findings(
+            "package.json",
+            before,
+            r#"{ "scripts": { "test": "vitest run", "e2e": "playwright test --retries 2" } }"#
+        ),
+        ["high 1: script e2e: retries raised from 0 to 2"]
+    );
+}

@@ -8,8 +8,8 @@
 
 use oxc::allocator::Allocator;
 use oxc::ast::ast::{
-    ArrayExpressionElement, AssignmentTarget, BindingPattern, Expression, ObjectExpression,
-    ObjectPropertyKind, Program, Statement,
+    ArrayExpression, ArrayExpressionElement, AssignmentTarget, BindingPattern, Expression,
+    ObjectExpression, ObjectPropertyKind, Program, Statement,
 };
 use oxc::semantic::SemanticBuilder;
 
@@ -18,6 +18,7 @@ use super::values::{Values, js_str};
 use super::{Lines, program};
 use crate::ParseError;
 use crate::gate::Setting;
+use crate::value::Value;
 
 pub(crate) fn config(path: &str, source: &str) -> Result<Vec<Setting>, ParseError> {
     let allocator = Allocator::default();
@@ -32,20 +33,33 @@ pub(crate) fn config(path: &str, source: &str) -> Result<Vec<Setting>, ParseErro
     };
     let consts = Consts::find(&program, &values);
     let mut settings = Vec::new();
-    if let Some(object) = exported(&program) {
-        let reader = Reader {
-            values: &values,
-            consts: &consts,
-            lines: &lines,
-        };
-        reader.object("", object, &mut settings);
+    let reader = Reader {
+        values: &values,
+        consts: &consts,
+        lines: &lines,
+    };
+    match exported(&program) {
+        Some(Exported::Object(object)) => reader.object("", object, &mut settings),
+        // A vitest workspace: `defineWorkspace(['packages/*', { test: { name: 'api' } }])`.
+        Some(Exported::Array(array)) => {
+            if let Some(entries) = entries(array, true) {
+                reader.entries("projects", entries, &mut settings);
+            }
+        }
+        None => {}
     }
     Ok(settings)
 }
 
-/// The config object: what `export default` or `module.exports =` holds, through
+/// What a config file exports: its config object, or a vitest workspace's list of projects.
+enum Exported<'b, 'a> {
+    Object(&'b ObjectExpression<'a>),
+    Array(&'b ArrayExpression<'a>),
+}
+
+/// The config: what `export default` or `module.exports =` holds, through
 /// `defineConfig(…)`, `mergeConfig(…, …)`, a function returning it, or a `const`.
-fn exported<'b, 'a>(program: &'b Program<'a>) -> Option<&'b ObjectExpression<'a>> {
+fn exported<'b, 'a>(program: &'b Program<'a>) -> Option<Exported<'b, 'a>> {
     program.body.iter().find_map(|statement| {
         let expr = match statement {
             Statement::ExportDefaultDeclaration(export) => export.declaration.as_expression()?,
@@ -57,7 +71,7 @@ fn exported<'b, 'a>(program: &'b Program<'a>) -> Option<&'b ObjectExpression<'a>
             },
             _ => return None,
         };
-        object_of(expr, program, 0)
+        config_of(expr, program, 0)
     })
 }
 
@@ -70,31 +84,32 @@ fn is_module_exports(target: &AssignmentTarget) -> bool {
     )
 }
 
-fn object_of<'b, 'a>(
+fn config_of<'b, 'a>(
     expr: &'b Expression<'a>,
     program: &'b Program<'a>,
     depth: u32,
-) -> Option<&'b ObjectExpression<'a>> {
+) -> Option<Exported<'b, 'a>> {
     if depth > 8 {
         return None;
     }
     match expr.get_inner_expression() {
-        Expression::ObjectExpression(object) => Some(object),
+        Expression::ObjectExpression(object) => Some(Exported::Object(object)),
+        Expression::ArrayExpression(array) => Some(Exported::Array(array)),
         // `defineConfig({…})`, `mergeConfig(base, defineConfig({…}))`: the last config wins.
         Expression::CallExpression(call) => call
             .arguments
             .iter()
             .rev()
             .filter_map(|arg| arg.as_expression())
-            .find_map(|arg| object_of(arg, program, depth + 1)),
+            .find_map(|arg| config_of(arg, program, depth + 1)),
         Expression::ArrowFunctionExpression(arrow) => match arrow.body.as_expression() {
-            Some(body) => object_of(body, program, depth + 1),
+            Some(body) => config_of(body, program, depth + 1),
             None => returned(arrow.body.as_function_body()?.statements.as_slice())
-                .and_then(|expr| object_of(expr, program, depth + 1)),
+                .and_then(|expr| config_of(expr, program, depth + 1)),
         },
         Expression::FunctionExpression(function) => {
             returned(function.body.as_ref()?.statements.as_slice())
-                .and_then(|expr| object_of(expr, program, depth + 1))
+                .and_then(|expr| config_of(expr, program, depth + 1))
         }
         // `const config = {…}; export default config;`
         Expression::Identifier(id) => program.body.iter().find_map(|statement| {
@@ -108,7 +123,7 @@ fn object_of<'b, 'a>(
                 if binding.name != id.name {
                     return None;
                 }
-                object_of(declarator.init.as_ref()?, program, depth + 1)
+                config_of(declarator.init.as_ref()?, program, depth + 1)
             })
         }),
         _ => None,
@@ -140,47 +155,81 @@ impl Reader<'_, '_> {
                 continue;
             }
             let key = self.values.key(&property.key, property.computed);
+            // vitest's `projects` (or older `workspace`) may also list folders and globs.
+            let projects = key == "projects" || key == "workspace";
             let path = if prefix.is_empty() {
                 key
             } else {
                 format!("{prefix}.{key}")
             };
-            match property.value.get_inner_expression() {
-                Expression::ObjectExpression(inner) => self.object(&path, inner, out),
-                Expression::ArrayExpression(array) if named_objects(array).is_some() => {
-                    for (name, inner) in named_objects(array).expect("checked") {
-                        self.object(&format!("{path}[{name}]"), inner, out);
-                    }
-                }
-                value => out.push(Setting {
+            let value = property.value.get_inner_expression();
+            if let Expression::ObjectExpression(inner) = value {
+                self.object(&path, inner, out);
+            } else if let Expression::ArrayExpression(array) = value
+                && let Some(entries) = entries(array, projects)
+            {
+                self.entries(&path, entries, out);
+            } else {
+                out.push(Setting {
                     path,
                     value: self.values.value(value, self.consts),
                     line: self.lines.line(property.span.start),
+                });
+            }
+        }
+    }
+
+    /// Each entry of a list of projects under `path[name]`.
+    fn entries(&self, path: &str, entries: Vec<(String, Entry)>, out: &mut Vec<Setting>) {
+        for (name, entry) in entries {
+            let path = format!("{path}[{name}]");
+            match entry {
+                Entry::Object(object) => self.object(&path, object, out),
+                Entry::Path(at) => out.push(Setting {
+                    path,
+                    value: Value::String(name),
+                    line: self.lines.line(at),
                 }),
             }
         }
     }
 }
 
-/// An array of objects that each have a name, like Playwright's or vitest's `projects`,
-/// with each object's name: `name`, or vitest's `test.name`. Unnamed ones go by position.
-fn named_objects<'b, 'a>(
-    array: &'b oxc::ast::ast::ArrayExpression<'a>,
-) -> Option<Vec<(String, &'b ObjectExpression<'a>)>> {
-    let mut named = Vec::new();
+/// One entry of a list of projects.
+enum Entry<'b, 'a> {
+    /// An inline project, read like a config.
+    Object(&'b ObjectExpression<'a>),
+    /// A project given by its folder, config file or glob (`'packages/*'`), at this offset.
+    Path(u32),
+}
+
+/// A list of named objects, like Playwright's or vitest's `projects`, by each object's
+/// name: `name`, or vitest's `test.name`. Unnamed ones go by position. With `paths`, a
+/// string entry (`'packages/*'`) counts too, named by itself. `None` for any other array.
+fn entries<'b, 'a>(
+    array: &'b ArrayExpression<'a>,
+    paths: bool,
+) -> Option<Vec<(String, Entry<'b, 'a>)>> {
+    let mut entries = Vec::new();
     for (i, element) in array.elements.iter().enumerate() {
-        let ArrayExpressionElement::ObjectExpression(object) = element else {
-            return None;
+        let entry = match element {
+            ArrayExpressionElement::ObjectExpression(object) => {
+                let name = name_of(object)
+                    .or_else(|| match property(object, "test")? {
+                        Expression::ObjectExpression(test) => name_of(test),
+                        _ => None,
+                    })
+                    .unwrap_or_else(|| i.to_string());
+                (name, Entry::Object(object))
+            }
+            ArrayExpressionElement::StringLiteral(path) if paths => {
+                (js_str(path.value), Entry::Path(path.span.start))
+            }
+            _ => return None,
         };
-        let name = name_of(object)
-            .or_else(|| match property(object, "test")? {
-                Expression::ObjectExpression(test) => name_of(test),
-                _ => None,
-            })
-            .unwrap_or_else(|| i.to_string());
-        named.push((name, &**object));
+        entries.push(entry);
     }
-    (!named.is_empty()).then_some(named)
+    (!entries.is_empty()).then_some(entries)
 }
 
 fn name_of(object: &ObjectExpression) -> Option<String> {

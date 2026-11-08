@@ -24,6 +24,10 @@ test/api/forwarding.test.ts:27  HIGH  expectation-loosened
 - [ ] AI judge, npm package, Claude Code plugin
 - [ ] More languages
 
+## Contributing
+
+See [docs/development.md](docs/development.md) for building and testing.
+
 ## License
 
 [Apache-2.0](LICENSE)

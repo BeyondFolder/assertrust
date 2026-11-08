@@ -535,7 +535,7 @@ jobs:
   assertrust:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with: { fetch-depth: 0 }  # full history, required (step 1)
       - uses: BeyondFolder/assertrust@v0
         # with: { judge: true }

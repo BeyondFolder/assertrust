@@ -14,9 +14,10 @@ assertrust is a Rust CLI that detects changes that weaken a test suite. Read `RE
 
 ## Code
 
-- Rust workspace (set up in PR 2). The CLI uses `clap` with its derive API.
+- Rust workspace in `crates/`. The CLI uses `clap` with its derive API. New crates are added in the PR that gives them code.
 - LLM dependencies stay behind the optional `llm` cargo feature. The deterministic core never needs an API key.
-- `cargo fmt`, `cargo clippy -- -D warnings` and `cargo test` must pass.
+- Before pushing, these must pass: `cargo fmt --all --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test`.
+- Tests use the harness in `crates/assertrust/tests/common/mod.rs` (temp git repos, isolated from the developer's git config). Snapshots use insta. See `docs/development.md`.
 
 ## Private code
 

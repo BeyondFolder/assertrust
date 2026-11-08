@@ -2,13 +2,15 @@
 //! rules (step 5).
 
 use assertrust_git::{Classifier, Comparison, FileKind, Repo, Rev};
-use assertrust_ir::{FileIr, ParseError};
+use assertrust_ir::{FileIr, Gate, ParseError};
 use assertrust_match::{FilePair, Side};
-use assertrust_rules::TestFile;
+use assertrust_rules::{GateFile, GateSide, TestFile};
 
-/// The test files of one comparison, parsed on both sides.
+/// The test files of one comparison, parsed on both sides, and its CI and test config
+/// files (gates).
 pub struct Loaded {
     pub files: Vec<LoadedFile>,
+    pub gates: Vec<LoadedGate>,
     /// Files that were skipped, e.g. "test/a.test.ts (1a2b3c4): skipped, doesn't parse (…)".
     pub notes: Vec<String>,
 }
@@ -26,6 +28,25 @@ pub struct Parsed {
     pub ir: FileIr,
 }
 
+pub struct LoadedGate {
+    pub before: Option<ParsedGate>,
+    pub after: Option<ParsedGate>,
+}
+
+pub struct ParsedGate {
+    pub path: String,
+    pub gate: Gate,
+}
+
+impl ParsedGate {
+    fn side(&self) -> GateSide<'_> {
+        GateSide {
+            path: &self.path,
+            gate: &self.gate,
+        }
+    }
+}
+
 impl Loaded {
     pub fn file_pairs(&self) -> Vec<FilePair<'_>> {
         self.files
@@ -33,6 +54,16 @@ impl Loaded {
             .map(|file| FilePair {
                 before: file.before.as_ref().map(Parsed::side),
                 after: file.after.as_ref().map(Parsed::side),
+            })
+            .collect()
+    }
+
+    pub fn gate_files(&self) -> Vec<GateFile<'_>> {
+        self.gates
+            .iter()
+            .map(|gate| GateFile {
+                before: gate.before.as_ref().map(ParsedGate::side),
+                after: gate.after.as_ref().map(ParsedGate::side),
             })
             .collect()
     }
@@ -65,9 +96,27 @@ pub fn load(
 ) -> Result<Loaded, String> {
     let mut loaded = Loaded {
         files: Vec::new(),
+        gates: Vec::new(),
         notes: Vec::new(),
     };
     for file in &comparison.files {
+        if file.kind == FileKind::Gate {
+            // A workflow renamed or moved where it doesn't run (`ci.yml` → `ci.yml.disabled`)
+            // is as good as gone on that side, like a test file renamed out.
+            let is_gate = |path: &&str| classifier.classify(path) == FileKind::Gate;
+            let path_before = file.path_before.as_deref().filter(is_gate);
+            let path_after = file.path_after.as_deref().filter(is_gate);
+            let before = read_gate(repo, &comparison.before, path_before)?;
+            let after = read_gate(repo, &comparison.after, path_after)?;
+            match (before, after) {
+                (Ok(before), Ok(after)) if before.is_some() || after.is_some() => {
+                    loaded.gates.push(LoadedGate { before, after });
+                }
+                (Err(note), _) | (_, Err(note)) => loaded.notes.push(note),
+                _ => {}
+            }
+            continue;
+        }
         if file.kind != FileKind::Test {
             continue;
         }
@@ -145,5 +194,27 @@ fn read(repo: &Repo, rev: &Rev, path: Option<&str>) -> Result<Read, String> {
             Read::Skipped(format!("{path}: skipped, not a JS or TS file"))
         }
         Err(err) => Read::Skipped(format!("{path} ({rev}): skipped, {err}")),
+    })
+}
+
+/// One side of a gate file: `Ok(None)` when it doesn't exist there, `Err` with a note when
+/// it can't be read.
+fn read_gate(
+    repo: &Repo,
+    rev: &Rev,
+    path: Option<&str>,
+) -> Result<Result<Option<ParsedGate>, String>, String> {
+    let Some(path) = path else {
+        return Ok(Ok(None));
+    };
+    let Some(source) = repo.read_file(rev, path).map_err(|err| err.to_string())? else {
+        return Ok(Ok(None));
+    };
+    Ok(match assertrust_ir::parse_gate(path, &source) {
+        Ok(gate) => Ok(Some(ParsedGate {
+            path: path.to_owned(),
+            gate,
+        })),
+        Err(err) => Err(format!("{path} ({rev}): skipped, {err}")),
     })
 }

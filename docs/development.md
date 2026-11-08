@@ -56,6 +56,10 @@ crates/assertrust-ir/         parsing and the test IR (steps 2–3): tests and c
   src/js/values.rs            expressions → values and normalized source
   src/js/consts.rs            which `const`s can be filled in where they're used
   src/js/facts.rs             what a check states, however it's written (for matching)
+  src/js/config.rs            vitest / jest / Playwright config settings (gate facts)
+  src/gate/mod.rs             gate facts: types, package.json, JSON configs
+  src/gate/workflow.rs        GitHub Actions workflows: jobs and test steps
+  src/gate/command.rs         what a shell command does to test failures
 crates/assertrust-match/      matching (step 4): which test and check after a change is which before
   src/test_pairing.rs         pairing tests: same id, same name, then similarity
   src/check_pairing.rs        pairing checks inside a test pair, and checks that moved
@@ -67,9 +71,11 @@ crates/assertrust-rules/      rules (step 5): whether a change made a test weake
   src/test_disabled.rs
   src/check_cant_fail.rs
   src/changed_check.rs        the four rules that compare a check with what it became
+  src/gate_loosened.rs        CI and test config that lets failures through
   src/strength.rs             the matcher strength ladder
   src/looser.rs               which expected values accept more
   tests/rules.rs              cases each rule must flag and must not
+  tests/gates.rs              the same for gate-loosened
 ```
 
 New crates are added in the PR that gives them code (see `docs/architecture.md` for the planned pieces).

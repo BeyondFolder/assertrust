@@ -83,7 +83,7 @@ fn report<'a>(
             }
         }
         report.findings.extend(
-            assertrust_rules::check(&loaded.test_files())
+            assertrust_rules::check(&loaded.test_files(), &loaded.gate_files())
                 .into_iter()
                 .map(|finding| Located { finding, commit }),
         );

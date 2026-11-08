@@ -5,9 +5,12 @@
 //! sits. oxc's tree is freed when [`parse`] returns: only our own types leave this module.
 
 mod calls;
+mod config;
 mod consts;
 mod facts;
 mod values;
+
+pub(crate) use self::config::config;
 
 use std::collections::HashSet;
 
@@ -16,8 +19,8 @@ use oxc::ast::ast::{
     ArrowFunctionExpression, AwaitExpression, BindingPattern, BlockStatement, BreakStatement,
     CallExpression, ConditionalExpression, ContinueStatement, DoWhileStatement, Expression,
     ForInStatement, ForOfStatement, ForStatement, FormalParameters, Function, FunctionBody,
-    IfStatement, LogicalExpression, ReturnStatement, Statement, SwitchStatement, TryStatement,
-    WhileStatement,
+    IfStatement, LogicalExpression, Program, ReturnStatement, Statement, SwitchStatement,
+    TryStatement, WhileStatement,
 };
 use oxc::ast_visit::{Visit, walk};
 use oxc::parser::{ParseOptions, Parser};
@@ -36,28 +39,8 @@ use crate::model::{
 use crate::value::Value;
 
 pub(crate) fn parse(path: &str, source: &str) -> Result<FileIr, ParseError> {
-    let source_type = SourceType::from_path(path).map_err(|_| ParseError::UnsupportedFile)?;
     let allocator = Allocator::default();
-    let options = ParseOptions {
-        parse_regular_expression: true,
-        ..ParseOptions::default()
-    };
-    let parsed = Parser::new(&allocator, source, source_type)
-        .with_options(options)
-        .parse();
-    let lines = Lines::new(source);
-
-    if parsed.fatal_error || parsed.diagnostics.has_errors() {
-        let first = parsed.diagnostics.iter().next();
-        return Err(ParseError::Syntax {
-            line: first
-                .and_then(|diagnostic| diagnostic.labels.first())
-                .map_or(1, |label| lines.line(label.offset())),
-            message: first.map_or_else(|| "syntax error".to_owned(), |d| d.message.to_string()),
-        });
-    }
-
-    let program = parsed.program;
+    let (program, lines) = program(&allocator, path, source)?;
     let scoping = SemanticBuilder::new()
         .build(&program)
         .semantic
@@ -84,6 +67,33 @@ pub(crate) fn parse(path: &str, source: &str) -> Result<FileIr, ParseError> {
     };
     collector.visit_program(&program);
     Ok(collector.file)
+}
+
+/// Parses one file into oxc's syntax tree, or says why it can't.
+fn program<'a>(
+    allocator: &'a Allocator,
+    path: &str,
+    source: &'a str,
+) -> Result<(Program<'a>, Lines), ParseError> {
+    let source_type = SourceType::from_path(path).map_err(|_| ParseError::UnsupportedFile)?;
+    let options = ParseOptions {
+        parse_regular_expression: true,
+        ..ParseOptions::default()
+    };
+    let parsed = Parser::new(allocator, source, source_type)
+        .with_options(options)
+        .parse();
+    let lines = Lines::new(source);
+    if parsed.fatal_error || parsed.diagnostics.has_errors() {
+        let first = parsed.diagnostics.iter().next();
+        return Err(ParseError::Syntax {
+            line: first
+                .and_then(|diagnostic| diagnostic.labels.first())
+                .map_or(1, |label| lines.line(label.offset())),
+            message: first.map_or_else(|| "syntax error".to_owned(), |d| d.message.to_string()),
+        });
+    }
+    Ok((parsed.program, lines))
 }
 
 /// Line numbers from byte offsets.

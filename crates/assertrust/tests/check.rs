@@ -318,3 +318,102 @@ fn changed_outcomes_show_only_with_verbose() {
         run.stdout
     );
 }
+
+#[test]
+fn ci_and_test_config_that_let_failures_through() {
+    let mut repo = TestRepo::new();
+    repo.write(
+        ".github/workflows/ci.yml",
+        "on: [push]\njobs:\n  test:\n    runs-on: ubuntu-latest\n    steps:\n      - run: npm ci\n      - run: npm test\n",
+    );
+    repo.write(
+        "vitest.config.ts",
+        "export default defineConfig({ test: { coverage: { thresholds: { lines: 80 } } } });\n",
+    );
+    repo.write(
+        "package.json",
+        "{\n  \"scripts\": {\n    \"test\": \"vitest run\"\n  }\n}\n",
+    );
+    let base = repo.commit("Add CI");
+    repo.write(
+        ".github/workflows/ci.yml",
+        "on: [push]\njobs:\n  test:\n    runs-on: ubuntu-latest\n    steps:\n      - run: npm ci\n      - run: npm test || true\n",
+    );
+    repo.write(
+        "vitest.config.ts",
+        "export default defineConfig({ test: { coverage: { thresholds: { lines: 50 } } } });\n",
+    );
+    repo.write(
+        "package.json",
+        "{\n  \"scripts\": {\n    \"test\": \"vitest run --passWithNoTests\"\n  }\n}\n",
+    );
+    let head = repo.commit("Unblock CI");
+    let run = repo.assertrust(&["check", "--range", &format!("{base}..HEAD")]);
+    assert_eq!(run.code, 0, "{}", run.stderr);
+    let sha = &head[..7];
+    assert_eq!(
+        run.stdout,
+        format!(
+            ".github/workflows/ci.yml:7  HIGH  gate-loosened\n\
+             \x20 job test, step \"npm test || true\": failures no longer fail it · {sha}\n\
+             package.json:3  HIGH  gate-loosened\n\
+             \x20 script test: passes when no tests are found · {sha}\n\
+             vitest.config.ts:1  HIGH  gate-loosened\n\
+             \x20 test.coverage.thresholds.lines: coverage threshold lowered from 80 to 50 · {sha}\n\
+             \n\
+             3 findings · warn-only (exit 0)\n"
+        )
+    );
+}
+
+#[test]
+fn a_workflow_renamed_or_moved_so_it_no_longer_runs() {
+    let mut repo = TestRepo::new();
+    let workflow = "jobs:\n  test:\n    steps:\n      - run: npm test\n";
+    repo.write(".github/workflows/ci.yml", workflow);
+    let e2e = workflow.replace("npm test", "npx playwright test");
+    repo.write(".github/workflows/e2e.yml", &e2e);
+    let base = repo.commit("Add CI");
+    repo.git(&[
+        "mv",
+        ".github/workflows/ci.yml",
+        ".github/workflows/ci.yml.disabled",
+    ]);
+    repo.remove(".github/workflows/e2e.yml");
+    repo.write(".github/parked/e2e.yml", &e2e);
+    let head = repo.commit("Park CI");
+    let run = repo.assertrust(&["check", "--range", &format!("{base}..HEAD")]);
+    assert_eq!(run.code, 0, "{}", run.stderr);
+    let sha = &head[..7];
+    assert_eq!(
+        run.stdout,
+        format!(
+            ".github/workflows/ci.yml  HIGH  gate-loosened\n\
+             \x20 job test removed: its tests (npm test) no longer run · {sha}\n\
+             .github/workflows/e2e.yml  HIGH  gate-loosened\n\
+             \x20 job test removed: its tests (npx playwright test) no longer run · {sha}\n\
+             \n\
+             2 findings · warn-only (exit 0)\n"
+        )
+    );
+}
+
+#[test]
+fn a_gate_file_that_does_not_parse_is_noted() {
+    let mut repo = TestRepo::new();
+    repo.write(
+        ".github/workflows/ci.yml",
+        "jobs:\n  test:\n    steps:\n      - run: npm test\n",
+    );
+    let base = repo.commit("Add CI");
+    repo.write(".github/workflows/ci.yml", "jobs:\n  test: [unclosed\n");
+    repo.commit("Break CI");
+    let run = repo.assertrust(&["check", "--range", &format!("{base}..HEAD")]);
+    assert_eq!(run.code, 0, "{}", run.stderr);
+    assert!(
+        run.stdout.starts_with("\nnote: .github/workflows/ci.yml ("),
+        "{}",
+        run.stdout
+    );
+    assert!(run.stdout.ends_with("no findings\n"), "{}", run.stdout);
+}

@@ -29,6 +29,7 @@ Cargo.toml                    workspace: shared versions, dependencies, lints
 crates/assertrust/            the binary
   src/main.rs                 entry point, exit codes
   src/cli.rs                  commands and flags (clap, derive API)
+  src/check_command.rs        `assertrust check`: runs the rules, prints the findings
   src/changes.rs              `assertrust changes` output
   src/tests_command.rs        `assertrust tests` output
   src/pairs_command.rs        `assertrust pairs` output
@@ -37,6 +38,7 @@ crates/assertrust/            the binary
   tests/*.rs                  integration tests
   tests/fixtures/parsing/     one test file per pattern the parser must handle
   tests/fixtures/matching/    a test file before and after a change, for `pairs`
+  tests/fixtures/rules/       a test file before and after a change that weakens it, for `check`
   tests/snapshots/*.snap      expected outputs (insta)
 crates/assertrust-git/        input layer (step 1): which commits and files to look at
   src/mode.rs                 --range / --staged / --worktree / default → revisions
@@ -59,6 +61,12 @@ crates/assertrust-match/      matching (step 4): which test and check after a ch
   src/check_pairing.rs        pairing checks inside a test pair, and checks that moved
   src/similarity.rs           the scores and thresholds
   tests/matching.rs           the cases from step 4 of the architecture doc
+crates/assertrust-rules/      rules (step 5): whether a change made a test weaker
+  src/lib.rs                  findings, and running every rule on a change
+  src/check_removed.rs        one file per rule
+  src/test_disabled.rs
+  src/check_cant_fail.rs
+  tests/rules.rs              cases each rule must flag and must not
 ```
 
 New crates are added in the PR that gives them code (see `docs/architecture.md` for the planned pieces).

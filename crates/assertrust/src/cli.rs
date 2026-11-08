@@ -1,13 +1,9 @@
 //! The command-line interface: commands and flags, parsed with clap's derive API.
 //!
 //! The flags follow `docs/architecture.md`: the mode flags pick what to compare (step 1),
-//! `--format` and `--verbose` control output (step 6), `tests` shows what parsing finds in
-//! one file (steps 2–3), and `pairs` shows what matching pairs up (step 4).
-
-#![expect(
-    dead_code,
-    reason = "every flag is parsed now; the commands that read them land in later PRs"
-)]
+//! `check` runs the rules (step 5), `--format` and `--verbose` control its output (step 6),
+//! `tests` shows what parsing finds in one file (steps 2–3), and `pairs` shows what matching
+//! pairs up (step 4).
 
 use std::path::PathBuf;
 

@@ -296,18 +296,25 @@ impl<'a> Collector<'_> {
                 }
             }
             Structure::Step { callback } => {
-                // Runs right away, as part of the test, but a `return` in it only ends the
-                // step, so it counts as one function deeper.
-                if let Some(callback) = callback.and_then(as_callback) {
-                    let saved = (self.depth, self.runner_waits);
-                    self.depth += 1;
-                    self.runner_waits = true;
-                    self.visit_callback_body(&callback.body);
-                    (self.depth, self.runner_waits) = saved;
+                if let Some(callback) = callback {
+                    self.part_of_the_test(callback);
                 }
             }
         }
         true
+    }
+
+    /// Walks a function that runs as part of the test: a `test.step`, or an awaited
+    /// `vi.waitFor`. Its checks aren't "in a callback", and the runner waits for what it
+    /// returns, but a `return` in it only ends the function, so it counts as one deeper.
+    fn part_of_the_test(&mut self, callback: &Expression<'a>) {
+        if let Some(callback) = as_callback(callback) {
+            let saved = (self.depth, self.runner_waits);
+            self.depth += 1;
+            self.runner_waits = true;
+            self.visit_callback_body(&callback.body);
+            (self.depth, self.runner_waits) = saved;
+        }
     }
 
     /// Playwright's `test.skip(cond)` in a `describe` (or at the top of a file) skips every
@@ -459,6 +466,15 @@ impl<'a> Visit<'a> for Collector<'_> {
             self.file.custom_matchers.extend(names);
             return;
         }
+        if let Some(callback) = calls::retry_callback(call)
+            && self.awaited.contains(&call.span)
+        {
+            self.part_of_the_test(callback);
+            for argument in call.arguments.iter().skip(1) {
+                self.visit_argument(argument);
+            }
+            return;
+        }
         if !matches!(self.owner, Owner::Outside) && self.is_context_skip(call) {
             let condition = call
                 .arguments
@@ -528,8 +544,10 @@ impl<'a> Visit<'a> for Collector<'_> {
     }
 
     fn visit_try_statement(&mut self, it: &TryStatement<'a>) {
+        // Without a `catch` (`try { … } finally { … }`), a failure still reaches the test.
+        let catches = it.handler.is_some();
         self.scoped(
-            |context| context.in_try = true,
+            |context| context.in_try |= catches,
             |this| this.visit_block_statement(&it.block),
         );
         if let Some(handler) = &it.handler {

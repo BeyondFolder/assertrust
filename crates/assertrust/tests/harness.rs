@@ -55,7 +55,10 @@ fn stages_without_committing() {
 
 #[test]
 fn runs_the_binary_inside_the_repo() {
-    let repo = TestRepo::new();
+    let mut repo = TestRepo::new();
+    repo.commit("Empty start");
+    // Outside a repo this would fail with "not inside a git repository".
     let run = repo.assertrust(&["check", "--staged"]);
-    assert_eq!(run.code, 2, "check is not implemented yet: {}", run.stderr);
+    assert_eq!(run.code, 0, "{}", run.stderr);
+    assert_eq!(run.stdout, "nothing to check\n");
 }

@@ -133,9 +133,10 @@ pub struct DeletedTest {
 }
 
 impl DeletedTest {
-    /// True when every check reappears in other tests.
+    /// True when the test had checks and every one reappears in other tests. A deleted
+    /// test without checks (a smoke test, or one that calls helpers) wasn't moved.
     pub fn all_moved(&self) -> bool {
-        self.checks.iter().all(|check| check.moved_to.is_some())
+        !self.checks.is_empty() && self.checks.iter().all(|check| check.moved_to.is_some())
     }
 }
 
@@ -170,6 +171,22 @@ pub fn match_files(files: &[FilePair]) -> Matching {
         .collect();
     check_pairing::find_moves(files, &mut matching);
     matching
+}
+
+/// Words in a test's old name that the new name doesn't have, in order, ignoring case and
+/// punctuation. A rename that drops words often says what the test stopped checking:
+/// "puts it into the text or preview" → "puts it into the text" drops `or preview`.
+pub fn dropped_words(before: &str, after: &str) -> Vec<String> {
+    let bare = |word: &str| {
+        word.trim_matches(|c: char| !c.is_alphanumeric())
+            .to_lowercase()
+    };
+    let kept: Vec<String> = after.split_whitespace().map(bare).collect();
+    before
+        .split_whitespace()
+        .filter(|word| !bare(word).is_empty() && !kept.contains(&bare(word)))
+        .map(|word| word.trim_matches(|c: char| !c.is_alphanumeric()).to_owned())
+        .collect()
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

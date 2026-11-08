@@ -288,6 +288,43 @@ it('d', () => { items.forEach((p) => { return expect(p).resolves.toBe(1); }); })
     }
 
     #[test]
+    fn an_awaited_retry_runs_as_part_of_the_test() {
+        let source = "
+it('x', async () => {
+  await vi.waitFor(() => { expect(a).toBe(1); });
+  await waitFor(() => expect(b).toBe(2));
+  vi.waitFor(() => { expect(c).toBe(3); });
+  await vi.waitUntil(() => { if (!d) return false; expect(d).toBe(4); return true; });
+});
+";
+        assert_eq!(
+            first_test_items(source),
+            [
+                "expect(a).toBe(1)",
+                // `waitFor` waits for what its function returns.
+                "await expect(b).toBe(2)",
+                // Not awaited: the test may end before it fails.
+                "expect(c).toBe(3) in callback",
+                "expect(d).toBe(4)",
+            ]
+        );
+    }
+
+    #[test]
+    fn only_a_try_with_a_catch_can_swallow_a_failure() {
+        let source = "
+it('x', () => {
+  try { expect(a).toBe(1); } catch {}
+  try { expect(b).toBe(2); } finally { cleanup(); }
+});
+";
+        assert_eq!(
+            first_test_items(source),
+            ["expect(a).toBe(1) in try", "expect(b).toBe(2)"]
+        );
+    }
+
+    #[test]
     fn checks_in_a_switch_case_are_conditional() {
         let source = "it('x', () => { switch (k) { case 1: expect(a).toBe(1); } });";
         assert_eq!(first_test_items(source), ["expect(a).toBe(1) in if"]);

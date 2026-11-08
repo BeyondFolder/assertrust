@@ -13,6 +13,7 @@ repository = "https://github.com/BeyondFolder/assertrust"
 assertrust-git = { path = "crates/assertrust-git" }
 assertrust-ir = { path = "crates/assertrust-ir" }
 assertrust-match = { path = "crates/assertrust-match" }
+assertrust-rules = { path = "crates/assertrust-rules" }
 clap = { version = "4.6", features = ["derive"] }
 globset = "0.4.21"
 insta = "1.49"

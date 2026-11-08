@@ -9,7 +9,13 @@ test/api/forwarding.test.ts:27  HIGH  expectation-loosened
   toMatchObject no longer checks status, domainIds · 10d8742
 ```
 
-> **Status: pre-alpha. The check itself doesn't run yet.** Three debugging commands work: `assertrust changes` (which commits and files a check would look at), `assertrust tests <file>` (the tests and checks it finds in a file) and `assertrust pairs` (which tests and checks before a change correspond to which after it). The design is in [docs/architecture.md](docs/architecture.md), and it's being built in small public PRs.
+> **Status: pre-alpha.** `assertrust check` runs, with the first three rules: a check removed, a test disabled (skipped, `.only`, deleted), and a check that can no longer fail (moved into an `if` or a callback, `await` dropped, …). It only warns for now. Matcher and value rules, CI gates and the GitHub Action are next. Three debugging commands show what it sees: `assertrust changes` (which commits and files a check looks at), `assertrust tests <file>` (the tests and checks it finds in a file) and `assertrust pairs` (which tests and checks before a change correspond to which after it). The design is in [docs/architecture.md](docs/architecture.md), and it's being built in small public PRs.
+
+```sh
+assertrust check                          # this branch, PR-style, against the default branch
+assertrust check --range main..HEAD       # each commit on its own
+assertrust check --worktree               # uncommitted changes
+```
 
 ## What it will do
 

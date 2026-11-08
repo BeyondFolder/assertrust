@@ -89,6 +89,27 @@ fn a_test_moved_to_another_file() {
 }
 
 #[test]
+fn a_test_file_renamed_out_of_the_suite() {
+    let mut repo = TestRepo::new();
+    repo.write(
+        "test/dca.test.ts",
+        "it('swaps', () => { expect(swap(1)).toBe(2) });\n",
+    );
+    let base = repo.commit("Add a test");
+    repo.git(&["mv", "test/dca.test.ts", "test/dca.ts"]);
+    repo.commit("Park it");
+    let run = repo.assertrust(&["pairs", "--range", &format!("{base}..HEAD")]);
+    assert_eq!(run.code, 0, "{}", run.stderr);
+    assert!(
+        run.stdout.contains(
+            "  test/dca.test.ts → test/dca.ts (not a test file name): 1 deleted\n    deleted   swaps\n"
+        ),
+        "{}",
+        run.stdout
+    );
+}
+
+#[test]
 fn uncommitted_changes() {
     let mut repo = TestRepo::new();
     repo.write(

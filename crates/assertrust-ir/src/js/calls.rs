@@ -244,6 +244,22 @@ fn is_name_literal(expr: &Expression) -> bool {
     )
 }
 
+/// The function passed to `vi.waitFor(fn)`, `vi.waitUntil(fn)` or Testing Library's
+/// `waitFor(fn)`. They call `fn` until it passes and reject if it never does, so when the
+/// test awaits them, a check in `fn` fails the test like any other.
+pub(super) fn retry_callback<'b, 'a>(call: &'b CallExpression<'a>) -> Option<&'b Expression<'a>> {
+    let (base, segments) = chain(&call.callee)?;
+    let retries = match (base, segments.as_slice()) {
+        ("waitFor", []) => true,
+        ("vi" | "vitest", [segment]) => {
+            matches!(segment.name, "waitFor" | "waitUntil") && matches!(segment.arg, RawArg::None)
+        }
+        _ => false,
+    };
+    let callback = call.arguments.first().and_then(Argument::as_expression)?;
+    (retries && is_function(callback)).then_some(callback)
+}
+
 /// The parts of an `expect(…)…` call, before they're turned into IR.
 pub(super) struct ExpectCall<'b, 'a> {
     pub(super) subject: Option<&'b Expression<'a>>,

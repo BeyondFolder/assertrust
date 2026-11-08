@@ -61,18 +61,19 @@ On the command line, these map to:
 | `--range BASE..HEAD` | per commit, every commit `HEAD` adds |
 | `--range BASE...HEAD` | PR-style: merge-base → `HEAD`, plus every commit (the same meaning as `git diff A...B`) |
 | no flag | PR-style, from the default branch (what `origin/HEAD` points to, else `main` or `master`) to `HEAD` |
-| `--staged`, `--worktree` | staged, worktree (worktree includes untracked files) |
+| `--staged`, `--worktree` | staged, worktree (worktree compares with the files on disk, including untracked files; a file moved without `git add` still counts as a rename) |
 | `--pr N` | becomes `base...head`; built with the GitHub Action (step 8) |
 
 `assertrust changes` (same flags) prints what a check would look at: the commits, plus each changed file with its kind. It checks nothing, and it's for debugging the input layer.
 
 - **Why the merge-base and not the base branch's latest commit:** if `main` moved on after the branch was cut, comparing against its latest commit would count `main`'s newer changes as part of the PR. GitHub's PR diff works the same way.
-- **Merge commits are skipped** when walking commits. Their changes were already checked commit by commit, and checking them again would report everything twice. When `main` is merged into a branch halfway through, `main`'s commits aren't counted as part of the PR either.
-- **Renames are followed** (`git diff -M`), so a moved test file isn't reported as one test deleted and a new one added.
+- **Merge commits are skipped** when walking commits. The commits a merge brings in are walked one by one instead, and checking the merge too would report everything twice. When `main` is merged into a branch halfway through, `main`'s commits aren't counted as part of the PR either.
+  - **Known gap:** what a merge commit changes on its own (a conflict resolution, or an edit slipped into the merge) is covered by PR-style mode, because the net comparison includes it. Per-commit mode (`A..B`) doesn't see it yet. The fix would be `git show --remerge-diff`, which shows only what the merge changed compared with git's automatic merge. Until then, run PR-style on branches.
+- **Renames are followed** (`git diff -M`), so a moved test file isn't reported as one test deleted and a new one added. A renamed file gets the stronger kind of its two paths (see the order below): `a.test.ts` → `a.test.ts.disabled` is still a test, one that just left the suite.
 
 ### Which files
 
-Every changed path is recorded and labelled:
+Every changed path is recorded and labelled. Paths are relative to the repo root, wherever assertrust is run from. The kinds are checked in this order and the first match wins: Test, Gate, Test support, Source, Other.
 
 | Kind | Default patterns (configurable) | Contents loaded |
 |---|---|---|
@@ -102,9 +103,9 @@ _Sketch only. Exact types are settled in the implementation PR._
 ### Implementation notes
 
 - **Shell out to `git`** (`log`, `merge-base`, `diff-tree -M`, `show rev:path`) rather than using the `gix` library. Git is always present in CI, and it's easier to read and debug. We can switch later if speed ever matters.
-- **Read-only and safe next to an agent:** git runs with `GIT_OPTIONAL_LOCKS=0`, so it never takes the index lock while an editor or coding agent is using the repo.
+- **Read-only and safe next to an agent:** git runs with `GIT_OPTIONAL_LOCKS=0`, so it never takes the index lock while an editor or coding agent is using the repo. The worktree mode needs one write: untracked files are added as "intent to add" to a throwaway copy of the index in a temp dir, so a single `git diff` can compare with the disk. The real index is never touched.
 - **No option injection:** user-supplied revisions are resolved to SHAs behind `--end-of-options`, so a "revision" like `--output=file` is rejected instead of being passed to git as an option.
-- **GitHub Action gotcha:** `actions/checkout` fetches one commit by default. The Action needs `fetch-depth: 0`, or there's no history to walk.
+- **GitHub Action gotcha:** `actions/checkout` fetches one commit by default. The Action needs `fetch-depth: 0`, or there's no history to walk. When the merge-base is missing in a shallow clone, assertrust says so and suggests the fix.
 - **Recommended Action triggers:** `pull_request`, plus `push` to `main` only. Otherwise a push to a branch with an open PR is checked twice.
 
 ### Tests

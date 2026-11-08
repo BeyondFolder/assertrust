@@ -21,8 +21,7 @@ pub fn run(args: &ChangesArgs) -> Result<(), String> {
     let dir = std::env::current_dir().map_err(|err| format!("can't read current dir: {err}"))?;
     let analysis = assertrust_git::analyze(&dir, &mode, &Classifier::default())
         .map_err(|err| err.to_string())?;
-    print!("{}", render(&analysis));
-    Ok(())
+    crate::print_stdout(&render(&analysis))
 }
 
 fn render(analysis: &Analysis) -> String {

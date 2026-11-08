@@ -12,7 +12,7 @@
 
 use std::fs;
 use std::path::PathBuf;
-use std::process::Command;
+use std::process::{Command, Output, Stdio};
 
 use tempfile::TempDir;
 
@@ -146,6 +146,26 @@ impl TestRepo {
         run(self.isolated(Command::new(BINARY).args(args)))
     }
 
+    /// Runs `assertrust` from a subdirectory of the repo (relative to the repo root).
+    pub fn assertrust_in(&self, subdir: &str, args: &[&str]) -> Run {
+        run(self
+            .isolated(Command::new(BINARY).args(args))
+            .current_dir(self.path().join(subdir)))
+    }
+
+    /// Runs `assertrust` with its stdout closed before it writes anything, like
+    /// `assertrust … | head -0`.
+    pub fn assertrust_into_closed_pipe(&self, args: &[&str]) -> Run {
+        let mut child = self
+            .isolated(Command::new(BINARY).args(args))
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .expect("start process");
+        drop(child.stdout.take());
+        to_run(child.wait_with_output().expect("wait for process"))
+    }
+
     /// Runs a committing git command with the next fixed date.
     fn with_next_date(&mut self, args: &[&str]) {
         self.commits += 1;
@@ -180,7 +200,10 @@ impl Default for TestRepo {
 }
 
 fn run(cmd: &mut Command) -> Run {
-    let output = cmd.output().expect("start process");
+    to_run(cmd.output().expect("start process"))
+}
+
+fn to_run(output: Output) -> Run {
     Run {
         code: output
             .status

@@ -34,7 +34,7 @@ crates/assertrust/            the binary
   tests/snapshots/*.snap      expected outputs (insta)
 crates/assertrust-git/        input layer (step 1): which commits and files to look at
   src/mode.rs                 --range / --staged / --worktree / default → revisions
-  src/git.rs                  every git call (read-only, NUL-separated output)
+  src/git.rs                  every git call (from the repo root, read-only, NUL-separated output)
   src/diff.rs                 parsing `git diff --name-status -z`
   src/classify.rs             file kinds: test, test-support, gate, source, other
   src/model.rs                the types handed to later steps
@@ -65,7 +65,7 @@ fn flags_a_loosened_matcher() {
 }
 ```
 
-Other helpers: `branch`, `switch`, `merge` (always a merge commit), `stage`, `remove`, `git` (any git command).
+Other helpers: `branch`, `switch`, `merge` (always a merge commit), `stage`, `remove`, `git` (any git command), `assertrust_in` (run from a subdirectory), `assertrust_into_closed_pipe` (stdout closed early, like `| head`).
 
 **Why the harness isolates git.** Tests must behave the same on every machine. So git runs:
 - without your global or system config: commit signing, hooks or aliases would otherwise change or hang tests

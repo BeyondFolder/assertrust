@@ -79,8 +79,12 @@ fn or_head(side: &str) -> &str {
 }
 
 /// The branch PRs merge into: what `origin/HEAD` points to, else a local `main` or `master`.
+/// `origin/HEAD` is skipped if it points to a branch that no longer exists (the remote's
+/// default branch was renamed, then pruned).
 fn default_branch(git: &Git) -> Result<String, Error> {
-    if let Some(remote_head) = git.symbolic_ref("refs/remotes/origin/HEAD") {
+    if let Some(remote_head) = git.symbolic_ref("refs/remotes/origin/HEAD")
+        && git.rev_parse(&remote_head).is_ok()
+    {
         return Ok(remote_head);
     }
     for branch in ["main", "master"] {

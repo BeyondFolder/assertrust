@@ -165,6 +165,7 @@ impl FileKind {
     }
 }
 
-fn short(sha: &str) -> &str {
+/// The first 7 characters of a SHA, as git shows it.
+pub(crate) fn short(sha: &str) -> &str {
     sha.get(..7).unwrap_or(sha)
 }

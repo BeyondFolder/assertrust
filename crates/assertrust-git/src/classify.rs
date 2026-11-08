@@ -13,6 +13,15 @@ use globset::{GlobBuilder, GlobSet, GlobSetBuilder};
 
 use crate::model::FileKind;
 
+/// The order kinds are checked in, strongest first.
+const ORDER: [FileKind; 5] = [
+    FileKind::Test,
+    FileKind::Gate,
+    FileKind::TestSupport,
+    FileKind::Source,
+    FileKind::Other,
+];
+
 /// JS/TS extensions: the files assertrust parses as tests.
 const TEST_EXTENSIONS: &str = "{ts,tsx,js,jsx,mts,cts,mjs,cjs}";
 
@@ -39,6 +48,19 @@ impl Classifier {
             test_support: glob_set(test_support)?,
             source: glob_set(&[format!("**/*.{SOURCE_EXTENSIONS}")])?,
         })
+    }
+
+    /// The kind of a changed file. A renamed file gets whichever of its two paths ranks
+    /// higher in the order above: `a.test.ts` → `a.test.ts.disabled` is a test leaving
+    /// the suite, not a new "other" file.
+    pub(crate) fn classify_change(&self, before: Option<&str>, after: Option<&str>) -> FileKind {
+        let kinds = [before, after]
+            .into_iter()
+            .flatten()
+            .map(|path| self.classify(path));
+        kinds
+            .min_by_key(|kind| ORDER.iter().position(|k| k == kind))
+            .unwrap_or(FileKind::Other)
     }
 
     pub fn classify(&self, path: &str) -> FileKind {
@@ -94,6 +116,22 @@ mod tests {
     #[track_caller]
     fn assert_kind(path: &str, kind: FileKind) {
         assert_eq!(Classifier::default().classify(path), kind, "{path}");
+    }
+
+    #[test]
+    fn a_renamed_file_keeps_the_stronger_kind() {
+        let classifier = Classifier::default();
+        let kind = |before, after| classifier.classify_change(before, after);
+        assert_eq!(
+            kind(Some("test/a.test.ts"), Some("test/a.test.ts.disabled")),
+            FileKind::Test
+        );
+        assert_eq!(
+            kind(Some("src/helpers.ts"), Some("test/helpers.ts")),
+            FileKind::TestSupport
+        );
+        assert_eq!(kind(None, Some("README.md")), FileKind::Other);
+        assert_eq!(kind(Some("vitest.config.ts"), None), FileKind::Gate);
     }
 
     #[test]

@@ -1,0 +1,15 @@
+{"run_id":"1794126259-377495732","line":112,"new":{"module_name":"changes","snapshot_name":"a_test_renamed_out_of_the_suite_is_still_a_test","metadata":{"source":"crates/assertrust/tests/changes.rs","assertion_line":112,"expression":"changes(&repo, &[\"--range\", \"HEAD~1..HEAD\"])"},"snapshot":"per-commit: HEAD~1..HEAD\ncommits (1):\n  c7d9bc5 Park the test\n    R test         test/math.test.ts → test/math.test.ts.disabled"},"old":{"module_name":"changes","metadata":{},"snapshot":"per-commit: HEAD~1..HEAD\ncommits (1):\n  0000000 Park the test\n    R test         test/math.test.ts → test/math.test.ts.disabled"}}
+{"run_id":"1794126259-377495732","line":53,"new":null,"old":null}
+{"run_id":"1794126259-377495732","line":37,"new":null,"old":null}
+{"run_id":"1794126295-414081824","line":274,"new":null,"old":null}
+{"run_id":"1794126295-414081824","line":139,"new":null,"old":null}
+{"run_id":"1794126295-414081824","line":220,"new":null,"old":null}
+{"run_id":"1794126295-414081824","line":112,"new":null,"old":null}
+{"run_id":"1794126295-414081824","line":74,"new":null,"old":null}
+{"run_id":"1794126295-414081824","line":97,"new":null,"old":null}
+{"run_id":"1794126295-414081824","line":207,"new":null,"old":null}
+{"run_id":"1794126295-414081824","line":162,"new":null,"old":null}
+{"run_id":"1794126295-414081824","line":192,"new":null,"old":null}
+{"run_id":"1794126295-414081824","line":175,"new":null,"old":null}
+{"run_id":"1794126295-414081824","line":53,"new":null,"old":null}
+{"run_id":"1794126295-414081824","line":37,"new":null,"old":null}

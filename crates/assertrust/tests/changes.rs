@@ -103,6 +103,21 @@ fn renamed_tests_keep_both_paths() {
 }
 
 #[test]
+fn a_test_renamed_out_of_the_suite_is_still_a_test() {
+    let mut repo = repo_with_feature_branch();
+    repo.remove("test/math.test.ts");
+    repo.write("test/math.test.ts.disabled", "expect(add(1, 2)).toBe(3);\n");
+    repo.commit("Park the test");
+
+    insta::assert_snapshot!(changes(&repo, &["--range", "HEAD~1..HEAD"]), @r"
+    per-commit: HEAD~1..HEAD
+    commits (1):
+      c7d9bc5 Park the test
+        R test         test/math.test.ts → test/math.test.ts.disabled
+    ");
+}
+
+#[test]
 fn files_are_labelled_by_kind() {
     let mut repo = TestRepo::new();
     repo.commit("Start");
@@ -166,6 +181,38 @@ fn worktree_includes_unstaged_and_untracked_files() {
 }
 
 #[test]
+fn worktree_compares_with_what_is_on_disk() {
+    // What a coding agent leaves behind: a file moved without `git add`, and a file
+    // dropped from the index while it's still on disk.
+    let repo = repo_with_feature_branch();
+    repo.remove("test/math.test.ts");
+    repo.write("test/sum.test.ts", "expect(add(1, 2)).toBe(3);\n");
+    repo.git(&["rm", "--quiet", "--cached", "src/math.ts"]);
+
+    insta::assert_snapshot!(changes(&repo, &["--worktree"]), @r"
+    worktree
+    compare a6c672c → files on disk
+      R test         test/math.test.ts → test/sum.test.ts
+    ");
+}
+
+#[test]
+fn paths_are_from_the_repo_root_when_run_from_a_subdirectory() {
+    let repo = repo_with_feature_branch();
+    repo.write("test/helper.ts", "export const one = 1;\n");
+    repo.write("src/new.ts", "export const two = 2;\n");
+
+    let run = repo.assertrust_in("test", &["changes", "--worktree"]);
+    assert_eq!(run.code, 0, "{}", run.stderr);
+    insta::assert_snapshot!(run.stdout, @r"
+    worktree
+    compare a6c672c → files on disk
+      A source       src/new.ts
+      A test-support test/helper.ts
+    ");
+}
+
+#[test]
 fn no_flag_compares_the_branch_with_main() {
     let repo = repo_with_feature_branch();
     repo.switch("feature");
@@ -199,6 +246,25 @@ fn no_flag_prefers_what_origin_head_points_to() {
         "{output}"
     );
     assert!(output.contains("Work on main"), "{output}");
+}
+
+#[test]
+fn no_flag_skips_an_origin_head_that_points_nowhere() {
+    // The remote renamed its default branch and `git fetch --prune` removed the old one,
+    // but `origin/HEAD` still points to it.
+    let repo = repo_with_feature_branch();
+    repo.git(&[
+        "symbolic-ref",
+        "refs/remotes/origin/HEAD",
+        "refs/remotes/origin/master",
+    ]);
+    repo.switch("feature");
+
+    let output = changes(&repo, &[]);
+    assert!(
+        output.starts_with("pr-style: main...HEAD (default)\n"),
+        "{output}"
+    );
 }
 
 #[test]
@@ -238,6 +304,34 @@ fn a_range_cannot_smuggle_in_git_options() {
     let run = repo.assertrust(&["changes", "--range=--output=pwned..HEAD"]);
     assert_eq!(run.code, 2, "{}", run.stdout);
     assert!(!repo.path().join("pwned").exists());
+}
+
+#[test]
+fn a_shallow_clone_gets_a_hint_when_the_merge_base_is_missing() {
+    // Like `actions/checkout` without `fetch-depth: 0`: the commit where the branches
+    // split isn't in the clone.
+    let mut repo = repo_with_feature_branch();
+    repo.write("src/app.ts", "export const app = 1;\n");
+    let main = repo.commit("Main moves on");
+    let feature = repo.git(&["rev-parse", "feature"]);
+    repo.write(".git/shallow", &format!("{main}\n{feature}\n"));
+
+    let run = repo.assertrust(&["changes", "--range", "main...feature"]);
+    assert_eq!(run.code, 2);
+    assert!(
+        run.stderr
+            .contains("have no common ancestor. This clone is shallow"),
+        "{}",
+        run.stderr
+    );
+}
+
+#[test]
+fn a_reader_that_stops_early_is_not_an_error() {
+    let repo = repo_with_feature_branch();
+    let run = repo.assertrust_into_closed_pipe(&["changes", "--range", "main...feature"]);
+    assert_eq!(run.code, 0, "{}", run.stderr);
+    assert_eq!(run.stderr, "");
 }
 
 #[test]

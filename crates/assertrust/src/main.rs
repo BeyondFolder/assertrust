@@ -6,6 +6,7 @@
 mod changes;
 mod cli;
 
+use std::io::{self, Write as _};
 use std::process::ExitCode;
 
 use clap::Parser;
@@ -32,6 +33,21 @@ fn main() -> ExitCode {
             eprintln!("assertrust: {message}");
             ExitCode::from(EXIT_TOOL_ERROR)
         }
+    }
+}
+
+/// Writes `text` to stdout. A reader that stops early (`assertrust changes | head`) isn't an
+/// error: `print!` would panic there, so output goes through this instead.
+pub(crate) fn print_stdout(text: &str) -> Result<(), String> {
+    let mut stdout = io::stdout().lock();
+    match stdout
+        .write_all(text.as_bytes())
+        .and_then(|()| stdout.flush())
+    {
+        Err(err) if err.kind() != io::ErrorKind::BrokenPipe => {
+            Err(format!("couldn't write the output: {err}"))
+        }
+        _ => Ok(()),
     }
 }
 

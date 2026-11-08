@@ -36,8 +36,7 @@ use crate::mode::Resolved;
 
 /// Works out what `mode` compares in the repo at `dir`.
 pub fn analyze(dir: &Path, mode: &Mode, classifier: &Classifier) -> Result<Analysis, Error> {
-    let git = Git::new(dir);
-    git.ensure_repo()?;
+    let git = Git::open(dir)?;
 
     match mode::resolve(&git, mode)? {
         Resolved::PerCommit { base, head, label } => {
@@ -74,10 +73,7 @@ pub fn analyze(dir: &Path, mode: &Mode, classifier: &Classifier) -> Result<Analy
         }
         Resolved::WorkTree => {
             let before = git.head_or_empty_tree()?;
-            let mut changes = git.diff_worktree(&before)?;
-            changes.extend(git.untracked()?);
-            let mut files = diff::classify(changes, classifier);
-            files.sort_by(|a, b| a.path().cmp(b.path()));
+            let files = diff::classify(git.diff_worktree(&before)?, classifier);
             Ok(uncommitted(
                 ModeKind::WorkTree,
                 before,
@@ -89,7 +85,9 @@ pub fn analyze(dir: &Path, mode: &Mode, classifier: &Classifier) -> Result<Analy
 }
 
 /// One comparison per commit in `base..head` (the commits `head` adds), oldest first.
-/// Merge commits are skipped: their changes were already checked commit by commit.
+/// Merge commits are skipped: the commits they bring in are walked one by one instead.
+/// What a merge changes on its own (a conflict resolution) is only covered by PR-style's
+/// net comparison; see "Merge commits" in `docs/architecture.md`, step 1.
 fn steps(
     git: &Git,
     base: &str,

@@ -59,15 +59,16 @@ pub(crate) fn parse_name_status(output: &str) -> Vec<RawChange> {
     changes
 }
 
-/// Labels each change with its file kind, decided by the path after the change (or before
-/// it, for a deleted file).
+/// Labels each change with its file kind (for a rename, the stronger of its two paths; see
+/// [`Classifier::classify_change`]).
 pub(crate) fn classify(changes: Vec<RawChange>, classifier: &Classifier) -> Vec<FileChange> {
     changes
         .into_iter()
         .map(|change| {
-            let path = change.after.as_deref().or(change.before.as_deref());
+            let kind =
+                classifier.classify_change(change.before.as_deref(), change.after.as_deref());
             FileChange {
-                kind: classifier.classify(path.unwrap_or_default()),
+                kind,
                 status: change.status,
                 path_before: change.before,
                 path_after: change.after,

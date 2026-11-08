@@ -1,6 +1,6 @@
 # assertrust architecture
 
-> Status: **pre-alpha.** This is the design being built in small public PRs. Nothing runs yet. When the code changes the design, the same PR updates this doc.
+> Status: **pre-alpha.** This is the design being built in small public PRs. `assertrust check` runs the first three rules (step 5); the rest is being built. When the code changes the design, the same PR updates this doc.
 
 assertrust checks that a change didn't quietly make the test suite weaker. Examples: an assertion removed, a matcher loosened, a test skipped, a CI gate relaxed. It reports what got weaker, where, and which commit did it.
 
@@ -84,6 +84,8 @@ Every changed path is recorded and labelled. Paths are relative to the repo root
 | Other | everything else | no |
 
 Contents are read lazily, so the cost stays proportional to the test and gate files that changed. (Reading contents arrives with parsing, step 2.)
+
+A renamed file keeps the stronger of its two kinds, so `a.test.ts` → `a.test.ts.disabled` is still a Test file: a test leaving the suite, not a new "other" file. Its new name isn't a test file name, so the runner won't pick it up. Loading treats it as gone after the change, and step 5 reports it.
 
 ### Data handed to step 2
 
@@ -218,11 +220,11 @@ test "emails a confirmation … and only forwards once confirmed"
   - `negated` (`.not`)
   - which `expect`: plain, `expect.soft` or `expect.poll`
   - promise modifier: `.resolves` or `.rejects`
-  - `awaited`: whether the test waits for it: `await`ed, or returned from the test, hook or `test.step` function (an arrow's body counts as returned). Returning it from another callback doesn't count: `setTimeout` or `forEach` drops what it returns.
+  - `awaited`: whether the test waits for it: `await`ed, or returned from the test, hook, `test.step` or awaited `vi.waitFor` function (an arrow's body counts as returned). Returning it from another callback doesn't count: `setTimeout` or `forEach` drops what it returns.
   - the matcher: its raw name plus its kind
   - the arguments as values
   - its facts: what it states, in a form that doesn't depend on how it's written (see "Rewritten checks" in step 4)
-  - context: inside an if (or `? :` or `switch` case), loop, try, catch, callback or short-circuit. A `test.step` callback runs right away, so it isn't a callback.
+  - context: inside an if (or `? :` or `switch` case), loop, try, catch, callback or short-circuit. "Try" means a `try` with a `catch`, or with a `finally` that returns (or `break`s / `continue`s out), which drops the failure. A plain `try { … } finally { cleanup() }` still lets a failure through. A `test.step` callback runs right away, so it isn't a callback. Neither is the function in an awaited `vi.waitFor`, `vi.waitUntil` or Testing Library `waitFor`: they retry it and fail the test if it never passes. Not awaited, the test may end first, so it's a callback.
   - a span, used for reporting and never compared
 - **Values:** null, undefined, bool, number, string, template, regex (with its top-level alternatives split by oxc's regex parser), object (keys compared as a set), array, nested matcher (`expect.objectContaining(…)`), or opaque (any other expression, as normalized source).
 
@@ -363,7 +365,7 @@ Pairing only says the checks correspond. The rules (step 5) decide whether the n
 
 ### Moves and splits aren't removals
 
-A removed check that shows up unchanged, and in the same place (not newly inside an `if` or callback), in another test of the same change moved there. Each added check can account for one removed check. A deleted test whose checks all moved was split or merged into others. Neither produces findings.
+A removed check that shows up unchanged, and in the same place (not newly inside an `if` or callback), in another test of the same change moved there. Each added check can account for one removed check. A deleted test whose checks all moved was split or merged into others. Neither produces findings. A deleted test with no checks wasn't moved: it's a deletion.
 
 ### Defaults
 
@@ -380,7 +382,7 @@ A removed check that shows up unchanged, and in the same place (not newly inside
 
 ### Debug command
 
-`assertrust pairs [--range <range> | --staged | --worktree]` prints how tests and checks pair up, for the net change and each commit, the same way `assertrust changes` lists them. Unchanged tests are only counted. A test file that doesn't parse on either side is skipped for that change with a note: comparing against nothing would make every test in it look deleted. From the `billing` fixture:
+`assertrust pairs [--range <range> | --staged | --worktree]` prints how tests and checks pair up, for the net change and each commit, the same way `assertrust changes` lists them. Unchanged tests are only counted. A test file that doesn't parse on either side is skipped for that change with a note: comparing against nothing would make every test in it look deleted. A test file renamed out of the suite shows as `test/dca.test.ts → test/dca.ts (not a test file name)`, with its tests deleted. From the `billing` fixture:
 
 ```
 test/billing.test.ts: 7 tests paired (1 unchanged), 1 deleted, 1 added
@@ -410,7 +412,9 @@ Fixtures cover:
 
 ## 5. Rules
 
-**In one sentence:** each rule looks at one paired test (or one gate file) before and after the change and says whether it got weaker, how, and how confident it is.
+**In one sentence:** each rule looks at what matching paired up (or one gate file) before and after the change, and says whether a test got weaker, how, and how confident it is.
+
+**Built so far:** `check-removed`, `test-disabled` and `check-cant-fail` (crate `assertrust-rules`), run by `assertrust check`. The matcher and value rules come next, then the gate rules.
 
 **Example (Mailyond `71110c0`, "Pipeline fix."):**
 
@@ -426,14 +430,45 @@ after:  expect(source).not.toMatch(/support@|support\.your|inboxes\.net|…/)
 
 | Rule id | What it catches | Examples | Default confidence |
 |---|---|---|---|
-| `check-removed` | A check disappeared from a test that still exists, and didn't reappear elsewhere in the change | an `expect` line deleted; a test left with zero checks | high |
+| `check-removed` | A check disappeared from a test that still exists, and didn't reappear elsewhere in the change | an `expect` line deleted; a test left with zero checks | high; medium when the test also gained checks that didn't pair (it was rewritten) |
 | `matcher-loosened` | A matcher moved down the strength ladder (below) | `toEqual({ id: 1 })` → `toBeTruthy()`; `toHaveBeenCalledWith(a)` → `toHaveBeenCalled()` | high when it ends at the bottom level, else medium |
 | `matcher-swapped` | A matcher swapped for one at the same level, or any matcher change under `.not` | `toBe(obj)` → `toEqual(obj)` (identity becomes deep equality); `toContain('x')` → `toMatch(/x/)`; `.not.toEqual(a)` → `.not.toBe(a)` | low, shown by default |
 | `expectation-loosened` | The same matcher accepts more than before | object fields dropped (`10d8742`); an alternative dropped under `.not` (`71110c0`); array items or `.each` rows dropped; `toThrow('msg')` → `toThrow()`; a wider numeric bound or `toBeCloseTo` precision | high for fields, rows and alternatives; medium for numbers |
-| `test-disabled` | A test no longer runs, or no longer runs everywhere | `.skip`, `.todo`, `.fails`, `.skipIf(…)`, a runtime `test.skip(cond)`; `.only` committed (silences the rest of the file); a test deleted and not moved | high |
-| `check-cant-fail` | A check is still there but may no longer run or fail | moved into `try/catch`, an `if` or an unawaited callback; an early `return` added before it; `await` dropped from `.resolves`/`.rejects`; a bare `expect(x)` with no matcher; `expect.assertions(n)` removed or `n` lowered | high for the bare `expect` and dropped `await`, else medium |
+| `test-disabled` | A test no longer runs, or no longer runs everywhere | `.skip`, `.todo`, `.fails`, `.skipIf(…)`, a runtime `test.skip(cond)`; `.only` committed (silences the rest of the file); a test deleted and not moved; a test file deleted, or renamed to a name the runner doesn't pick up | high; medium when it skips only under a condition, or the deleted test's file gained tests that didn't pair |
+| `check-cant-fail` | A check is still there but may no longer run or fail | moved into a `try` with a `catch`, an `if` or an unawaited callback; an early `return` added before it; `await` dropped from `.resolves`/`.rejects`; a bare `expect(x)` with no matcher; `expect.assertions(n)` removed or `n` lowered | high for a bare `expect`, a dropped `await` and an unconditional `return`; low for a loop; else medium |
 | `gate-loosened` | CI or test config lets more failures through | `\|\| true`, `continue-on-error: true`, `if: false` on a test step; the test step removed; `retries` raised; coverage threshold lowered; a pattern added to `exclude`/`testIgnore`; `passWithNoTests` added | high |
 | `outcome-changed` | The expected outcome changed (not looser, just different) in the same commit as the code it tests | `toBe(3)` → `toBe(4)`; `.not` added or removed | low; hidden unless the LLM judge is on |
+
+### What the first three check, in detail
+
+**`check-removed`**, one finding per test, listing what it lost:
+
+```
+test/unit/inbound-body.test.ts:41  HIGH  check-removed
+  removed expect(fields.preview).toBe('Hi scriptbad() <3'); the test name dropped "preview" · 038cf0b
+```
+
+- Checks that moved to another test in the same change (step 4) don't count.
+- The message adds "the test has no checks left" when that's the case, and the words the test's name dropped.
+- **Medium** when the test also gained checks matching couldn't pair: it was rewritten, and the new checks may cover the old ones in a way matching can't see (a mock renamed from `fetch` to `resolver`).
+- A test whose checks no longer run (skipped for good with `skip`, `todo` or `fixme`, or skipping itself with no condition, like `ctx.skip()` outside any `if`) isn't looked into: `test-disabled` reports the skip.
+
+**`test-disabled`:**
+
+- **A modifier that stops the test:** `skip`, `fixme`, `todo`, and `fails` / `fail` (the test passes only if it fails) are high. `skipIf(cond)`, `runIf(cond)` and Playwright's `test.skip(cond)` in a `describe` skip only sometimes, so they're medium. Tests in one file that gain the same one (a `describe.skip`) make one finding.
+- **A skip added inside the test** (`test.skip(cond)`, `ctx.skip()`): high when unconditional, medium with a condition or inside an `if`.
+- **A `.only`** in a file that had none: one finding saying how many other tests stop running. A new file doesn't count, since none of its tests ran before.
+- **A deleted test** whose checks didn't all move to other tests. A deleted test without checks counts too: a smoke test still fails when the code throws. **Medium** when the file gained tests that didn't pair, since the test may have been rewritten under another name (Mailyond `49a44d2`).
+- **A test that didn't run before** (skipped, or skipping itself) stops nothing: deleting it, or swapping one skip for another (`skip` → `todo`), isn't flagged.
+- **A deleted test file**, or one renamed to a name that isn't a test file name (`dca.test.ts` → `dca.ts`, `a.test.ts` → `a.test.ts.disabled`): one finding for the file. Step 1 keeps a renamed file's stronger kind, so the file is still loaded, and its tests count as gone after the change.
+
+**`check-cant-fail`:**
+
+- **A check in a new place** where it may not run or fail (when checks are folded into one, any of them that wasn't there before counts): a callback, a `catch`, a `try` with a `catch`, an `if` or `? :`, after `&&`/`||`/`??` (medium), or a loop that may run zero times (low). Places that still fail the test aren't flagged: `try { … } finally { … }`, `test.step`, and an awaited `vi.waitFor` / `waitFor`, which retries and then fails the test (step 3).
+- **A `return` added before checks,** or one moved out of an `if`: high when it's unconditional (they never run), medium inside an `if`.
+- **`await` dropped from a check that returns a promise:** `.resolves` / `.rejects`, `expect.poll`, and Playwright's web-first matchers (`toBeVisible`, `toHaveText`, …). The test may end before it fails. On a plain `toBe`, `await` did nothing, so dropping it is fine.
+- **A matcher dropped:** `expect(total).toBe(3)` → `expect(total)` checks nothing.
+- **`expect.assertions(n)`** removed, lowered, or replaced with `expect.hasAssertions()` (medium).
 
 ### Matcher strength ladder (positive checks)
 
@@ -459,12 +494,13 @@ after:  expect(source).not.toMatch(/support@|support\.your|inboxes\.net|…/)
 
 ### Shape
 
-- Each rule is one file implementing a `Rule` trait. It takes the paired test (or gate facts) and returns findings.
+- Each rule is one file with a `check` function. It reads the whole change, not one test pair at a time: `test-disabled` needs deleted tests and whole files, and a `.only` affects the rest of its file.
 - A finding has:
   - the rule id and confidence
-  - the file, line, test and `via` chain
-  - a one-line message, plus the before and after snippets
-  - the commit that caused it, filled in later by step 1's attribution
+  - the file and line after the change (no line when what it's about is gone: a deleted test or file)
+  - the test, and later its `via` chain
+  - a one-line message, plus the code before and after, shown with `-v`
+  - the commit that caused it. Per-commit checks know it already; PR-style checks get it from step 1's attribution, which comes with the output PR.
 - All v0.1 rules are deterministic, so no AI or API key is needed to run them.
 - Rules can be turned off one at a time in config (step 6).
 
@@ -472,18 +508,31 @@ after:  expect(source).not.toMatch(/support@|support\.your|inboxes\.net|…/)
 
 - **Sideways matcher swaps are flagged too,** at low confidence. Changes that behave identically are not.
 - **`outcome-changed` is hidden unless the judge is on.** Legitimate behaviour changes do this constantly, so on its own it would be mostly noise. It's still recorded in the backtest report for tuning.
-- **Confidence levels are a first guess** and get adjusted using the Mailyond backtest.
+- **Confidence levels are a first guess** and get adjusted using the Mailyond backtest. They already were once: a deleted test is medium when its file gained tests, after `49a44d2` (below).
+
+### Checked on Mailyond's history
+
+`assertrust check` over the same 313 commits, one by one, takes 2 seconds and finds 28 things, all read by hand:
+- **11 `check-removed`** (5 high, 6 medium) and **17 `test-disabled`** (8 high, 9 medium). No `check-cant-fail`: the one check that moved, into `await vi.waitFor(…)` in `8b2cb57`, still fails the test.
+- **All 28 describe the change correctly:** the check or the test is gone.
+- **Most are deliberate.** Tests deleted with the behaviour they tested (`581fb66`: "drop the double-prefix rule and resolveSetupTarget"), refactors that dropped a field the checks read (`11c140f`). Only the commit message says so. That's the judge's job (step 7), or an allow trailer (step 6).
+- **One false alarm, now medium:** `49a44d2` rewrote "stores an inbound email" into a bigger test under a new name. The bodies differ too much to pair, but the file gained tests, so the deletion is medium.
+- **Borderline ones worth a look:** `038cf0b` dropped the `preview` check (the example in step 4), and `11c140f` dropped `toMatchObject({ subdomainPolicy, nonexistentPolicy, adkim, aspf })` from "surfaces sp, np and strict alignment", which still checks the findings for them.
 
 ### Tests
 
-There's at least one positive fixture (must flag) and one negative fixture (must not flag) per rule, plus:
+There's at least one fixture that must be flagged and one that must not, per rule (`crates/assertrust-rules/tests/rules.rs`), plus:
+- a fixture with one change of each kind, run through `assertrust check` (`crates/assertrust/tests/fixtures/rules/`)
 - both polarity directions for Pattern and Subset
 - reformat-only changes, which must produce no findings
+- tests and checks that moved to another test or file, which must produce no findings
 - the three Mailyond shapes: `10d8742` (fields dropped), `71110c0` (an alternative dropped under `.not`) and `038cf0b` (a check removed in a renamed, refactored test)
 
 ## 6. Output
 
 **In one sentence:** show each finding where the person or agent will see it, in the terminal, on the PR, or as JSON for tools, and never block anything unless the repo opts in.
+
+**Built so far:** the terminal format and `-v`, always warn-only (exit 0). A per-commit check names each finding's commit. A PR-style check doesn't yet: tracing a finding back to its commit, hiding transient findings, the other formats, allow comments and config come with the output PR. Until then `--format json`, `--format github` and `--show-transient` exit with 2. Files that couldn't be checked are listed as notes before the summary, e.g. `note: test/a.test.ts (1a2b3c4): skipped, doesn't parse (…)`, and so are merge commits a per-commit check skipped.
 
 ### Terminal (default): short, two lines per finding
 
@@ -494,7 +543,17 @@ test/api/forwarding.test.ts:27  HIGH  expectation-loosened
 1 finding · warn-only (exit 0)
 ```
 
-- `-v` adds the test name, the before/after snippet and the full commit message.
+- `-v` adds the test name, the before/after snippet and the full commit message:
+
+  ```
+  test/a.test.ts:1  HIGH  check-removed
+    removed 2 checks, including expect(b).toBe(2) · 1a2b3c4
+      test    refunds
+      before  expect(b).toBe(2)
+              expect(c).toBe(3)
+      commit  Trim the refund test
+  ```
+- A finding about something that's gone (a deleted test or file) has no line: `test/a.test.ts  HIGH  test-disabled` / `deleted: billing > refunds`.
 - Findings are sorted most severe first. Allowed findings come last, marked `ALLOWED` with their reason. Transient findings appear only with `--show-transient`.
 - **On the PR**, an inline annotation already sits on the line, so it says only the finding itself: title `assertrust: expectation-loosened (high)`, message `toMatchObject no longer checks status, domainIds (10d8742)`. The summary comment is a short table: file:line, rule, message.
 

@@ -4,8 +4,10 @@
 //! it parses the command line and maps the outcome to an exit code.
 
 mod changes;
+mod check_command;
 mod cli;
 mod load;
+mod output;
 mod pairs_command;
 mod tests_command;
 
@@ -25,7 +27,7 @@ fn main() -> ExitCode {
     let cli = Cli::parse();
 
     let result = match cli.command {
-        Command::Check(_) => Err(not_implemented("check")),
+        Command::Check(args) => check_command::run(&args),
         Command::Changes(args) => changes::run(&args),
         Command::Tests(args) => tests_command::run(&args),
         Command::Pairs(args) => pairs_command::run(&args),
@@ -53,8 +55,4 @@ pub(crate) fn print_stdout(text: &str) -> Result<(), String> {
         }
         _ => Ok(()),
     }
-}
-
-fn not_implemented(command: &str) -> String {
-    format!("`{command}` is not implemented yet (see the roadmap in README.md)")
 }

@@ -11,6 +11,7 @@ repository.workspace = true
 assertrust-git.workspace = true
 assertrust-ir.workspace = true
 assertrust-match.workspace = true
+assertrust-rules.workspace = true
 clap.workspace = true
 
 [dev-dependencies]

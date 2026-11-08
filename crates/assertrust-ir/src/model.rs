@@ -274,11 +274,12 @@ pub struct Context {
     pub in_if: bool,
     /// Inside a `for` / `while` loop.
     pub in_loop: bool,
-    /// Inside a `try` block (an error it throws may be caught).
+    /// Inside a `try` block that has a `catch` (a failure may be caught).
     pub in_try: bool,
     /// Inside a `catch` block (only runs if something threw).
     pub in_catch: bool,
-    /// Inside a function nested in the test, e.g. a `.forEach` callback.
+    /// Inside a function nested in the test, e.g. a `.forEach` callback. Not a `test.step`
+    /// or an awaited `vi.waitFor`, which run as part of the test.
     pub in_callback: bool,
     /// On the right of `&&`, `||` or `??`.
     pub short_circuit: bool,

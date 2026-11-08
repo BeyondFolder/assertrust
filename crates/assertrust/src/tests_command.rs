@@ -16,6 +16,7 @@ use assertrust_git::{Repo, Rev};
 use assertrust_ir::{Body, FileIr, ItemKind, ParseError};
 
 use crate::cli::TestsArgs;
+use crate::output::{count, line};
 
 pub fn run(args: &TestsArgs) -> Result<(), String> {
     let file = read(args)?;
@@ -144,16 +145,4 @@ fn body(out: &mut String, body: &Body) {
         }
         line(out, &text);
     }
-}
-
-fn count(n: usize, noun: &str) -> String {
-    if n == 1 {
-        format!("1 {noun}")
-    } else {
-        format!("{n} {noun}s")
-    }
-}
-
-fn line(out: &mut String, text: &str) {
-    writeln!(out, "{text}").expect("writing to a String can't fail");
 }

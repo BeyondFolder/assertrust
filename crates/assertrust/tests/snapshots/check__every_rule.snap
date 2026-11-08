@@ -1,0 +1,22 @@
+---
+source: crates/assertrust/tests/check.rs
+expression: run.stdout
+---
+test/checkout.test.ts  HIGH  test-disabled
+  deleted: checkout > applies a coupon · f3e6655
+test/checkout.test.ts:5  HIGH  check-removed
+  removed expect(order.receipt).toMatchObject({ sentTo: 'ada@example.…; the test name dropped "and emails a receipt" · f3e6655
+test/checkout.test.ts:17  HIGH  check-cant-fail
+  await dropped from expect(loadOrder('order-1')).resolves.toMatchObject({ statu…: the test may end before it fails · f3e6655
+test/checkout.test.ts:20  HIGH  test-disabled
+  now skipped (skip) · f3e6655
+test/checkout.test.ts:27  HIGH  check-cant-fail
+  a return now comes before 1 check: it never runs · f3e6655
+test/checkout.test.ts:33  HIGH  check-cant-fail
+  expect(log.last()) has no matcher: it checks nothing · f3e6655
+test/checkout.test.ts:12  MEDIUM  check-cant-fail
+  expect.assertions lowered from 2 to 1 · f3e6655
+test/checkout.test.ts:15  MEDIUM  check-cant-fail
+  expect(result.ok).toBe(true) is now inside an if: it may not run · f3e6655
+
+8 findings · warn-only (exit 0)

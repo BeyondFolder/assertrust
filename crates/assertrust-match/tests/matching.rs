@@ -391,3 +391,13 @@ fn a_check_that_moved_into_an_if_in_another_test_was_not_just_moved() {
     assert_eq!(removed.len(), 1);
     assert_eq!(removed[0].moved_to, None);
 }
+
+#[test]
+fn a_deleted_test_without_checks_was_not_moved() {
+    let (matching, ..) = match_one(
+        "it('renders', () => { render(app) }); it('keeps', () => {})",
+        "it('keeps', () => {})",
+    );
+    assert_eq!(matching.deleted.len(), 1);
+    assert!(!matching.deleted[0].all_moved());
+}

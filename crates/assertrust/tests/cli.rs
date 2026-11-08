@@ -49,11 +49,19 @@ fn missing_command_is_a_usage_error() {
 }
 
 #[test]
-fn commands_not_built_yet_exit_with_2() {
-    let run = assertrust(&["check"]);
+fn flags_not_built_yet_exit_with_2() {
+    let run = assertrust(&["check", "--format", "json"]);
     assert_eq!(run.code, 2);
     assert!(
-        run.stderr.contains("is not implemented yet"),
+        run.stderr
+            .contains("only --format terminal is supported so far"),
+        "{}",
+        run.stderr
+    );
+    let run = assertrust(&["check", "--show-transient"]);
+    assert_eq!(run.code, 2);
+    assert!(
+        run.stderr.contains("--show-transient isn't supported yet"),
         "{}",
         run.stderr
     );

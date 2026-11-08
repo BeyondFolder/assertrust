@@ -74,6 +74,7 @@ dependencies = [
  "assertrust-git",
  "assertrust-ir",
  "assertrust-match",
+ "assertrust-rules",
  "clap",
  "insta",
  "tempfile",
@@ -99,6 +100,14 @@ name = "assertrust-match"
 version = "0.0.0"
 dependencies = [
  "assertrust-ir",
+]
+
+[[package]]
+name = "assertrust-rules"
+version = "0.0.0"
+dependencies = [
+ "assertrust-ir",
+ "assertrust-match",
 ]
 
 [[package]]

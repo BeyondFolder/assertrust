@@ -14,23 +14,27 @@ use std::fmt::Write as _;
 
 use assertrust_git::{Analysis, Classifier, Comparison, ModeKind, Repo};
 use assertrust_ir::{ItemKind, Test};
-use assertrust_match::{CheckMatch, FilePair, Matching, TestMatch, TestPair, TestRef, match_files};
+use assertrust_match::{
+    CheckMatch, FilePair, Matching, TestMatch, TestPair, TestRef, dropped_words, match_files,
+};
 
 use crate::cli::PairsArgs;
 use crate::load::{self, Loaded};
+use crate::output::{count, line};
 
 pub fn run(args: &PairsArgs) -> Result<(), String> {
     let mode = args.mode.to_input()?;
     let dir = std::env::current_dir().map_err(|err| format!("can't read current dir: {err}"))?;
     let repo = Repo::open(&dir).map_err(|err| err.to_string())?;
+    let classifier = Classifier::default();
     let analysis = repo
-        .analyze(&mode, &Classifier::default())
+        .analyze(&mode, &classifier)
         .map_err(|err| err.to_string())?;
-    let output = render(&repo, &analysis)?;
+    let output = render(&repo, &analysis, &classifier)?;
     crate::print_stdout(&output)
 }
 
-fn render(repo: &Repo, analysis: &Analysis) -> Result<String, String> {
+fn render(repo: &Repo, analysis: &Analysis, classifier: &Classifier) -> Result<String, String> {
     let mut out = String::new();
     let mode = match analysis.kind {
         ModeKind::PerCommit => "per-commit",
@@ -46,7 +50,7 @@ fn render(repo: &Repo, analysis: &Analysis) -> Result<String, String> {
 
     if let Some(net) = &analysis.net {
         line(&mut out, &format!("compare {} → {}", net.before, net.after));
-        comparison(&mut out, repo, net, "  ")?;
+        comparison(&mut out, repo, net, classifier, "  ")?;
     }
     for step in &analysis.steps {
         let commit = &step.commit;
@@ -54,7 +58,7 @@ fn render(repo: &Repo, analysis: &Analysis) -> Result<String, String> {
             &mut out,
             &format!("{} {}", commit.short_sha(), commit.subject()),
         );
-        comparison(&mut out, repo, &step.comparison, "  ")?;
+        comparison(&mut out, repo, &step.comparison, classifier, "  ")?;
     }
     if analysis.is_empty() {
         line(&mut out, "nothing to check");
@@ -66,9 +70,10 @@ fn comparison(
     out: &mut String,
     repo: &Repo,
     comparison: &Comparison,
+    classifier: &Classifier,
     indent: &str,
 ) -> Result<(), String> {
-    let mut loaded = load::load(repo, comparison)?;
+    let mut loaded = load::load(repo, comparison, classifier)?;
     loaded.notes.dedup();
     for note in &loaded.notes {
         line(out, &format!("{indent}{note}"));
@@ -137,9 +142,13 @@ impl View<'_, '_> {
 /// One file: its pairs (listed under the file the test was in before), deleted and added
 /// tests.
 fn render_file(out: &mut String, view: &View, index: usize, file: &FilePair, indent: &str) {
+    let renamed_out = view.loaded.files[index].renamed_out.as_deref();
     let path = match (file.before, file.after) {
         (Some(before), Some(after)) if before.path != after.path => {
             format!("{} → {}", before.path, after.path)
+        }
+        (Some(before), None) if let Some(renamed_out) = renamed_out => {
+            format!("{} → {renamed_out} (not a test file name)", before.path)
         }
         (Some(side), _) | (None, Some(side)) => side.path.to_owned(),
         (None, None) => return,
@@ -393,30 +402,4 @@ fn check_text(test: &Test, item: usize) -> String {
 fn modifiers(test: &Test) -> String {
     let modifiers: Vec<String> = test.modifiers.iter().map(ToString::to_string).collect();
     modifiers.join(", ")
-}
-
-/// Words in the old name that the new one doesn't have, in order, ignoring punctuation.
-fn dropped_words(before: &str, after: &str) -> Vec<String> {
-    let bare = |word: &str| {
-        word.trim_matches(|c: char| !c.is_alphanumeric())
-            .to_lowercase()
-    };
-    let kept: Vec<String> = after.split_whitespace().map(bare).collect();
-    before
-        .split_whitespace()
-        .filter(|word| !bare(word).is_empty() && !kept.contains(&bare(word)))
-        .map(|word| word.trim_matches(|c: char| !c.is_alphanumeric()).to_owned())
-        .collect()
-}
-
-fn count(n: usize, noun: &str) -> String {
-    if n == 1 {
-        format!("1 {noun}")
-    } else {
-        format!("{n} {noun}s")
-    }
-}
-
-fn line(out: &mut String, text: &str) {
-    writeln!(out, "{text}").expect("writing to a String can't fail");
 }

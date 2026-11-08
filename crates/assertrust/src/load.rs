@@ -1,8 +1,10 @@
-//! Reads and parses the test files a comparison touches, for matching (step 4).
+//! Reads and parses the test files a comparison touches, for matching (step 4) and the
+//! rules (step 5).
 
-use assertrust_git::{Comparison, FileKind, Repo, Rev};
+use assertrust_git::{Classifier, Comparison, FileKind, Repo, Rev};
 use assertrust_ir::{FileIr, ParseError};
 use assertrust_match::{FilePair, Side};
+use assertrust_rules::TestFile;
 
 /// The test files of one comparison, parsed on both sides.
 pub struct Loaded {
@@ -14,6 +16,9 @@ pub struct Loaded {
 pub struct LoadedFile {
     pub before: Option<Parsed>,
     pub after: Option<Parsed>,
+    /// The new name, when a test file was renamed to a name that isn't a test file name, so
+    /// the test runner no longer picks it up. `after` is then `None`.
+    pub renamed_out: Option<String>,
 }
 
 pub struct Parsed {
@@ -31,6 +36,17 @@ impl Loaded {
             })
             .collect()
     }
+
+    pub fn test_files(&self) -> Vec<TestFile<'_>> {
+        self.files
+            .iter()
+            .map(|file| TestFile {
+                before: file.before.as_ref().map(Parsed::side),
+                after: file.after.as_ref().map(Parsed::side),
+                renamed_out: file.renamed_out.as_deref(),
+            })
+            .collect()
+    }
 }
 
 impl Parsed {
@@ -42,7 +58,11 @@ impl Parsed {
     }
 }
 
-pub fn load(repo: &Repo, comparison: &Comparison) -> Result<Loaded, String> {
+pub fn load(
+    repo: &Repo,
+    comparison: &Comparison,
+    classifier: &Classifier,
+) -> Result<Loaded, String> {
     let mut loaded = Loaded {
         files: Vec::new(),
         notes: Vec::new(),
@@ -51,8 +71,17 @@ pub fn load(repo: &Repo, comparison: &Comparison) -> Result<Loaded, String> {
         if file.kind != FileKind::Test {
             continue;
         }
-        let before = read(repo, &comparison.before, file.path_before.as_deref())?;
-        let after = read(repo, &comparison.after, file.path_after.as_deref())?;
+        // A test file renamed to a name that isn't a test file name (`a.test.ts` →
+        // `a.test.ts.disabled`) stops running: on that side it's as good as gone.
+        let is_test = |path: &&str| classifier.classify(path) == FileKind::Test;
+        let path_before = file.path_before.as_deref().filter(is_test);
+        let path_after = file.path_after.as_deref().filter(is_test);
+        let renamed_out = path_after
+            .is_none()
+            .then(|| file.path_after.clone())
+            .flatten();
+        let before = read(repo, &comparison.before, path_before)?;
+        let after = read(repo, &comparison.after, path_after)?;
         // A side that can't be read makes the whole file unreadable: comparing against
         // nothing would make every test in it look deleted (or added).
         let skipped: Vec<String> = [before.skipped(), after.skipped()]
@@ -65,7 +94,11 @@ pub fn load(repo: &Repo, comparison: &Comparison) -> Result<Loaded, String> {
         }
         let (before, after) = (before.parsed(), after.parsed());
         if before.is_some() || after.is_some() {
-            loaded.files.push(LoadedFile { before, after });
+            loaded.files.push(LoadedFile {
+                before,
+                after,
+                renamed_out,
+            });
         }
     }
     Ok(loaded)

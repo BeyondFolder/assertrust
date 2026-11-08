@@ -134,6 +134,177 @@ it('x', () => {
         );
     }
 
+    /// The first test's items as text, followed by their context if any.
+    fn first_test_items(source: &str) -> Vec<String> {
+        let ir = parse_file("a.test.ts", source).expect("parses");
+        ir.tests[0]
+            .body
+            .items
+            .iter()
+            .map(|item| {
+                let text = match &item.kind {
+                    ItemKind::Assertion(assertion) => assertion.to_string(),
+                    other => format!("{other:?}"),
+                };
+                format!("{text} {}", item.context).trim_end().to_owned()
+            })
+            .collect()
+    }
+
+    /// Each test as `id [modifiers]`.
+    fn tests_with_modifiers(path: &str, source: &str) -> Vec<String> {
+        let ir = parse_file(path, source).expect("parses");
+        ir.tests
+            .iter()
+            .map(|test| {
+                let modifiers: Vec<String> =
+                    test.modifiers.iter().map(ToString::to_string).collect();
+                format!("{} [{}]", test.id(), modifiers.join(", "))
+            })
+            .collect()
+    }
+
+    #[test]
+    fn constants_are_not_mixed_up_with_variables_of_the_same_name() {
+        let source = "
+const PLAN = 'free';
+const ROLE = 'admin';
+describe('d', () => {
+  const ROLE = 'user';
+  it.each(['pro'])('upgrades %s', (PLAN) => {
+    expect(role).toBe(ROLE);
+    expect(plan).toBe(PLAN);
+    for (const ROLE of roles) expect(role).toBe(ROLE);
+  });
+});
+";
+        assert_eq!(
+            first_test_items(source),
+            [
+                "expect(role).toBe('user')",
+                "expect(plan).toBe(PLAN)",
+                "expect(role).toBe(ROLE) in loop",
+            ]
+        );
+    }
+
+    #[test]
+    fn arrays_and_objects_that_may_change_are_left_as_written() {
+        let source = "
+const built = [];
+const sent = { id: 1 };
+const rows = [['pro', 10]];
+const wanted = { id: 1 };
+it.each(rows)('x', () => {
+  built.push(1);
+  send(sent);
+  expect(a).toEqual([built, sent, wanted, expect.objectContaining(wanted)]);
+});
+";
+        let ir = parse_file("a.test.ts", source).expect("parses");
+        let test = &ir.tests[0];
+        assert_eq!(test.modifiers[0].to_string(), "each([['pro', 10]])");
+        let assertion = test.body.assertions().next().expect("one assertion");
+        assert_eq!(
+            assertion.to_string(),
+            "expect(a).toEqual([built, sent, { id: 1 }, expect.objectContaining({ id: 1 })])"
+        );
+    }
+
+    #[test]
+    fn templates_ignore_formatting_but_not_content() {
+        let names = |source: &str| -> Vec<String> {
+            let ir = parse_file("a.test.ts", source).expect("parses");
+            ir.tests.iter().map(Test::id).collect()
+        };
+        assert_eq!(
+            names("it(`saves ${ plan.name }`, () => {})"),
+            names("it(`saves ${plan.name}`, () => {})")
+        );
+        assert_ne!(
+            names("it(`a\nb ${x}`, () => {})"),
+            names("it(`a b ${x}`, () => {})")
+        );
+
+        let aligned = "it.each`\n  plan     | price\n  ${'pro'} | ${10}\n`('t', () => {})";
+        let squashed = "it.each`plan|price\n${'pro'}|${10}`('t', () => {})";
+        assert_eq!(
+            tests_with_modifiers("a.test.ts", aligned),
+            ["t [each([{ plan: 'pro', price: 10 }])]"]
+        );
+        assert_eq!(
+            tests_with_modifiers("a.test.ts", aligned),
+            tests_with_modifiers("a.test.ts", squashed)
+        );
+    }
+
+    #[test]
+    fn playwright_skips_cover_the_whole_describe_but_not_helpers() {
+        let source = "
+function skipWebkit(browserName) { test.skip(browserName === 'webkit'); }
+test.describe('g', () => {
+  test('above', async () => {});
+  test.skip(isMobile);
+  test.describe.only('inner', () => { test('nested', async () => {}); });
+});
+test('outside', async () => {});
+";
+        assert_eq!(
+            tests_with_modifiers("a.spec.ts", source),
+            [
+                "g > above [skip(isMobile)]",
+                "g > inner > nested [skip(isMobile), only]",
+                "outside []",
+            ]
+        );
+    }
+
+    #[test]
+    fn returning_from_a_step_is_not_an_early_return() {
+        let source = "
+it('x', async () => {
+  await test.step('s', async () => { return 1; });
+  expect(a).toBe(1);
+});
+";
+        assert_eq!(first_test_items(source), ["expect(a).toBe(1)"]);
+    }
+
+    #[test]
+    fn returned_checks_are_awaited_only_when_the_runner_waits() {
+        let source = "
+it('a', () => expect(p).resolves.toBe(1));
+it('b', async () => { await test.step('s', () => expect(p).resolves.toBe(1)); });
+it('c', () => { setTimeout(() => expect(p).resolves.toBe(1)); });
+it('d', () => { items.forEach((p) => { return expect(p).resolves.toBe(1); }); });
+";
+        let ir = parse_file("a.test.ts", source).expect("parses");
+        let awaited: Vec<bool> = ir
+            .tests
+            .iter()
+            .map(|test| test.body.assertions().next().expect("a check").awaited)
+            .collect();
+        assert_eq!(awaited, [true, true, false, false]);
+    }
+
+    #[test]
+    fn checks_in_a_switch_case_are_conditional() {
+        let source = "it('x', () => { switch (k) { case 1: expect(a).toBe(1); } });";
+        assert_eq!(first_test_items(source), ["expect(a).toBe(1) in if"]);
+    }
+
+    #[test]
+    fn a_bare_soft_or_poll_expect_is_still_listed() {
+        let source = "it('x', () => { expect.soft(a); expect.poll(() => b); });";
+        let ir = parse_file("a.spec.ts", source).expect("parses");
+        let checks: Vec<String> = ir.tests[0]
+            .body
+            .assertions()
+            .map(ToString::to_string)
+            .collect();
+        assert_eq!(checks, ["expect.soft(a)", "expect.poll(() => b)"]);
+    }
+
     #[test]
     fn calls_that_only_look_like_tests_are_ignored() {
         let source = "

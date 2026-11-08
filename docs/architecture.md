@@ -136,11 +136,11 @@ The `expect(…).toX(…)` style covers essentially all of it.
 ### Tests
 
 - Calls to `describe`, `it`, `test` and `suite` (plus jest's `xit`, `xtest`, `xdescribe`, `fit`, `fdescribe`), and their variants: `.skip .only .todo .each .for .concurrent .sequential .shuffle .fails .fail .fixme .serial .parallel .skipIf(…) .runIf(…)`. The last two are conditional skips. Variants chain (`it.concurrent.each(…)`), and Playwright's `test.describe(…)`, `test.beforeEach(…)` and `test.step(…)` hang off `test`.
-- **Skips decided at run time:** Playwright's `test.skip(cond)` / `test.fixme(cond)` and vitest's `ctx.skip()`. Inside a test they're an item in its body. Outside a test (Playwright), they apply to every test in the enclosing `describe` or file, so those tests get a `skip(cond)` modifier.
+- **Skips decided at run time:** Playwright's `test.skip(cond)` / `test.fixme(cond)` and vitest's `ctx.skip()`. Inside a test they're an item in its body. Directly in a `describe` or at the top of a file (Playwright), they apply to every test in it, including the ones above them, so those tests get a `skip(cond)` modifier. One inside a function outside tests is ignored for now: that function may never be called (helpers are linked later).
 - **Recognized by name, not by import.** Playwright projects usually import `test` from their own fixtures file (`base.extend(…)`), so checking imports would miss them.
 - **Recorded for each test:**
   - the path of `describe` names
-  - the name: string literals as-is, template literals with `${…}` kept as text, and the format string for `.each`
+  - the name: string literals as-is, template literals with each `${…}` normalized, and the format string for `.each`
   - the variants
   - the line
   - the body text, which step 4 uses for matching (added with matching)
@@ -219,10 +219,10 @@ test "emails a confirmation … and only forwards once confirmed"
   - `negated` (`.not`)
   - which `expect`: plain, `expect.soft` or `expect.poll`
   - promise modifier: `.resolves` or `.rejects`
-  - `awaited`: whether it's `await`ed or `return`ed, so the test waits for it
+  - `awaited`: whether the test waits for it: `await`ed, or returned from the test, hook or `test.step` function (an arrow's body counts as returned). Returning it from another callback doesn't count: `setTimeout` or `forEach` drops what it returns.
   - the matcher: its raw name plus its kind
   - the arguments as values
-  - context: inside an if, loop, try, catch, callback or short-circuit
+  - context: inside an if (or `? :` or `switch` case), loop, try, catch, callback or short-circuit. A `test.step` callback runs right away, so it isn't a callback.
   - a span, used for reporting and never compared
 - **Values:** null, undefined, bool, number, string, template, regex (with its top-level alternatives split by oxc's regex parser), object (keys compared as a set), array, nested matcher (`expect.objectContaining(…)`), or opaque (any other expression, as normalized source).
 
@@ -245,7 +245,15 @@ The IR only labels the kind. Which kind is stricter than which is decided by the
 ### Defaults
 
 - **Formatting never counts:** whitespace, quotes, trailing commas, key order and line moves all produce the same IR.
-- **Simple constants are filled in:** a `const` holding a literal value, declared at the top of the same test or file, is inlined (13 Mailyond assertions compare to a variable). Anything else stays opaque.
+- **Simple constants are filled in:** a `const` holding a literal value is inlined where it's used (13 Mailyond assertions compare to a variable). Names are resolved with oxc's scope analysis, so a parameter or inner variable with the same name is never mixed up with it. A `const` array or object can still change, so it's only inlined when every use just reads it (a matcher argument, an `expect(…)` subject, an `.each` table). After `expected.push(x)` or `seed({ expected })` it stays as written. Anything else stays opaque.
+- **Template literals:** each `${…}` part is normalized like other source, so `${ a }` and `${a}` are equal, while the text between them is kept as written. A tagged `.each` table becomes one object per row, so lining up its columns differently changes nothing:
+
+  ```text
+  it.each`
+    plan     | price
+    ${'pro'} | ${10}
+  `                      →  each([{ plan: 'pro', price: 10 }])
+  ```
 - **Normalized source:** subjects and opaque values are printed back by oxc in one style (single quotes, no trailing commas), with line breaks folded into spaces.
 - **`.each` tables are tracked:** removing a row is weakening, even when no assertion changes.
 

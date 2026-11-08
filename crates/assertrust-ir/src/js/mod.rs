@@ -5,6 +5,7 @@
 //! sits. oxc's tree is freed when [`parse`] returns: only our own types leave this module.
 
 mod calls;
+mod consts;
 mod values;
 
 use std::collections::HashSet;
@@ -14,15 +15,17 @@ use oxc::ast::ast::{
     ArrowFunctionExpression, AwaitExpression, BindingPattern, CallExpression,
     ConditionalExpression, DoWhileStatement, Expression, ForInStatement, ForOfStatement,
     ForStatement, FormalParameters, Function, FunctionBody, IfStatement, LogicalExpression,
-    ReturnStatement, Statement, TryStatement, WhileStatement,
+    ReturnStatement, Statement, SwitchStatement, TryStatement, WhileStatement,
 };
 use oxc::ast_visit::{Visit, walk};
 use oxc::parser::{ParseOptions, Parser};
+use oxc::semantic::SemanticBuilder;
 use oxc::span::{GetSpan, SourceType, Span};
 use oxc::syntax::scope::ScopeFlags;
 
 use self::calls::{RawArg, RawModifier, Structure};
-use self::values::{Consts, Values, normalize};
+use self::consts::Consts;
+use self::values::{Values, normalize};
 use crate::ParseError;
 use crate::matcher::MatcherKind;
 use crate::model::{
@@ -52,7 +55,16 @@ pub(crate) fn parse(path: &str, source: &str) -> Result<FileIr, ParseError> {
         });
     }
 
-    let values = Values { source };
+    let program = parsed.program;
+    let scoping = SemanticBuilder::new()
+        .build(&program)
+        .semantic
+        .into_scoping();
+    let values = Values {
+        source,
+        scoping: &scoping,
+    };
+    let consts = Consts::find(&program, &values);
     let mut collector = Collector {
         values,
         lines,
@@ -62,16 +74,13 @@ pub(crate) fn parse(path: &str, source: &str) -> Result<FileIr, ParseError> {
         context: Context::default(),
         depth: 0,
         in_helper: false,
-        consts: Consts::default(),
+        consts,
         awaited: HashSet::new(),
+        runner_waits: false,
         last_statement: None,
         skip_names: SkipNames::default(),
     };
-    let file_consts = collector
-        .values
-        .consts_in(&parsed.program.body, &collector.consts);
-    collector.consts.push(file_consts);
-    collector.visit_program(&parsed.program);
+    collector.visit_program(&program);
     Ok(collector.file)
 }
 
@@ -104,6 +113,8 @@ impl Lines {
 struct Suite {
     name: Option<String>,
     modifiers: Vec<Modifier>,
+    /// The index of its first test in [`FileIr::tests`].
+    first_test: usize,
 }
 
 /// Whose body the walker is in.
@@ -135,8 +146,11 @@ struct Collector<'s> {
     /// step 2's helper pass, so they're not listed as "outside".
     in_helper: bool,
     consts: Consts,
-    /// Calls that are `await`ed or `return`ed.
+    /// Calls the test waits for: `await`ed, or returned from a function the runner waits for.
     awaited: HashSet<Span>,
+    /// The function being walked is a test, hook or step callback, so the runner waits for
+    /// what it returns. Not true for other callbacks: `setTimeout(() => expect(…))` drops it.
+    runner_waits: bool,
     /// The last statement of the current test or hook, so a `return` there isn't "early".
     last_statement: Option<Span>,
     skip_names: SkipNames,
@@ -186,6 +200,9 @@ impl<'a> Collector<'_> {
                         Some(self.values.value(expr, &self.consts))
                     }
                     RawArg::Expr(expr) => Some(Value::Opaque(normalize(expr))),
+                    RawArg::Template(template) if matches!(modifier.name, "each" | "for") => {
+                        Some(self.values.table(template, &self.consts))
+                    }
                     RawArg::Template(template) => Some(self.values.template(template)),
                 },
             })
@@ -193,7 +210,7 @@ impl<'a> Collector<'_> {
     }
 
     /// A test or `describe` name as written: string literals as-is, template literals with
-    /// `${…}` kept, anything else as normalized source.
+    /// each `${…}` normalized, anything else as normalized source.
     fn name(&self, expr: &Expression) -> String {
         match self.values.value(expr, &Consts::default()) {
             Value::String(name) | Value::Template(name) => name,
@@ -216,6 +233,7 @@ impl<'a> Collector<'_> {
                 let suite = Suite {
                     name: name.map(|name| self.name(name)),
                     modifiers: self.modifiers(&modifiers),
+                    first_test: self.file.tests.len(),
                 };
                 self.suites.push(suite);
                 if let Some(callback) = callback.and_then(as_callback) {
@@ -260,24 +278,45 @@ impl<'a> Collector<'_> {
             }
             Structure::Skip { name, condition } => {
                 let condition = condition.map(normalize);
-                if matches!(self.owner, Owner::Outside) {
-                    // Playwright: skips every test in the enclosing `describe` (or file).
-                    let suite = self.suites.last_mut().expect("the file is always there");
-                    suite.modifiers.push(Modifier {
+                match self.owner {
+                    // In a function outside tests, which may never be called. Helpers are
+                    // linked to the tests that call them in a later step.
+                    Owner::Outside if self.in_helper => {}
+                    Owner::Outside => self.skip_suite(Modifier {
                         name: name.to_owned(),
                         arg: condition.map(Value::Opaque),
-                    });
-                } else {
-                    self.push(ItemKind::RuntimeSkip(condition), call.span);
+                    }),
+                    Owner::Test(_) | Owner::Hook(_) => {
+                        self.push(ItemKind::RuntimeSkip(condition), call.span);
+                    }
                 }
             }
             Structure::Step { callback } => {
+                // Runs right away, as part of the test, but a `return` in it only ends the
+                // step, so it counts as one function deeper.
                 if let Some(callback) = callback.and_then(as_callback) {
+                    let saved = (self.depth, self.runner_waits);
+                    self.depth += 1;
+                    self.runner_waits = true;
                     self.visit_callback_body(&callback.body);
+                    (self.depth, self.runner_waits) = saved;
                 }
             }
         }
         true
+    }
+
+    /// Playwright's `test.skip(cond)` in a `describe` (or at the top of a file) skips every
+    /// test in it, including the ones above it.
+    fn skip_suite(&mut self, modifier: Modifier) {
+        // A test's modifiers start with those of each enclosing suite, outermost first, so
+        // this suite's go right after the ones it already has.
+        let at: usize = self.suites.iter().map(|suite| suite.modifiers.len()).sum();
+        let suite = self.suites.last_mut().expect("the file is always there");
+        for test in &mut self.file.tests[suite.first_test..] {
+            test.modifiers.insert(at, modifier.clone());
+        }
+        suite.modifiers.push(modifier);
     }
 
     /// Walks a test or hook body as `owner`.
@@ -290,6 +329,7 @@ impl<'a> Collector<'_> {
             self.context,
             self.depth,
             self.in_helper,
+            self.runner_waits,
             self.last_statement,
             self.skip_names.clone(),
         );
@@ -297,23 +337,21 @@ impl<'a> Collector<'_> {
         self.context = Context::default();
         self.depth = 0;
         self.in_helper = false;
+        self.runner_waits = true;
         self.last_statement = body.statements().last().map(GetSpan::span);
         self.skip_names = if read_params {
             skip_names(params)
         } else {
             SkipNames::default()
         };
-        let consts = self.values.consts_in(body.statements(), &self.consts);
-        self.consts.push(consts);
-
         self.visit_callback_body(&body);
 
-        self.consts.pop();
         (
             self.owner,
             self.context,
             self.depth,
             self.in_helper,
+            self.runner_waits,
             self.last_statement,
             self.skip_names,
         ) = saved;
@@ -362,7 +400,10 @@ impl<'a> Collector<'_> {
     fn visit_callback_body(&mut self, body: &CallbackBody<'_, 'a>) {
         match body {
             CallbackBody::Block(body) => self.visit_function_body(body),
-            CallbackBody::Expression(expr) => self.visit_expression(expr),
+            CallbackBody::Expression(expr) => {
+                self.returned(expr);
+                self.visit_expression(expr);
+            }
         }
     }
 
@@ -372,17 +413,25 @@ impl<'a> Collector<'_> {
         }
     }
 
+    /// `expr` is returned from the function being walked, explicitly or as an arrow's body.
+    fn returned(&mut self, expr: &Expression) {
+        if self.runner_waits {
+            self.mark_awaited(expr);
+        }
+    }
+
     /// A function inside a test is a callback: its checks may run late or not at all.
     /// Outside tests it's a helper.
     fn nested_function(&mut self, walk: impl FnOnce(&mut Self)) {
-        let saved = (self.context, self.depth, self.in_helper);
+        let saved = (self.context, self.depth, self.in_helper, self.runner_waits);
         self.depth += 1;
+        self.runner_waits = false;
         match self.owner {
             Owner::Outside => self.in_helper = true,
             Owner::Test(_) | Owner::Hook(_) => self.context.in_callback = true,
         }
         walk(self);
-        (self.context, self.depth, self.in_helper) = saved;
+        (self.context, self.depth, self.in_helper, self.runner_waits) = saved;
     }
 }
 
@@ -423,7 +472,7 @@ impl<'a> Visit<'a> for Collector<'_> {
 
     fn visit_return_statement(&mut self, it: &ReturnStatement<'a>) {
         if let Some(argument) = &it.argument {
-            self.mark_awaited(argument);
+            self.returned(argument);
         }
         let in_body = !matches!(self.owner, Owner::Outside) && self.depth == 0;
         if in_body && self.last_statement != Some(it.span) {
@@ -442,6 +491,14 @@ impl<'a> Visit<'a> for Collector<'_> {
                     this.visit_statement(alternate);
                 }
             },
+        );
+    }
+
+    fn visit_switch_statement(&mut self, it: &SwitchStatement<'a>) {
+        self.visit_expression(&it.discriminant);
+        self.scoped(
+            |context| context.in_if = true,
+            |this| this.visit_switch_cases(&it.cases),
         );
     }
 

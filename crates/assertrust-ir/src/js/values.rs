@@ -1,41 +1,23 @@
 //! Turning JS expressions into [`Value`]s and normalized source text.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::BTreeMap;
 
 use oxc::ast::ast::{
-    ArrayExpressionElement, Expression, ObjectPropertyKind, PropertyKey, RegExpLiteral, Statement,
-    TemplateLiteral, UnaryOperator, VariableDeclarationKind,
+    ArrayExpressionElement, Expression, ObjectPropertyKind, PropertyKey, RegExpLiteral,
+    TemplateElement, TemplateLiteral, UnaryOperator,
 };
-use oxc::ast::ast::{BindingPattern, Declaration};
 use oxc::codegen::{Codegen, CodegenOptions};
+use oxc::semantic::Scoping;
 use oxc::str::JSStr;
 
 use super::calls;
+use super::consts::Consts;
 use crate::value::Value;
-
-/// Constants with literal values, by name: `const PLAN = 'pro'`. Innermost scope last.
-#[derive(Default)]
-pub(super) struct Consts {
-    scopes: Vec<HashMap<String, Value>>,
-}
-
-impl Consts {
-    pub(super) fn push(&mut self, scope: HashMap<String, Value>) {
-        self.scopes.push(scope);
-    }
-
-    pub(super) fn pop(&mut self) {
-        self.scopes.pop();
-    }
-
-    fn get(&self, name: &str) -> Option<&Value> {
-        self.scopes.iter().rev().find_map(|scope| scope.get(name))
-    }
-}
 
 /// Reads expressions from one source file.
 pub(super) struct Values<'s> {
     pub(super) source: &'s str,
+    pub(super) scoping: &'s Scoping,
 }
 
 impl Values<'_> {
@@ -45,7 +27,7 @@ impl Values<'_> {
             Expression::NullLiteral(_) => Value::Null,
             Expression::Identifier(id) if id.name == "undefined" => Value::Undefined,
             Expression::Identifier(id) => consts
-                .get(id.name.as_str())
+                .get(id, self.scoping)
                 .cloned()
                 .unwrap_or_else(|| Value::Opaque(id.name.to_string())),
             Expression::BooleanLiteral(lit) => Value::Bool(lit.value),
@@ -114,7 +96,8 @@ impl Values<'_> {
         }
     }
 
-    /// A template literal: a plain string when it has no `${…}`, else its normalized source.
+    /// A template literal: a plain string when it has no `${…}`, else its source on one line
+    /// with each `${…}` normalized, so `${ a }` and `${a}` are equal.
     pub(super) fn template(&self, template: &TemplateLiteral) -> Value {
         if template.expressions.is_empty()
             && let [quasi] = template.quasis.as_slice()
@@ -122,8 +105,55 @@ impl Values<'_> {
         {
             return Value::String(js_str(cooked));
         }
-        let source = &self.source[template.span.start as usize + 1..template.span.end as usize - 1];
-        Value::Template(collapse(source))
+        let mut source = String::new();
+        for (i, quasi) in template.quasis.iter().enumerate() {
+            push_template_text(&mut source, quasi);
+            if let Some(expr) = template.expressions.get(i) {
+                source.push_str("${");
+                source.push_str(&normalize(expr));
+                source.push('}');
+            }
+        }
+        Value::Template(source)
+    }
+
+    /// A tagged `.each` table, one object per row:
+    ///
+    /// ```text
+    /// it.each`
+    ///   plan     | price
+    ///   ${'pro'} | ${10}
+    /// `
+    /// ```
+    ///
+    /// is `[{ plan: 'pro', price: 10 }]`, so lining up the columns differently changes nothing.
+    /// Anything that doesn't have that shape is read as a template.
+    pub(super) fn table(&self, template: &TemplateLiteral, consts: &Consts) -> Value {
+        let text = |quasi: &TemplateElement| quasi.value.cooked.map(js_str);
+        let header = template.quasis.first().and_then(text).unwrap_or_default();
+        let columns: Vec<&str> = header.split('|').map(str::trim).collect();
+        let separators_only = template.quasis[1..].iter().all(|quasi| {
+            text(quasi).is_some_and(|text| text.chars().all(|c| c == '|' || c.is_whitespace()))
+        });
+        if columns.iter().any(|column| column.is_empty())
+            || !separators_only
+            || !template.expressions.len().is_multiple_of(columns.len())
+        {
+            return self.template(template);
+        }
+        let rows = template
+            .expressions
+            .chunks(columns.len())
+            .map(|cells| {
+                let fields = columns
+                    .iter()
+                    .zip(cells)
+                    .map(|(column, cell)| ((*column).to_owned(), self.value(cell, consts)))
+                    .collect();
+                Value::Object(fields)
+            })
+            .collect();
+        Value::Array(rows)
     }
 
     fn regex(&self, regex: &RegExpLiteral) -> Value {
@@ -156,50 +186,6 @@ impl Values<'_> {
             None => String::new(),
         }
     }
-
-    /// Constants with a literal value declared directly in `statements`, e.g.
-    /// `const PLAN = 'pro'`. Anything computed is left out.
-    pub(super) fn consts_in(
-        &self,
-        statements: &[Statement],
-        outer: &Consts,
-    ) -> HashMap<String, Value> {
-        let mut found = HashMap::new();
-        for statement in statements {
-            let declaration = match statement {
-                Statement::VariableDeclaration(declaration) => declaration,
-                Statement::ExportDeclaration(export) => match &export.declaration {
-                    Declaration::VariableDeclaration(declaration) => declaration,
-                    _ => continue,
-                },
-                _ => continue,
-            };
-            if declaration.kind != VariableDeclarationKind::Const {
-                continue;
-            }
-            for declarator in &declaration.declarations {
-                if let BindingPattern::BindingIdentifier(id) = &declarator.id
-                    && let Some(init) = &declarator.init
-                {
-                    let value = self.value(init, outer);
-                    if is_literal(&value) {
-                        found.insert(id.name.to_string(), value);
-                    }
-                }
-            }
-        }
-        found
-    }
-}
-
-/// A value made only of literals (no variables, calls or `${…}`).
-fn is_literal(value: &Value) -> bool {
-    match value {
-        Value::Opaque(_) | Value::Template(_) | Value::Matcher { .. } => false,
-        Value::Array(items) => items.iter().all(is_literal),
-        Value::Object(fields) => fields.values().all(is_literal),
-        _ => true,
-    }
 }
 
 /// An expression's source with formatting removed: oxc prints it back in one canonical
@@ -229,6 +215,28 @@ fn collapse(text: &str) -> String {
         }
     }
     out.trim_end().to_owned()
+}
+
+/// A template's text between `${…}` parts as it reads (escapes resolved), written back with
+/// line breaks escaped so it stays on one line.
+fn push_template_text(out: &mut String, quasi: &TemplateElement) {
+    let Some(cooked) = quasi.value.cooked else {
+        out.push_str(quasi.value.raw.as_str()); // an invalid escape, allowed in tagged templates
+        return;
+    };
+    let text = js_str(cooked);
+    let mut chars = text.chars().peekable();
+    while let Some(c) = chars.next() {
+        match c {
+            '\\' => out.push_str("\\\\"),
+            '`' => out.push_str("\\`"),
+            '$' if chars.peek() == Some(&'{') => out.push_str("\\$"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            c => out.push(c),
+        }
+    }
 }
 
 /// `1`, `1.5`, `-3`, `16` (for `0x10`), `1000` (for `1e3`).

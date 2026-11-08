@@ -282,7 +282,8 @@ pub(super) fn expect_call<'b, 'a>(call: &'b CallExpression<'a>) -> Option<Expect
                         matcher: Some((member.property.name.as_str(), &call.arguments)),
                     });
                 }
-                _ => return None,
+                // `expect.soft(x)` itself, with no matcher: checked below.
+                _ => break,
             }
         }
     }

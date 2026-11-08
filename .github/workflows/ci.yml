@@ -25,6 +25,9 @@ jobs:
       - run: cargo clippy --all-targets --locked -- -D warnings
       # GitHub sets CI=true, so insta fails on a snapshot mismatch instead of writing a new one.
       - run: cargo test --locked
+      - run: cargo doc --no-deps --workspace --locked
+        env:
+          RUSTDOCFLAGS: -D warnings
 
   msrv:
     name: minimum Rust version

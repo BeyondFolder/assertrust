@@ -19,6 +19,7 @@ cargo run -- check --range origin/main..HEAD
 cargo fmt --all --check
 cargo clippy --all-targets -- -D warnings
 cargo test
+RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --workspace   # broken doc links
 ```
 
 ## Layout
@@ -48,6 +49,7 @@ crates/assertrust-ir/         parsing and the test IR (steps 2–3): tests and c
   src/js/mod.rs               the oxc walk: tests, hooks, checks and where they sit
   src/js/calls.rs             recognizing `describe` / `it` / hooks / `expect(…)` by shape
   src/js/values.rs            expressions → values and normalized source
+  src/js/consts.rs            which `const`s can be filled in where they're used
 ```
 
 New crates are added in the PR that gives them code (see `docs/architecture.md` for the planned pieces).

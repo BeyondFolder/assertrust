@@ -15,7 +15,7 @@ assertrust-ir = { path = "crates/assertrust-ir" }
 clap = { version = "4.6", features = ["derive"] }
 globset = "0.4.21"
 insta = "1.49"
-oxc = { version = "0.155", features = ["ast_visit", "codegen"] }
+oxc = { version = "0.155", features = ["ast_visit", "codegen", "semantic"] }
 tempfile = "3.27"
 
 [workspace.lints.rust]

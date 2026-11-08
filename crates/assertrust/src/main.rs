@@ -5,6 +5,7 @@
 
 mod changes;
 mod cli;
+mod tests_command;
 
 use std::io::{self, Write as _};
 use std::process::ExitCode;
@@ -24,7 +25,7 @@ fn main() -> ExitCode {
     let result = match cli.command {
         Command::Check(_) => Err(not_implemented("check")),
         Command::Changes(args) => changes::run(&args),
-        Command::Ir(_) => Err(not_implemented("ir")),
+        Command::Tests(args) => tests_command::run(&args),
     };
 
     match result {

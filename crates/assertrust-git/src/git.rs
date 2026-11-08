@@ -26,7 +26,10 @@ const FIELD: char = '\x1f';
 const RECORD: char = '\x1e';
 
 pub(crate) struct Git {
+    /// The repo's top-level directory (or the starting directory in a bare repo).
     dir: PathBuf,
+    /// Where assertrust was started, relative to `dir`, e.g. `test/` (empty at the root).
+    prefix: String,
 }
 
 /// Extra environment and stdin for one git call.
@@ -41,10 +44,15 @@ impl Git {
     pub(crate) fn open(dir: &Path) -> Result<Self, Error> {
         let git = Self {
             dir: dir.to_path_buf(),
+            prefix: String::new(),
         };
-        if let Ok(top) = git.run(&["rev-parse", "--show-toplevel"]) {
+        if let Ok(output) = git.run(&["rev-parse", "--show-toplevel", "--show-prefix"]) {
+            let mut lines = output.split('\n');
+            let top = lines.next().unwrap_or_default();
+            let prefix = lines.next().unwrap_or_default();
             return Ok(Self {
-                dir: PathBuf::from(top.trim_end_matches('\n')),
+                dir: PathBuf::from(top),
+                prefix: prefix.to_owned(),
             });
         }
         // A bare repo (or inside `.git`): no working tree, but ranges still work.
@@ -53,6 +61,28 @@ impl Git {
         } else {
             Err(Error::new("not inside a git repository"))
         }
+    }
+
+    pub(crate) fn root(&self) -> &Path {
+        &self.dir
+    }
+
+    pub(crate) fn prefix(&self) -> &str {
+        &self.prefix
+    }
+
+    /// A blob's raw contents, e.g. `<sha>:test/a.test.ts` or `:0:test/a.test.ts` (the
+    /// index). `None` if there's no such file there.
+    pub(crate) fn read_blob(&self, spec: &str) -> Result<Option<Vec<u8>>, Error> {
+        let args = ["cat-file", "blob", spec];
+        let output = self.output(&args)?;
+        if output.status.success() {
+            return Ok(Some(output.stdout));
+        }
+        if !self.succeeds(&["cat-file", "-e", spec]) {
+            return Ok(None);
+        }
+        Err(failed(&args, &output))
     }
 
     /// The full SHA of the commit `rev` points to.

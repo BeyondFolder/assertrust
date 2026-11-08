@@ -1,0 +1,26 @@
+---
+source: crates/assertrust/tests/tests_command.rs
+expression: "fixture(\"structure.test.ts\")"
+---
+test/structure.test.ts: 9 tests, 3 hooks
+   4  hook beforeEach
+   5        truthiness expect(globalThis.db).toBeDefined()
+   9  hook beforeEach  (billing)
+  13  test billing > charges the card
+  14        equal      expect(charge(10)).toBe(true)
+  17  test billing > refunds the card  [skip]
+  18        equal      expect(refund(10)).toBe(true)
+  21  test billing > sends a receipt  [todo]
+  23  test billing > upgrades to %s  [each(['pro', 'agency'])]
+  24        equal      expect(upgrade(plan)).toEqual({ ok: true, plan })
+  27  test billing > talks to the real API  [skipIf(process.env.CI)]
+  28        equal      expect(await ping()).toBe('pong')
+  32  test billing > invoices > lists invoices  [skip]
+  33        size       expect(invoices()).toHaveLength(2)
+  36  test billing > invoices > totals ${'EUR'} invoices  [skip, only]
+  37        equal      expect(total('EUR')).toBe(30)
+  46  test formats $currency > prefixes the symbol  [each([{ currency: 'EUR', symbol: '€' }, { currency: 'USD', symbol: '$' }])]
+  47        pattern    expect(format(1, currency)).toMatch(symbol)
+  51  test is disabled the old way  [skip]
+  52        equal      expect(1).toBe(1)
+  55  hook afterAll

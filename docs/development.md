@@ -2,7 +2,7 @@
 
 ## Prerequisites
 
-- Rust 1.88 or newer, installed with [rustup](https://rustup.rs). The minimum is set by `rust-version` in `Cargo.toml`, and CI checks it.
+- Rust 1.97 or newer, installed with [rustup](https://rustup.rs). The minimum is set by `rust-version` in `Cargo.toml`, and CI checks it.
 - git 2.28 or newer.
 
 ## Build and run
@@ -29,8 +29,10 @@ crates/assertrust/            the binary
   src/main.rs                 entry point, exit codes
   src/cli.rs                  commands and flags (clap, derive API)
   src/changes.rs              `assertrust changes` output
+  src/tests_command.rs        `assertrust tests` output
   tests/common/mod.rs         test harness: temp git repos, running the binary
   tests/*.rs                  integration tests
+  tests/fixtures/parsing/     one test file per pattern the parser must handle
   tests/snapshots/*.snap      expected outputs (insta)
 crates/assertrust-git/        input layer (step 1): which commits and files to look at
   src/mode.rs                 --range / --staged / --worktree / default → revisions
@@ -38,6 +40,14 @@ crates/assertrust-git/        input layer (step 1): which commits and files to l
   src/diff.rs                 parsing `git diff --name-status -z`
   src/classify.rs             file kinds: test, test-support, gate, source, other
   src/model.rs                the types handed to later steps
+  src/lib.rs                  `Repo`: analyze a mode, read a file at a commit / the index / disk
+crates/assertrust-ir/         parsing and the test IR (steps 2–3): tests and checks in a file
+  src/model.rs                the IR types (language-neutral)
+  src/value.rs                argument values, compared as structure
+  src/matcher.rs              matcher name → kind
+  src/js/mod.rs               the oxc walk: tests, hooks, checks and where they sit
+  src/js/calls.rs             recognizing `describe` / `it` / hooks / `expect(…)` by shape
+  src/js/values.rs            expressions → values and normalized source
 ```
 
 New crates are added in the PR that gives them code (see `docs/architecture.md` for the planned pieces).
@@ -74,11 +84,13 @@ Other helpers: `branch`, `switch`, `merge` (always a merge commit), `stage`, `re
 
 ## Snapshots
 
-Some tests compare output against a stored file in `tests/snapshots/` instead of a string in the code, using [insta](https://insta.rs). Examples are the `--help` text and, later, findings output. A change in output shows up as a diff of the `.snap` file in the PR, which is easy to review.
+Some tests compare output against a stored file in `tests/snapshots/` instead of a string in the code, using [insta](https://insta.rs). Examples are the `--help` text, the `assertrust tests` output for each parsing fixture, and later findings output. A change in output shows up as a diff of the `.snap` file in the PR, which is easy to review.
 
 Snapshots come in two forms:
 - **Inline:** the expected text sits in the test itself, after `@r"`, next to the repo the test builds. Most tests use these because they're easy to read.
-- **File:** stored in `tests/snapshots/*.snap`. Used for long output like `--help`.
+- **File:** stored in `tests/snapshots/*.snap`. Used for long output like `--help` and the parsing fixtures.
+
+To cover a new parsing pattern, add a small `.ts` file to `tests/fixtures/parsing/` (written from scratch, never copied from a private codebase), add a test for it in `tests/tests_command.rs`, and review the new snapshot.
 
 When output changes on purpose:
 

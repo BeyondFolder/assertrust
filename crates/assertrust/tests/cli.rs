@@ -50,13 +50,11 @@ fn missing_command_is_a_usage_error() {
 
 #[test]
 fn commands_not_built_yet_exit_with_2() {
-    for args in [vec!["check"], vec!["ir", "a.test.ts"]] {
-        let run = assertrust(&args);
-        assert_eq!(run.code, 2, "{args:?}");
-        assert!(
-            run.stderr.contains("is not implemented yet"),
-            "{}",
-            run.stderr
-        );
-    }
+    let run = assertrust(&["check"]);
+    assert_eq!(run.code, 2);
+    assert!(
+        run.stderr.contains("is not implemented yet"),
+        "{}",
+        run.stderr
+    );
 }

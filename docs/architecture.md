@@ -118,29 +118,32 @@ Integration tests build throwaway git repos in a temp dir with real commits, bra
 
 **Job:** read each before/after file and extract its tests, assertions and assertion helpers. This step only extracts. Judging happens in step 5.
 
-**What Mailyond's tests use** (30 files, vitest plus one Playwright spec):
-- **Test functions:** `it` ×363, `describe` ×68, `it.each` ×21.
-- **Matchers:** `toBe` 386, `toEqual` 200, `toMatchObject` 119, `toContain` 75, then a long tail.
-- **Other patterns:** `.not` ×25 and about 10 nested matchers such as `expect.objectContaining`.
+**Built so far:** tests, hooks and checks in one file (crate `assertrust-ir`), shown by `assertrust tests` (see "Debug command" in step 3). **Next:** helper functions and the linked view.
+
+**What Mailyond's tests use** (35 test and test-support files, vitest plus one Playwright spec):
+- **Tests:** 390 `it`/`test` calls, 23 of them `it.each`, plus `describe` blocks.
+- **Checks:** 939. Matchers: `toBe` 389, `toEqual` 211, `toMatchObject` 119, `toContain` 75, then a long tail.
+- **Other patterns:** `.not` ×54 and about 10 nested matchers such as `expect.objectContaining`.
 
 The `expect(…).toX(…)` style covers essentially all of it.
 
 ### Parser
 
-- **oxc**, with the language picked from the file extension.
+- **oxc** (0.155), with the language picked from the file extension. Regex literals are parsed too, so their alternatives can be compared.
 - oxc frees its syntax tree after each file, so we copy what we need straight into our own structs. Nothing after step 2 depends on oxc, which means adding another language later (e.g. Python via tree-sitter) is just a new parser.
-- **A file that doesn't parse on either side is skipped with a note.** Work-in-progress commits often don't parse. oxc can partly recover a broken file, but guessing from half a file causes false alarms.
+- **A file that doesn't parse on either side is skipped with a note**, e.g. `skipped, doesn't parse (line 3: Unexpected token)`. Work-in-progress commits often don't parse. oxc can partly recover a broken file, but guessing from half a file causes false alarms.
 
 ### Tests
 
-- Calls to `describe`, `it`, `test` and `suite`, plus their variants: `.skip .only .todo .each .concurrent .fails .fixme .serial .skipIf(…) .runIf(…)`. The last two are conditional skips.
+- Calls to `describe`, `it`, `test` and `suite` (plus jest's `xit`, `xtest`, `xdescribe`, `fit`, `fdescribe`), and their variants: `.skip .only .todo .each .for .concurrent .sequential .shuffle .fails .fail .fixme .serial .parallel .skipIf(…) .runIf(…)`. The last two are conditional skips. Variants chain (`it.concurrent.each(…)`), and Playwright's `test.describe(…)`, `test.beforeEach(…)` and `test.step(…)` hang off `test`.
+- **Skips decided at run time:** Playwright's `test.skip(cond)` / `test.fixme(cond)` and vitest's `ctx.skip()`. Inside a test they're an item in its body. Outside a test (Playwright), they apply to every test in the enclosing `describe` or file, so those tests get a `skip(cond)` modifier.
 - **Recognized by name, not by import.** Playwright projects usually import `test` from their own fixtures file (`base.extend(…)`), so checking imports would miss them.
 - **Recorded for each test:**
   - the path of `describe` names
   - the name: string literals as-is, template literals with `${…}` kept as text, and the format string for `.each`
   - the variants
   - the line
-  - the body text, which step 4 uses for matching
+  - the body text, which step 4 uses for matching (added with matching)
 
 ### Assertions
 
@@ -176,12 +179,14 @@ Helpers can change what a test checks without the test file changing, so they're
 
 ### Tests
 
-- Small fixture `.ts` files, one per pattern. The extracted structure is compared against expected output stored as reviewable snapshot files, using the `insta` crate.
-- All of Mailyond's test files, including `test/utils.ts` and `test/setup.ts`, must parse cleanly.
+- Small fixture `.ts` files, one per pattern (`crates/assertrust/tests/fixtures/parsing/`). The `assertrust tests` output for each is stored as a reviewable snapshot file, using the `insta` crate.
+- All of Mailyond's test files, including `test/utils.ts` and `test/setup.ts`, must parse cleanly. They do: all 35 files, all 390 tests and all 939 checks are found, in about 0.1s. (Checked by hand for now; the backtest harness will run it automatically.)
 
 ## 3. Test IR
 
 **In one sentence:** each test becomes a list of checks, written in a form that ignores formatting, so a before/after comparison only sees changes in what is being checked.
+
+**Built so far:** the file IR, without helpers, imports or the fingerprint (those come with helper linking and matching). Gate facts come with the gate rules.
 
 **Example (Mailyond `10d8742`):**
 
@@ -201,17 +206,20 @@ test "emails a confirmation … and only forwards once confirmed"
 
 - **Per file:** imports, suites (`describe` blocks and their modifiers), tests, hooks, helpers, and custom matchers (`expect.extend`).
 - **Per test:** its id (`describe` path + name), its effective modifiers (`describe.skip` is inherited), its `.each` table as a value, and a body.
-- **Per body** (shared by tests, helpers and hooks):
+- **Per body** (shared by tests, helpers and hooks), in source order:
   - assertions
   - calls (resolved to helpers in the linked view)
-  - early exits (`return`, possibly inside an `if`)
+  - early exits: a `return` before the test's last statement, possibly inside an `if`
   - runtime skips (`test.skip(cond)`, `ctx.skip()`)
   - `expect.assertions(n)` / `hasAssertions()`
   - a normalized fingerprint for step 4
+- **Outside tests:** checks at the top level or directly in a `describe`. Checks inside functions declared outside tests belong to helpers.
 - **Per assertion:**
   - the subject (normalized source)
   - `negated` (`.not`)
-  - modifier: resolves, rejects, soft or poll
+  - which `expect`: plain, `expect.soft` or `expect.poll`
+  - promise modifier: `.resolves` or `.rejects`
+  - `awaited`: whether it's `await`ed or `return`ed, so the test waits for it
   - the matcher: its raw name plus its kind
   - the arguments as values
   - context: inside an if, loop, try, catch, callback or short-circuit
@@ -223,11 +231,11 @@ test "emails a confirmation … and only forwards once confirmed"
 | Kind | Examples |
 |---|---|
 | Equal (identity / deep / deep-strict) | `toBe`, `toEqual`, `toStrictEqual` |
-| Subset | `toMatchObject`, `objectContaining` |
+| Subset | `toMatchObject`, `toHaveProperty`, `objectContaining` |
 | Contains | `toContain`, `toContainEqual`, `arrayContaining` |
 | Pattern | `toMatch`, `stringMatching` |
 | Truthiness | `toBeTruthy`, `toBeDefined`, `toBeNull`, … |
-| Type, Compare, Size | `toBeInstanceOf`, `toBeGreaterThan`, `toHaveLength`, `toHaveProperty` |
+| Type, Compare, Size | `toBeInstanceOf`, `toBeGreaterThan`, `toHaveLength` |
 | Throws, Called, Snapshot | `toThrow`, `toHaveBeenCalledWith`, `toMatchSnapshot`, `toHaveScreenshot` |
 | UiState | Playwright's `toBeVisible`, `toHaveText`, … |
 | Custom | from `expect.extend`, or unknown |
@@ -237,7 +245,8 @@ The IR only labels the kind. Which kind is stricter than which is decided by the
 ### Defaults
 
 - **Formatting never counts:** whitespace, quotes, trailing commas, key order and line moves all produce the same IR.
-- **Simple constants are filled in:** a `const` holding a literal value in the same test or file is inlined (13 Mailyond assertions compare to a variable). Anything else stays opaque.
+- **Simple constants are filled in:** a `const` holding a literal value, declared at the top of the same test or file, is inlined (13 Mailyond assertions compare to a variable). Anything else stays opaque.
+- **Normalized source:** subjects and opaque values are printed back by oxc in one style (single quotes, no trailing commas), with line breaks folded into spaces.
 - **`.each` tables are tracked:** removing a row is weakening, even when no assertion changes.
 
 ### Gate facts
@@ -250,7 +259,21 @@ CI and test config files become a list of keyed facts:
 
 ### Debug command
 
-`assertrust ir <file> [--rev <rev>]` prints a file's IR as JSON. The snapshot tests store this same output.
+`assertrust tests <file> [--rev <rev> | --staged]` prints a file's IR as plain text: from disk by default, at a commit with `--rev`, or from the index with `--staged`. The snapshot tests store this same output. Each line starts with the line number; checks show their matcher kind, the normalized check, and where they sit when it matters:
+
+```
+test/structure.test.ts: 9 tests, 3 hooks
+  13  test billing > charges the card
+  14        equal      expect(charge(10)).toBe(true)
+  17  test billing > refunds the card  [skip]
+  18        equal      expect(refund(10)).toBe(true)
+  23  test billing > upgrades to %s  [each(['pro', 'agency'])]
+  24        equal      expect(upgrade(plan)).toEqual({ ok: true, plan })
+```
+
+(An excerpt of the `structure.test.ts` fixture's output. Another fixture shows contexts, e.g. `expect(res.status).toBe(200)  (in if)`.)
+
+Comparing the output at `10d8742~1` and `10d8742` shows exactly one changed line: the `toMatchObject` that lost `status` and `domainIds`. A JSON format can be added when another tool needs it.
 
 ### Mailyond is private
 

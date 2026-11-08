@@ -12,14 +12,15 @@
 
 use std::fmt::Write as _;
 
-use assertrust_git::{Analysis, Classifier, FileChange, ModeKind};
+use assertrust_git::{Analysis, Classifier, FileChange, ModeKind, Repo};
 
 use crate::cli::ChangesArgs;
 
 pub fn run(args: &ChangesArgs) -> Result<(), String> {
     let mode = args.mode.to_input()?;
     let dir = std::env::current_dir().map_err(|err| format!("can't read current dir: {err}"))?;
-    let analysis = assertrust_git::analyze(&dir, &mode, &Classifier::default())
+    let analysis = Repo::open(&dir)
+        .and_then(|repo| repo.analyze(&mode, &Classifier::default()))
         .map_err(|err| err.to_string())?;
     crate::print_stdout(&render(&analysis))
 }

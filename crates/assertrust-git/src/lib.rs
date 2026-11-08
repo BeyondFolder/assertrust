@@ -6,11 +6,15 @@
 //! rules, so other tools can reuse it.
 //!
 //! ```no_run
-//! use assertrust_git::{analyze, Classifier, Mode};
+//! use assertrust_git::{Classifier, Mode, Repo};
 //!
-//! let analysis = analyze(".".as_ref(), &Mode::Range("main...HEAD".into()), &Classifier::default())?;
+//! let repo = Repo::open(".".as_ref())?;
+//! let analysis = repo.analyze(&Mode::Range("main...HEAD".into()), &Classifier::default())?;
 //! for step in &analysis.steps {
 //!     println!("{} touches {} files", step.commit.short_sha(), step.comparison.files.len());
+//!     for file in &step.comparison.files {
+//!         let contents = repo.read_file(&step.comparison.after, file.path())?;
+//!     }
 //! }
 //! # Ok::<(), assertrust_git::Error>(())
 //! ```
@@ -22,7 +26,9 @@ mod git;
 mod mode;
 mod model;
 
-use std::path::Path;
+use std::fs;
+use std::io;
+use std::path::{Component, Path};
 
 pub use crate::classify::Classifier;
 pub use crate::error::Error;
@@ -34,13 +40,87 @@ pub use crate::model::{
 use crate::git::Git;
 use crate::mode::Resolved;
 
-/// Works out what `mode` compares in the repo at `dir`.
-pub fn analyze(dir: &Path, mode: &Mode, classifier: &Classifier) -> Result<Analysis, Error> {
-    let git = Git::open(dir)?;
+/// A git repository, found from a directory inside it.
+pub struct Repo {
+    git: Git,
+}
 
-    match mode::resolve(&git, mode)? {
+impl Repo {
+    /// The repo containing `dir`.
+    pub fn open(dir: &Path) -> Result<Self, Error> {
+        Ok(Self {
+            git: Git::open(dir)?,
+        })
+    }
+
+    /// Works out what `mode` compares.
+    pub fn analyze(&self, mode: &Mode, classifier: &Classifier) -> Result<Analysis, Error> {
+        analyze(&self.git, mode, classifier)
+    }
+
+    /// The full SHA of the commit `rev` points to (a branch, tag, `HEAD~1`, …).
+    pub fn resolve(&self, rev: &str) -> Result<String, Error> {
+        self.git.rev_parse(rev)
+    }
+
+    /// A file's contents on one side of a comparison. `path` is relative to the repo root.
+    /// `None` if the file doesn't exist there.
+    pub fn read_file(&self, rev: &Rev, path: &str) -> Result<Option<String>, Error> {
+        let bytes = match rev {
+            Rev::Commit(sha) => self.git.read_blob(&format!("{sha}:{path}"))?,
+            Rev::Index => self.git.read_blob(&format!(":0:{path}"))?,
+            Rev::WorkTree => match fs::read(self.git.root().join(path)) {
+                Ok(bytes) => Some(bytes),
+                Err(err) if err.kind() == io::ErrorKind::NotFound => None,
+                Err(err) => return Err(Error::new(format!("couldn't read `{path}`: {err}"))),
+            },
+        };
+        bytes
+            .map(|bytes| {
+                String::from_utf8(bytes)
+                    .map_err(|_| Error::new(format!("`{path}` isn't UTF-8 text")))
+            })
+            .transpose()
+    }
+
+    /// A path typed by the user (relative to the directory the repo was opened from, or
+    /// absolute) as a path relative to the repo root, with `/` separators.
+    pub fn path_in_repo(&self, path: &Path) -> Result<String, Error> {
+        let outside = || Error::new(format!("`{}` is outside the repository", path.display()));
+        let relative = if path.is_absolute() {
+            match path.strip_prefix(self.git.root()) {
+                Ok(relative) => relative.to_path_buf(),
+                Err(_) => fs::canonicalize(path)
+                    .ok()
+                    .and_then(|real| {
+                        real.strip_prefix(self.git.root())
+                            .ok()
+                            .map(Path::to_path_buf)
+                    })
+                    .ok_or_else(outside)?,
+            }
+        } else {
+            Path::new(self.git.prefix()).join(path)
+        };
+        let mut parts: Vec<String> = Vec::new();
+        for component in relative.components() {
+            match component {
+                Component::Normal(part) => parts.push(part.to_string_lossy().into_owned()),
+                Component::CurDir => {}
+                Component::ParentDir => {
+                    parts.pop().ok_or_else(outside)?;
+                }
+                Component::RootDir | Component::Prefix(_) => return Err(outside()),
+            }
+        }
+        Ok(parts.join("/"))
+    }
+}
+
+fn analyze(git: &Git, mode: &Mode, classifier: &Classifier) -> Result<Analysis, Error> {
+    match mode::resolve(git, mode)? {
         Resolved::PerCommit { base, head, label } => {
-            let (steps, skipped_merges) = steps(&git, &base, &head, classifier)?;
+            let (steps, skipped_merges) = steps(git, &base, &head, classifier)?;
             Ok(Analysis {
                 kind: ModeKind::PerCommit,
                 label,
@@ -57,7 +137,7 @@ pub fn analyze(dir: &Path, mode: &Mode, classifier: &Classifier) -> Result<Analy
                 after: Rev::Commit(head.clone()),
                 files,
             };
-            let (steps, skipped_merges) = steps(&git, &base, &head, classifier)?;
+            let (steps, skipped_merges) = steps(git, &base, &head, classifier)?;
             Ok(Analysis {
                 kind: ModeKind::PrStyle,
                 label,

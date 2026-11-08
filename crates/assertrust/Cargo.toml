@@ -9,6 +9,7 @@ repository.workspace = true
 
 [dependencies]
 assertrust-git.workspace = true
+assertrust-ir.workspace = true
 clap.workspace = true
 
 [dev-dependencies]

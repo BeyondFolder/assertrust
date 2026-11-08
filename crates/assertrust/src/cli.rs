@@ -54,7 +54,7 @@ pub struct CheckArgs {
     #[arg(long)]
     pub show_transient: bool,
 
-    /// Show the test name, before/after snippets and the full commit message
+    /// Show the test name, before/after snippets, the full commit message, and changed outcomes
     #[arg(short, long)]
     pub verbose: bool,
 }

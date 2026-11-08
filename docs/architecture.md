@@ -1,6 +1,6 @@
 # assertrust architecture
 
-> Status: **pre-alpha.** This is the design being built in small public PRs. `assertrust check` runs the first three rules (step 5); the rest is being built. When the code changes the design, the same PR updates this doc.
+> Status: **pre-alpha.** This is the design being built in small public PRs. `assertrust check` runs every rule but the CI gate one (step 5); the rest is being built. When the code changes the design, the same PR updates this doc.
 
 assertrust checks that a change didn't quietly make the test suite weaker. Examples: an assertion removed, a matcher loosened, a test skipped, a CI gate relaxed. It reports what got weaker, where, and which commit did it.
 
@@ -196,7 +196,7 @@ Helpers can change what a test checks without the test file changing, so they're
 test "emails a confirmation … and only forwards once confirmed"
   before:  check res.body  contains  { email: 'me@gmail.test', status: 'pending', domainIds: null }
   after:   check res.body  contains  { email: 'me@gmail.test' }
-  → same test, same check, 2 fields fewer → weaker (dropped: status, domainIds)
+  → same test, same check, 2 fields fewer → weaker (dropped: domainIds, status)
 ```
 
 ### Two layers
@@ -414,14 +414,14 @@ Fixtures cover:
 
 **In one sentence:** each rule looks at what matching paired up (or one gate file) before and after the change, and says whether a test got weaker, how, and how confident it is.
 
-**Built so far:** `check-removed`, `test-disabled` and `check-cant-fail` (crate `assertrust-rules`), run by `assertrust check`. The matcher and value rules come next, then the gate rules.
+**Built so far:** every rule but `gate-loosened` (crate `assertrust-rules`), run by `assertrust check`. The gate rules come next.
 
 **Example (Mailyond `71110c0`, "Pipeline fix."):**
 
 ```
 before: expect(source).not.toMatch(/support@|support\.your|resend|inboxes\.net|…/)
 after:  expect(source).not.toMatch(/support@|support\.your|inboxes\.net|…/)
-→ expectation-loosened (high): the page may now mention "resend"
+→ expectation-loosened (high): .not.toMatch no longer rules out resend
 ```
 
 `.not.toMatch` means "must not contain any of these". Taking a word off that list means the test now allows it, so the test is weaker. Without `.not`, removing an alternative would make it stricter. That's why polarity is part of the IR (step 3).
@@ -433,11 +433,11 @@ after:  expect(source).not.toMatch(/support@|support\.your|inboxes\.net|…/)
 | `check-removed` | A check disappeared from a test that still exists, and didn't reappear elsewhere in the change | an `expect` line deleted; a test left with zero checks | high; medium when the test also gained checks that didn't pair (it was rewritten) |
 | `matcher-loosened` | A matcher moved down the strength ladder (below) | `toEqual({ id: 1 })` → `toBeTruthy()`; `toHaveBeenCalledWith(a)` → `toHaveBeenCalled()` | high when it ends at the bottom level, else medium |
 | `matcher-swapped` | A matcher swapped for one at the same level, or any matcher change under `.not` | `toBe(obj)` → `toEqual(obj)` (identity becomes deep equality); `toContain('x')` → `toMatch(/x/)`; `.not.toEqual(a)` → `.not.toBe(a)` | low, shown by default |
-| `expectation-loosened` | The same matcher accepts more than before | object fields dropped (`10d8742`); an alternative dropped under `.not` (`71110c0`); array items or `.each` rows dropped; `toThrow('msg')` → `toThrow()`; a wider numeric bound or `toBeCloseTo` precision | high for fields, rows and alternatives; medium for numbers |
+| `expectation-loosened` | The same matcher accepts more than before | object fields dropped (`10d8742`); an alternative dropped under `.not` (`71110c0`); array items or `.each` rows dropped; `toThrow('msg')` → `toThrow()`; a wider numeric bound or `toBeCloseTo` precision | high for fields, rows and alternatives; medium for numbers, substrings and a reshaped `.each` table |
 | `test-disabled` | A test no longer runs, or no longer runs everywhere | `.skip`, `.todo`, `.fails`, `.skipIf(…)`, a runtime `test.skip(cond)`; `.only` committed (silences the rest of the file); a test deleted and not moved; a test file deleted, or renamed to a name the runner doesn't pick up | high; medium when it skips only under a condition, or the deleted test's file gained tests that didn't pair |
 | `check-cant-fail` | A check is still there but may no longer run or fail | moved into a `try` with a `catch`, an `if` or an unawaited callback; an early `return` added before it; `await` dropped from `.resolves`/`.rejects`; a bare `expect(x)` with no matcher; `expect.assertions(n)` removed or `n` lowered | high for a bare `expect`, a dropped `await` and an unconditional `return`; low for a loop; else medium |
 | `gate-loosened` | CI or test config lets more failures through | `\|\| true`, `continue-on-error: true`, `if: false` on a test step; the test step removed; `retries` raised; coverage threshold lowered; a pattern added to `exclude`/`testIgnore`; `passWithNoTests` added | high |
-| `outcome-changed` | The expected outcome changed (not looser, just different) in the same commit as the code it tests | `toBe(3)` → `toBe(4)`; `.not` added or removed | low; hidden unless the LLM judge is on |
+| `outcome-changed` | The expected outcome changed: not looser, just different | `toBe(3)` → `toBe(4)`; `.not` added or removed | low; shown only with `-v` until the LLM judge exists |
 
 ### What the first three check, in detail
 
@@ -470,16 +470,29 @@ test/unit/inbound-body.test.ts:41  HIGH  check-removed
 - **A matcher dropped:** `expect(total).toBe(3)` → `expect(total)` checks nothing.
 - **`expect.assertions(n)`** removed, lowered, or replaced with `expect.hasAssertions()` (medium).
 
+### Comparing a check with what it became
+
+`matcher-loosened`, `matcher-swapped`, `expectation-loosened` and `outcome-changed` each compare a check pair from step 4, and a pair gets at most one of them. In order:
+
+1. **A matcher is first written one way:** aliases folded (`toBeCalled` → `toHaveBeenCalled`), and matchers that behave the same written the same (`toBeNull()` = `toBe(null)`, `.not.toBeUndefined()` = `toBeDefined()`, `toEqual(5)` = `toBe(5)`).
+2. **The subject changed** (a rewrite): what the checks state (their facts, step 4) decides. All of it still stated: fine, as with `expect(r.text).toBe(v)` → `expect(r).toMatchObject({ text: v })` or `await expect(p).resolves.toBe(v)` → `expect(await p).toBe(v)`. Only part of it: `expectation-loosened`, e.g. `no longer checks r.b == 2`. None of it: go on.
+3. **`.not` added or removed,** or `.resolves` ↔ `.rejects`: `outcome-changed`.
+4. **Another matcher:** the ladder below. Down is `matcher-loosened`, across is `matcher-swapped`, up is fine. Within one family, a different value is `outcome-changed`: `toEqual({ preview })` → `toBe('Hi')`, `toBeGreaterThan(t)` → `toBeLessThanOrEqual(t)`.
+5. **The same matcher:** the expected values, by the table under "Which direction is looser". Looser is `expectation-loosened`; different but not looser is `outcome-changed`; stricter is fine.
+
+Several checks folded into one, or one split into several, are compared by their facts the same way as in step 2. A test's `.each` table is compared too, row for row: rows dropped are `expectation-loosened` (a duplicate counts). When rows were also edited or reshaped (a column added or removed), only the count is compared, at medium: `.each now runs 4 rows instead of 5`.
+
 ### Matcher strength ladder (positive checks)
 
-1. **Exact:** Equal (deep-strict ≥ deep ≥ identity), Snapshot, Throws with a specific message or class
-2. **Structured:** Subset, CalledWith, exact Size (`toHaveLength`)
-3. **Partial:** Contains, Pattern, Compare (`toBeGreaterThan`), Throws (any), CalledTimes
-4. **Type:** `toBeInstanceOf`, `expect.any`
-5. **Presence:** Truthiness, Defined, Called at all
+1. **Exact:** Equal (deep-strict ≥ deep ≥ identity, plus `toBeNull`, `toBeUndefined`, `toBeNaN`), Snapshot, Throws with a specific message or class, Playwright's exact text and values (`toHaveText`, `toHaveValue`, `toHaveURL`, `toHaveCount`, `toHaveAttribute(name, value)`, …)
+2. **Structured:** Subset (`toMatchObject`, `toHaveProperty(path, value)`), CalledWith, exact Size (`toHaveLength`)
+3. **Partial:** Contains, Pattern, Compare (`toBeGreaterThan`), Throws (any), CalledTimes, `toContainText`
+4. **Type:** `toBeInstanceOf`, `toBeTypeOf`
+5. **Presence:** `toBeTruthy`, `toBeFalsy`, `toBeDefined`, `toHaveProperty(path)`, called at all, element states (`toBeVisible`, `toBeEnabled`, …)
 
 - Moves down the ladder → `matcher-loosened`.
-- Sideways swaps (same level) → `matcher-swapped`, at low confidence. One exception: swaps that behave identically aren't flagged, e.g. `toBe(5)` ↔ `toEqual(5)` with a primitive literal.
+- Sideways swaps (same level) → `matcher-swapped`, at low confidence. Swaps that behave identically aren't flagged, e.g. `toBe(5)` ↔ `toEqual(5)` with a primitive literal, and neither is `toEqual(x)` → `toStrictEqual(x)`.
+- Custom matchers aren't ranked: any change to one is `matcher-swapped`.
 - Moves up the ladder are stricter and aren't flagged.
 - Matcher changes under `.not` aren't ranked in v0.1. They're reported as `matcher-swapped`.
 
@@ -487,14 +500,19 @@ test/unit/inbound-body.test.ts:41  HIGH  check-removed
 
 | Matcher kind | Positive check: looser when… | Under `.not`: looser when… |
 |---|---|---|
-| Subset (`toMatchObject`) | keys are removed | keys are added |
-| Pattern (`toMatch`) | alternatives are added | alternatives are removed |
-| Contains | fewer items are required | more items are listed |
-| Equal | n/a (a different value is `outcome-changed`) | n/a |
+| Subset (`toMatchObject` at every level; `expect.objectContaining` at its own level, since its fields are compared exactly) | keys are removed | keys are added |
+| Any expected value | it becomes `expect.any(…)` or `expect.anything()` that still accepts the old value (`expect.anything()` rejects `null`, `expect.any(String)` a number: those are `outcome-changed`); an exact object becomes `expect.objectContaining(…)` | n/a (it's stricter) |
+| Pattern (`toMatch`, `expect.stringMatching`) | alternatives are added (at least one kept), or a flag that matches more (`i`, `s`, `m`) | alternatives or such a flag are removed |
+| Text (`toMatch` with a string, `toContainText`, `expect.stringContaining`) | the text is shortened | the text is lengthened |
+| Contains (`expect.arrayContaining`) | items are removed. A different `toContain` value is `outcome-changed`: on an array it needs a whole item | n/a |
+| Compare | a bound moves outward, also between `>` and `>=` (`> 5` → `>= 5` at low confidence); `toBeCloseTo` keeps fewer digits, or becomes `>` / `<` | n/a |
+| Throws, `toHaveProperty`, `toHaveAttribute` | the message or value is dropped | n/a |
+| Equal, Size, CalledWith, Snapshot | n/a (a different value is `outcome-changed`) | n/a |
 
 ### Shape
 
 - Each rule is one file with a `check` function. It reads the whole change, not one test pair at a time: `test-disabled` needs deleted tests and whole files, and a `.only` affects the rest of its file.
+- The four rules that compare a check with what it became share one file (`changed_check.rs`), since a pair gets at most one of them. The ladder is in `strength.rs`, and the comparison of expected values in `looser.rs`.
 - A finding has:
   - the rule id and confidence
   - the file and line after the change (no line when what it's about is gone: a deleted test or file)
@@ -507,23 +525,27 @@ test/unit/inbound-body.test.ts:41  HIGH  check-removed
 ### Defaults
 
 - **Sideways matcher swaps are flagged too,** at low confidence. Changes that behave identically are not.
-- **`outcome-changed` is hidden unless the judge is on.** Legitimate behaviour changes do this constantly, so on its own it would be mostly noise. It's still recorded in the backtest report for tuning.
+- **`outcome-changed` is hidden unless the judge is on.** Legitimate behaviour changes do this constantly, so on its own it would be mostly noise (43 of them on Mailyond's history, below). Until the judge exists, `-v` shows them, and the summary line says how many were hidden. It's still recorded in the backtest report for tuning.
 - **Confidence levels are a first guess** and get adjusted using the Mailyond backtest. They already were once: a deleted test is medium when its file gained tests, after `49a44d2` (below).
 
 ### Checked on Mailyond's history
 
-`assertrust check` over the same 313 commits, one by one, takes 2 seconds and finds 28 things, all read by hand:
+`assertrust check` over the same 313 commits, one by one, takes 2 seconds and shows 32 findings, plus 43 hidden changed outcomes. All were read by hand:
 - **11 `check-removed`** (5 high, 6 medium) and **17 `test-disabled`** (8 high, 9 medium). No `check-cant-fail`: the one check that moved, into `await vi.waitFor(…)` in `8b2cb57`, still fails the test.
-- **All 28 describe the change correctly:** the check or the test is gone.
+- **4 `expectation-loosened`, all correct:** `71110c0` (the example above), `8454255` dropped `wildcard: false` from two `toMatchObject`s, and `e689765` dropped `'lifecycleEmails'` from an `arrayContaining` list of tables. No `matcher-loosened` or `matcher-swapped`.
+- **All 32 describe the change correctly:** the check or the test is gone, or accepts more.
 - **Most are deliberate.** Tests deleted with the behaviour they tested (`581fb66`: "drop the double-prefix rule and resolveSetupTarget"), refactors that dropped a field the checks read (`11c140f`). Only the commit message says so. That's the judge's job (step 7), or an allow trailer (step 6).
 - **One false alarm, now medium:** `49a44d2` rewrote "stores an inbound email" into a bigger test under a new name. The bodies differ too much to pair, but the file gained tests, so the deletion is medium.
 - **Borderline ones worth a look:** `038cf0b` dropped the `preview` check (the example in step 4), and `11c140f` dropped `toMatchObject({ subdomainPolicy, nonexistentPolicy, adkim, aspf })` from "surfaces sp, np and strict alignment", which still checks the findings for them.
+- **The 43 changed outcomes are legitimate behaviour changes:** new prices in `.each` tables, renamed constants, `toBe(false)` → `toBe('skipped')` when a result became a status. That's why they're hidden.
+- **Other branches:** `10d8742` on `forward_email` is found commit by commit (`toMatchObject no longer checks domainIds, status`), and a PR-style check of the branch finds nothing, since `f8e4323` restored the fields. On `plan/audiences`, `6913cd6` removed a column and a row from an `.each` table: `.each now runs 4 rows instead of 5`, at medium.
 
 ### Tests
 
 There's at least one fixture that must be flagged and one that must not, per rule (`crates/assertrust-rules/tests/rules.rs`), plus:
 - a fixture with one change of each kind, run through `assertrust check` (`crates/assertrust/tests/fixtures/rules/`)
 - both polarity directions for Pattern and Subset
+- rewrites that state the same thing, and matchers that behave the same, which must produce no findings
 - reformat-only changes, which must produce no findings
 - tests and checks that moved to another test or file, which must produce no findings
 - the three Mailyond shapes: `10d8742` (fields dropped), `71110c0` (an alternative dropped under `.not`) and `038cf0b` (a check removed in a renamed, refactored test)
@@ -532,13 +554,13 @@ There's at least one fixture that must be flagged and one that must not, per rul
 
 **In one sentence:** show each finding where the person or agent will see it, in the terminal, on the PR, or as JSON for tools, and never block anything unless the repo opts in.
 
-**Built so far:** the terminal format and `-v`, always warn-only (exit 0). A per-commit check names each finding's commit. A PR-style check doesn't yet: tracing a finding back to its commit, hiding transient findings, the other formats, allow comments and config come with the output PR. Until then `--format json`, `--format github` and `--show-transient` exit with 2. Files that couldn't be checked are listed as notes before the summary, e.g. `note: test/a.test.ts (1a2b3c4): skipped, doesn't parse (…)`, and so are merge commits a per-commit check skipped.
+**Built so far:** the terminal format and `-v`, always warn-only (exit 0). Changed outcomes are hidden without `-v`, and the summary line says how many: `no findings · 2 changed outcomes hidden (-v shows them)`. A per-commit check names each finding's commit. A PR-style check doesn't yet: tracing a finding back to its commit, hiding transient findings, the other formats, allow comments and config come with the output PR. Until then `--format json`, `--format github` and `--show-transient` exit with 2. Files that couldn't be checked are listed as notes before the summary, e.g. `note: test/a.test.ts (1a2b3c4): skipped, doesn't parse (…)`, and so are merge commits a per-commit check skipped.
 
 ### Terminal (default): short, two lines per finding
 
 ```
 test/api/forwarding.test.ts:27  HIGH  expectation-loosened
-  toMatchObject no longer checks status, domainIds · 10d8742
+  toMatchObject no longer checks domainIds, status · 10d8742
 
 1 finding · warn-only (exit 0)
 ```
@@ -555,7 +577,7 @@ test/api/forwarding.test.ts:27  HIGH  expectation-loosened
   ```
 - A finding about something that's gone (a deleted test or file) has no line: `test/a.test.ts  HIGH  test-disabled` / `deleted: billing > refunds`.
 - Findings are sorted most severe first. Allowed findings come last, marked `ALLOWED` with their reason. Transient findings appear only with `--show-transient`.
-- **On the PR**, an inline annotation already sits on the line, so it says only the finding itself: title `assertrust: expectation-loosened (high)`, message `toMatchObject no longer checks status, domainIds (10d8742)`. The summary comment is a short table: file:line, rule, message.
+- **On the PR**, an inline annotation already sits on the line, so it says only the finding itself: title `assertrust: expectation-loosened (high)`, message `toMatchObject no longer checks domainIds, status (10d8742)`. The summary comment is a short table: file:line, rule, message.
 
 Messages are short by design: one line that says what got weaker. Detail goes behind `-v`, never in the default view.
 

@@ -15,7 +15,9 @@ use std::collections::BTreeMap;
 use assertrust_ir::{Assertion, Context, ExpectKind, ItemKind, Test, Value};
 use assertrust_match::TestPair;
 
-use crate::{Change, Confidence, Finding, RuleId, assertion, count, item_text, never_runs, short};
+use crate::{
+    Change, Confidence, Finding, RuleId, assertion, count, item_text, never_runs, number, short,
+};
 
 pub(crate) fn check(change: &Change, findings: &mut Vec<Finding>) {
     for pair in &change.matching.pairs {
@@ -340,13 +342,6 @@ fn assertion_count(test: &Test) -> Option<(&assertrust_ir::Item, Option<&Value>)
         ItemKind::AssertionCount(n) => Some((item, n.as_ref())),
         _ => None,
     })
-}
-
-fn number(value: &Value) -> Option<f64> {
-    match value {
-        Value::Number(n) => n.parse().ok(),
-        _ => None,
-    }
 }
 
 /// Playwright's matchers that wait and return a promise: without `await`, they never fail

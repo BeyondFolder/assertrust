@@ -23,7 +23,7 @@ describe('checkout', () => {
 
   it('keeps the cart after a declined card', async () => {
     const order = await checkout({ items: ['book'], card: '0002' });
-    expect(order.status).toBe('declined');
+    expect(order.status).toBe('rejected');
     return;
     expect(order.cart).toEqual(['book']);
   });
@@ -31,5 +31,12 @@ describe('checkout', () => {
   it('logs the payment', async () => {
     const order = await checkout({ items: ['book'] });
     expect(log.last());
+  });
+
+  it('saves the order', async () => {
+    const order = await checkout({ items: ['book'] });
+    expect(order).toMatchObject({ status: 'paid', items: ['book'] });
+    expect(order.total).toBeGreaterThan(0);
+    expect(order.paidAt).toBeTruthy();
   });
 });

@@ -35,4 +35,11 @@ describe('checkout', () => {
     const order = await checkout({ items: ['book'] });
     expect(log.last()).toContain(order.id);
   });
+
+  it('saves the order', async () => {
+    const order = await checkout({ items: ['book'] });
+    expect(order).toMatchObject({ status: 'paid', currency: 'EUR', items: ['book'] });
+    expect(order.total).toBe(1200);
+    expect(order.paidAt).toEqual(new Date('2026-01-01'));
+  });
 });

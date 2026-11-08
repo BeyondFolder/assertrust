@@ -326,7 +326,7 @@ Within each file first, then across the files of the change (a test moved to ano
 
 ### Pairing checks inside a paired test, in order
 
-1. **Identical** → unchanged.
+1. **Identical** → unchanged. Checks in the same place pair first, so a check that moved into an `if`, `try` or callback is the one paired with a changed context. `pairs` shows it as `context`, and the rules judge it.
 2. **Same subject and matcher kind** → paired, then their values are compared (`10d8742`: same `res.body`, same matcher, fewer fields).
 3. **Same subject, another matcher** → paired: `toEqual({ id: 1 })` → `toBeTruthy()`.
 4. **Same fact, written differently** → paired, see "Rewritten checks" below. This can pair groups: two property checks folded into one object check.
@@ -335,7 +335,7 @@ Within each file first, then across the files of the change (a test moved to ano
 7. **Same matcher kind, scored:** subjects that share a word, plus expected values that mostly match (or subjects that mostly match). Same margin rule as tests.
 8. **Leftover old checks** → removed. **Leftover new checks** → added.
 
-When one check could pair with several, the one whose subject shares the most words wins, if it's clearly ahead. Otherwise none are paired. Subjects are compared by their words, splitting camelCase, with each string literal counted as one word: the same input is a strong sign, but a long one mustn't swamp the rest.
+When one check could pair with several, the closest wins if it's clearly ahead: by subject words, then expected value, then the same `.not` and the same matcher. So `toBe(200)` goes to `toBe(201)` rather than `.not.toBe(500)` when all three check `res.status`. Otherwise none are paired. Subjects are compared by their words, splitting camelCase (`parseURLValue` → parse, url, value), with each string literal counted as one word: the same input is a strong sign, but a long one mustn't swamp the rest.
 
 ### Rewritten checks
 
@@ -353,17 +353,17 @@ The same check can be written many ways, and refactors and linters move between 
 | `expect(e instanceof E).toBe(true)`, `expect(e).toBeInstanceOf(E)` | `e toBeInstanceOf(E)` |
 | `toBe(true)` / `toBeTruthy()`, `toBe(false)` / `toBeFalsy()` / `expect(!x).toBe(true)`, `toBe(null)` / `toBeNull()`, `toEqual(undefined)` / `toBeUndefined()` | the same fact |
 | `await expect(p).resolves.toEqual(v)`, `expect(await p).toEqual(v)` | `await p == v` |
-| Playwright: `expect(await page.title()).toBe(t)` / `toHaveTitle(t)`, `textContent()` / `innerText()` / `toHaveText`, `toContainText`, `count()` / `toHaveCount`, `url()` / `toHaveURL`, `inputValue()` / `toHaveValue`, `getAttribute(a)` / `toHaveAttribute(a, v)`, `isVisible()` / `toBeVisible()` (and hidden, checked, enabled, disabled, editable), `ok()` / `toBeOK()` | `page.title == t`, … |
+| Playwright: `expect(await page.title()).toBe(t)` / `toHaveTitle(t)`, `textContent()` / `innerText()` / `toHaveText`, `toContainText`, `count()` / `toHaveCount`, `url()` / `toHaveURL`, `inputValue()` / `toHaveValue`, `getAttribute(a)` / `toHaveAttribute(a, v)`, `isVisible()` / `toBeVisible()` (and hidden, checked, enabled, disabled, editable), `ok()` / `toBeOK()` | `page.title() == t`, … (a call stays apart from a property: `store.count()` isn't `store.count`) |
 | mocks: `expect(fn.mock.calls.length).toBe(2)` / `toHaveBeenCalledTimes(2)`, `fn.mock.calls[0]` / `toHaveBeenNthCalledWith(1, …)` | `fn.mock.calls.length == 2`, … |
-| `expect(() => f()).toThrow(e)`, `expect(f).toThrow(e)` | `f toThrow(e)` |
+| `expect(() => f()).toThrow(e)`, `expect(f).toThrow(e)`, and the same for a method, `() => obj.parse()` | `f toThrow(e)` |
 
-A negated check of several fields at once (`.not.toMatchObject({ a: 1, b: 2 })` means "not both") has no facts, and neither does `.rejects`.
+A negated check of several fields at once (`.not.toMatchObject({ a: 1, b: 2 })` means "not both") has no facts, and neither does `.rejects`. A negated equality isn't split into fields at all: `.not.toEqual({ a: 1 })` passes for `{ a: 1, b: 2 }`, so it doesn't state `not a == 1`.
 
 Pairing only says the checks correspond. The rules (step 5) decide whether the new form is weaker: folding `expect(r.text).toBe(v)` into `toMatchObject({ text: v, html })` adds a field, which is fine.
 
 ### Moves and splits aren't removals
 
-A removed check that shows up unchanged in another test of the same change moved there. Each added check can account for one removed check. A deleted test whose checks all moved was split or merged into others. Neither produces findings.
+A removed check that shows up unchanged, and in the same place (not newly inside an `if` or callback), in another test of the same change moved there. Each added check can account for one removed check. A deleted test whose checks all moved was split or merged into others. Neither produces findings.
 
 ### Defaults
 
@@ -380,7 +380,7 @@ A removed check that shows up unchanged in another test of the same change moved
 
 ### Debug command
 
-`assertrust pairs [--range <range> | --staged | --worktree]` prints how tests and checks pair up, for the net change and each commit, the same way `assertrust changes` lists them. Unchanged tests are only counted. From the `billing` fixture:
+`assertrust pairs [--range <range> | --staged | --worktree]` prints how tests and checks pair up, for the net change and each commit, the same way `assertrust changes` lists them. Unchanged tests are only counted. A test file that doesn't parse on either side is skipped for that change with a note: comparing against nothing would make every test in it look deleted. From the `billing` fixture:
 
 ```
 test/billing.test.ts: 7 tests paired (1 unchanged), 1 deleted, 1 added

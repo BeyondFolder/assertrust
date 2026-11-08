@@ -79,6 +79,13 @@ fn a_test_moved_to_another_file() {
         "{}",
         run.stdout
     );
+    // The file it moved to says where its test came from.
+    assert!(
+        run.stdout
+            .contains("  test/b.test.ts: 1 moved in from another file\n"),
+        "{}",
+        run.stdout
+    );
 }
 
 #[test]
@@ -122,8 +129,8 @@ fn a_file_that_does_not_parse_is_noted() {
         "{}",
         run.stdout
     );
-    // With one side unreadable, the file is compared as if added or deleted.
-    assert!(run.stdout.contains("deleted   a"), "{}", run.stdout);
+    // The whole file is skipped: its tests don't all look deleted.
+    assert!(!run.stdout.contains("deleted"), "{}", run.stdout);
 }
 
 #[test]

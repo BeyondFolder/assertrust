@@ -336,3 +336,58 @@ fn a_check_moved_to_another_test_is_not_removed() {
     assert_eq!(removed.len(), 1);
     assert_eq!(removed[0].moved_to.map(|test| test.test), Some(1));
 }
+
+#[test]
+fn a_check_moved_into_an_if_still_pairs_and_its_twin_stays_put() {
+    let (matching, before, after) = match_one(
+        "it('t', () => { expect(x).toBe(1); if (flag) { expect(x).toBe(1) } })",
+        "it('t', () => { if (flag) { expect(x).toBe(1) } })",
+    );
+    let pair = &matching.pairs[0];
+    // The checks in the same place pair; the plain one is what was removed.
+    assert_eq!(pair.checks.pairs.len(), 1);
+    let check = &pair.checks.pairs[0];
+    let context = |ir: &FileIr, item: usize| ir.tests[0].body.items[item].context;
+    assert_eq!(
+        context(&before, check.before[0]),
+        context(&after, check.after[0])
+    );
+    assert_eq!(pair.checks.removed.len(), 1);
+    assert!(context(&before, pair.checks.removed[0].item).is_plain());
+
+    // On its own, a check that moved into an `if` pairs as identical, context changed.
+    let (matching, before, after) = match_one(
+        "it('t', () => { expect(x).toBe(1) })",
+        "it('t', () => { if (flag) { expect(x).toBe(1) } })",
+    );
+    let check = &matching.pairs[0].checks.pairs[0];
+    assert_eq!(check.how, CheckMatch::Identical);
+    assert!(context(&before, check.before[0]).is_plain());
+    assert!(context(&after, check.after[0]).in_if);
+}
+
+#[test]
+fn one_check_against_several_with_the_same_subject_goes_to_the_closest() {
+    let (matching, before, after) = match_one(
+        "it('t', () => { expect(res.status).toBe(200) })",
+        "it('t', () => { expect(res.status).toBe(201); expect(res.status).not.toBe(500) })",
+    );
+    assert_eq!(
+        check_lines(&matching, &before, &after),
+        [
+            "SameSubjectAndKind: expect(res.status).toBe(200) => expect(res.status).toBe(201)",
+            "added: expect(res.status).not.toBe(500)",
+        ]
+    );
+}
+
+#[test]
+fn a_check_that_moved_into_an_if_in_another_test_was_not_just_moved() {
+    let (matching, ..) = match_one(
+        "it('a', () => { expect(x).toBe(1); expect(role).toBe('admin') }); it('b', () => {})",
+        "it('a', () => { expect(x).toBe(1) }); it('b', () => { if (ci) expect(role).toBe('admin') })",
+    );
+    let removed = &matching.pairs[0].checks.removed;
+    assert_eq!(removed.len(), 1);
+    assert_eq!(removed[0].moved_to, None);
+}

@@ -2,7 +2,7 @@
 
 use std::collections::BTreeMap;
 
-use crate::similarity::{MIN_SCORE, best_pairs, test_score};
+use crate::similarity::{MIN_SCORE, TestFeatures, best_pairs, test_score};
 use crate::{After, Before, FilePair, TestMatch, TestRef, test};
 
 type Pairs = Vec<(TestRef, TestRef, TestMatch)>;
@@ -62,14 +62,17 @@ fn run_passes(
         pairs,
     );
 
-    let scores: Vec<Vec<f64>> = before
+    let features_before: Vec<TestFeatures> = before
         .iter()
-        .map(|&b| {
-            after
-                .iter()
-                .map(|&a| test_score(test(files, b, Before), test(files, a, After)))
-                .collect()
-        })
+        .map(|&b| TestFeatures::new(test(files, b, Before)))
+        .collect();
+    let features_after: Vec<TestFeatures> = after
+        .iter()
+        .map(|&a| TestFeatures::new(test(files, a, After)))
+        .collect();
+    let scores: Vec<Vec<f64>> = features_before
+        .iter()
+        .map(|b| features_after.iter().map(|a| test_score(b, a)).collect())
         .collect();
     let found = best_pairs(&scores, MIN_SCORE);
     let (mut used_before, mut used_after) = (Vec::new(), Vec::new());

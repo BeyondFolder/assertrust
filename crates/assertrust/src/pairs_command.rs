@@ -164,6 +164,13 @@ fn render_file(out: &mut String, view: &View, index: usize, file: &FilePair, ind
         .filter(|test_ref| test_ref.file == index)
         .collect();
     let unchanged = pairs.iter().filter(|pair| is_unchanged(view, pair)).count();
+    // Tests that came from another file are listed under that file.
+    let moved_in = view
+        .matching
+        .pairs
+        .iter()
+        .filter(|pair| pair.after.file == index && pair.before.file != index)
+        .count();
 
     let mut summary = Vec::new();
     if !pairs.is_empty() {
@@ -181,6 +188,9 @@ fn render_file(out: &mut String, view: &View, index: usize, file: &FilePair, ind
     }
     if !added.is_empty() {
         summary.push(format!("{} added", added.len()));
+    }
+    if moved_in > 0 {
+        summary.push(format!("{moved_in} moved in from another file"));
     }
     if summary.is_empty() {
         summary.push("no tests".to_owned());
@@ -266,11 +276,17 @@ fn render_pair(out: &mut String, view: &View, pair: &TestPair, indent: &str) {
         );
     }
 
+    // An identical check in a new place (now inside an `if`, a callback, …) is shown.
+    let same_place = |before_item: usize, after_item: usize| {
+        before.body.items[before_item].context == after.body.items[after_item].context
+    };
     let identical = pair
         .checks
         .pairs
         .iter()
-        .filter(|check| check.how == CheckMatch::Identical)
+        .filter(|check| {
+            check.how == CheckMatch::Identical && same_place(check.before[0], check.after[0])
+        })
         .count();
     if identical > 0 {
         line(
@@ -278,9 +294,16 @@ fn render_pair(out: &mut String, view: &View, pair: &TestPair, indent: &str) {
             &format!("{indent}  {} identical", count(identical, "check")),
         );
     }
+    if other_items(before) != other_items(after) {
+        line(
+            out,
+            &format!("{indent}  other      early returns, skips or expect.assertions changed"),
+        );
+    }
     for check in &pair.checks.pairs {
         let label = match check.how {
-            CheckMatch::Identical => continue,
+            CheckMatch::Identical if same_place(check.before[0], check.after[0]) => continue,
+            CheckMatch::Identical => "context",
             CheckMatch::SameSubjectAndKind => "changed",
             CheckMatch::SameSubject => "matcher",
             CheckMatch::SameFact => "rewritten",
@@ -341,6 +364,17 @@ fn removed_line(
         ),
         None => line(out, &format!("{indent}  {:<10} {text}", "removed")),
     }
+}
+
+/// The items that aren't checks (early returns, runtime skips, `expect.assertions`), with
+/// where they sit, for spotting a change.
+fn other_items(test: &Test) -> Vec<String> {
+    test.body
+        .items
+        .iter()
+        .filter(|item| !matches!(item.kind, ItemKind::Assertion(_)))
+        .map(|item| format!("{:?} {:?}", item.kind, item.context))
+        .collect()
 }
 
 /// `12  expect(x).toBe(1)`, with the context when it matters.

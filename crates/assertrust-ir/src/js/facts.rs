@@ -26,41 +26,42 @@ use crate::model::{Fact, FactTest, Promise};
 use crate::value::Value;
 
 /// Playwright reads a page or locator with a method, or checks it with a matcher. Both map to
-/// the same property: `await locator.textContent()` and `toHaveText(…)` are `.text`.
+/// the same step in the path: `await locator.textContent()` and `toHaveText(…)` are
+/// `.text()`. The `()` keeps it apart from a property: `store.count` isn't `store.count()`.
 const READERS: &[(&str, &str)] = &[
-    ("textContent", "text"),
-    ("innerText", "text"),
-    ("title", "title"),
-    ("url", "url"),
-    ("count", "count"),
-    ("inputValue", "value"),
-    ("isVisible", "visible"),
-    ("isHidden", "hidden"),
-    ("isChecked", "checked"),
-    ("isEnabled", "enabled"),
-    ("isDisabled", "disabled"),
-    ("isEditable", "editable"),
-    ("ok", "ok"),
+    ("textContent", "text()"),
+    ("innerText", "text()"),
+    ("title", "title()"),
+    ("url", "url()"),
+    ("count", "count()"),
+    ("inputValue", "value()"),
+    ("isVisible", "visible()"),
+    ("isHidden", "hidden()"),
+    ("isChecked", "checked()"),
+    ("isEnabled", "enabled()"),
+    ("isDisabled", "disabled()"),
+    ("isEditable", "editable()"),
+    ("ok", "ok()"),
 ];
 
-/// Playwright matchers that check one of those properties for a value.
+/// Playwright matchers that check one of those for a value.
 const VALUE_MATCHERS: &[(&str, &str)] = &[
-    ("toHaveText", "text"),
-    ("toHaveTitle", "title"),
-    ("toHaveURL", "url"),
-    ("toHaveCount", "count"),
-    ("toHaveValue", "value"),
+    ("toHaveText", "text()"),
+    ("toHaveTitle", "title()"),
+    ("toHaveURL", "url()"),
+    ("toHaveCount", "count()"),
+    ("toHaveValue", "value()"),
 ];
 
-/// Playwright matchers that check one of those properties is true.
+/// Playwright matchers that check one of those is true.
 const STATE_MATCHERS: &[(&str, &str)] = &[
-    ("toBeVisible", "visible"),
-    ("toBeHidden", "hidden"),
-    ("toBeChecked", "checked"),
-    ("toBeEnabled", "enabled"),
-    ("toBeDisabled", "disabled"),
-    ("toBeEditable", "editable"),
-    ("toBeOK", "ok"),
+    ("toBeVisible", "visible()"),
+    ("toBeHidden", "hidden()"),
+    ("toBeChecked", "checked()"),
+    ("toBeEnabled", "enabled()"),
+    ("toBeDisabled", "disabled()"),
+    ("toBeEditable", "editable()"),
+    ("toBeOK", "ok()"),
 ];
 
 pub(super) fn facts(found: &ExpectCall, values: &Values, consts: &Consts) -> Vec<Fact> {
@@ -87,7 +88,7 @@ pub(super) fn facts(found: &ExpectCall, values: &Values, consts: &Consts) -> Vec
             negated ^= !truth ^ flipped;
             (inner, vec![(Vec::new(), test)])
         }
-        None => (subject, leaves(matcher, raw_args, &args)),
+        None => (subject, leaves(matcher, raw_args, &args, found.negated)),
     };
     let (subject, leaves) = typeof_check(subject, leaves);
     if leaves.is_empty() || (negated && leaves.len() > 1) {
@@ -124,11 +125,17 @@ struct Target {
     path: Vec<String>,
 }
 
-/// `res.body.status` → `res` and `[body, status]`. Playwright readers become properties:
-/// `await page.title()` → `page` and `[title]`. For `toThrow`, `() => f()` is `f`.
+/// `res.body.status` → `res` and `[body, status]`. Playwright readers become a step:
+/// `await page.title()` → `page` and `[title()]`. For `toThrow`, `() => obj.parse()` is
+/// `obj.parse`, so it's `obj` and `[parse]` like the direct form.
 fn target(subject: &Expression, matcher: &str) -> Target {
     let mut path = Vec::new();
     let mut expr = subject.get_inner_expression();
+    if matcher.starts_with("toThrow")
+        && let Some(callee) = thunk(expr)
+    {
+        expr = callee;
+    }
     loop {
         if let Some((object, key)) = member(expr) {
             path.push(key);
@@ -139,12 +146,6 @@ fn target(subject: &Expression, matcher: &str) -> Target {
         } else {
             break;
         }
-    }
-    if matcher.starts_with("toThrow")
-        && path.is_empty()
-        && let Some(callee) = thunk(expr)
-    {
-        expr = callee;
     }
     path.reverse();
     Target {
@@ -195,7 +196,10 @@ fn reader<'b, 'a>(expr: &'b Expression<'a>) -> Option<(&'b Expression<'a>, Strin
     if method == "getAttribute"
         && let [Argument::StringLiteral(name)] = call.arguments.as_slice()
     {
-        return Some((callee.object(), format!("attribute:{}", js_str(name.value))));
+        return Some((
+            callee.object(),
+            format!("attribute({})", Value::String(js_str(name.value))),
+        ));
     }
     let (_, property) = READERS.iter().find(|(name, _)| *name == method)?;
     call.arguments
@@ -304,13 +308,31 @@ fn boolean<'b, 'a>(
 }
 
 /// What the matcher states, as (path below the subject, test) pairs.
-fn leaves(matcher: &str, raw: &[Argument], args: &[Value]) -> Vec<(Vec<String>, FactTest)> {
+///
+/// Equality is split into one fact per field (`toEqual({ a: 1, b: 2 })` states `a == 1`
+/// and `b == 2`), but not under `.not`: `.not.toEqual({ a: 1 })` passes for `{ a: 1, b: 2 }`,
+/// so it doesn't state `not a == 1`. A negated subset check does: `.not.toMatchObject({ a: 1 })`.
+fn leaves(
+    matcher: &str,
+    raw: &[Argument],
+    args: &[Value],
+    negated: bool,
+) -> Vec<(Vec<String>, FactTest)> {
     let first = args.first();
     let one = |path: &[&str], test: FactTest| -> Vec<(Vec<String>, FactTest)> {
         vec![(path.iter().map(|&key| key.to_owned()).collect(), test)]
     };
+    let equal_to = |path: Vec<String>, value: &Value| match value {
+        Value::Matcher { name, .. } if name == "objectContaining" => expand(path, value),
+        _ if negated => vec![(path, equals(value.clone()))],
+        _ => expand(path, value),
+    };
     match matcher {
-        "toBe" | "toEqual" | "toStrictEqual" | "toMatchObject" => match first {
+        "toBe" | "toEqual" | "toStrictEqual" => match first {
+            Some(value) => equal_to(Vec::new(), value),
+            None => Vec::new(),
+        },
+        "toMatchObject" => match first {
             Some(value) => expand(Vec::new(), value),
             None => Vec::new(),
         },
@@ -319,7 +341,7 @@ fn leaves(matcher: &str, raw: &[Argument], args: &[Value]) -> Vec<(Vec<String>, 
                 return Vec::new();
             };
             match args.get(1) {
-                Some(value) => expand(keys, value),
+                Some(value) => equal_to(keys, value),
                 None => vec![(keys, FactTest::Defined)],
             }
         }
@@ -344,7 +366,7 @@ fn leaves(matcher: &str, raw: &[Argument], args: &[Value]) -> Vec<(Vec<String>, 
             None => Vec::new(),
         },
         "toContainText" => one(
-            &["text"],
+            &["text()"],
             FactTest::Other {
                 matcher: "toContain".to_owned(),
                 args: args.to_vec(),
@@ -352,7 +374,7 @@ fn leaves(matcher: &str, raw: &[Argument], args: &[Value]) -> Vec<(Vec<String>, 
         ),
         "toHaveAttribute" => match (raw.first(), args.get(1)) {
             (Some(Argument::StringLiteral(name)), value) => {
-                let key = format!("attribute:{}", js_str(name.value));
+                let key = format!("attribute({})", Value::String(js_str(name.value)));
                 match value {
                     Some(value) => one(&[key.as_str()], equals(value.clone())),
                     None => one(&[key.as_str()], FactTest::Defined),
@@ -542,11 +564,7 @@ mod tests {
                 "await expect(link).toHaveAttribute('href', '/a')",
                 "expect(await link.getAttribute('href')).toBe('/a')",
             ],
-            &[
-                "await expect(res).toBeOK()",
-                "expect(res.ok()).toBe(true)",
-                "expect(res.ok).toBeTruthy()",
-            ],
+            &["await expect(res).toBeOK()", "expect(res.ok()).toBe(true)"],
             &[
                 "expect(fn).toHaveBeenCalledTimes(2)",
                 "expect(fn.mock.calls.length).toBe(2)",
@@ -558,6 +576,14 @@ mod tests {
             &[
                 "expect(parse).toThrow('bad')",
                 "expect(() => parse()).toThrow('bad')",
+            ],
+            &[
+                "expect(obj.parse).toThrow('bad')",
+                "expect(() => obj.parse()).toThrow('bad')",
+            ],
+            &[
+                "expect(r).not.toMatchObject({ status: 'ok' })",
+                "expect(r.status).not.toBe('ok')",
             ],
         ];
         for group in groups {
@@ -592,6 +618,20 @@ mod tests {
             (
                 "expect(() => parse(1)).toThrow()",
                 "expect(parse).toThrow()",
+            ),
+            // A method call isn't the property of the same name.
+            (
+                "expect(store.count()).toBe(0)",
+                "expect(store.count).toBe(0)",
+            ),
+            // `.not.toEqual({ status: 'ok' })` passes for `{ status: 'ok', extra: 1 }`.
+            (
+                "expect(r).not.toEqual({ status: 'ok' })",
+                "expect(r.status).not.toBe('ok')",
+            ),
+            (
+                "expect(r).not.toHaveProperty('a', { b: 1 })",
+                "expect(r.a.b).not.toBe(1)",
             ),
         ];
         for (a, b) in pairs {

@@ -13,19 +13,36 @@ pub(crate) const MIN_SCORE: f64 = 0.4;
 /// pair.
 pub(crate) const MARGIN: f64 = 0.1;
 
+/// What a test is compared by, worked out once per test rather than once per candidate
+/// pair: a big rewrite can leave hundreds of tests on each side.
+pub(crate) struct TestFeatures<'a> {
+    name: BTreeSet<String>,
+    body: BTreeSet<&'a str>,
+    checks: BTreeSet<String>,
+}
+
+impl<'a> TestFeatures<'a> {
+    pub(crate) fn new(test: &'a Test) -> Self {
+        Self {
+            name: words(&test.name),
+            body: test.fingerprint.iter().map(String::as_str).collect(),
+            checks: check_keys(test),
+        }
+    }
+}
+
 /// How alike two tests are, from 0 to 1:
 /// - 40% their names: the words they share, counting an old name kept whole inside a longer
 ///   new one ("is red with more than one record" → "…, suggesting a merge") as close
 /// - 30% their source: the words in their bodies
 /// - 30% their checks: identical checks and distinctive expected values they share
-pub(crate) fn test_score(before: &Test, after: &Test) -> f64 {
-    let (a, b) = (words(&before.name), words(&after.name));
-    let names = f64::midpoint(jaccard(&a, &b), containment(&a, &b));
-    let bodies = jaccard(
-        &before.fingerprint.iter().map(String::as_str).collect(),
-        &after.fingerprint.iter().map(String::as_str).collect(),
+pub(crate) fn test_score(before: &TestFeatures, after: &TestFeatures) -> f64 {
+    let names = f64::midpoint(
+        jaccard(&before.name, &after.name),
+        containment(&before.name, &after.name),
     );
-    let checks = jaccard(&check_keys(before), &check_keys(after));
+    let bodies = jaccard(&before.body, &after.body);
+    let checks = jaccard(&before.checks, &after.checks);
     0.4 * names + 0.3 * bodies + 0.3 * checks
 }
 
@@ -70,11 +87,13 @@ pub(crate) fn words(text: &str) -> BTreeSet<String> {
 }
 
 /// The words in a subject: identifiers split at camelCase (`textFromHtmlBody` → text,
-/// from, html, body), numbers, and each string literal as one word. The same input string
-/// is a strong sign of the same check, but a long one mustn't outweigh everything else.
+/// from, html, body; `parseURLValue` → parse, url, value), numbers, and each string literal
+/// as one word. The same input string is a strong sign of the same check, but a long one
+/// mustn't outweigh everything else.
 fn subject_words(text: &str) -> BTreeSet<String> {
     let mut words = BTreeSet::new();
     let mut word = String::new();
+    let mut previous: Option<char> = None;
     let mut chars = text.chars().peekable();
     let flush = |word: &mut String, words: &mut BTreeSet<String>| {
         if !word.is_empty() {
@@ -95,13 +114,19 @@ fn subject_words(text: &str) -> BTreeSet<String> {
             }
             words.insert(literal);
         } else if c.is_alphanumeric() {
-            if c.is_uppercase() && word.chars().last().is_some_and(char::is_lowercase) {
+            // A new word starts at an uppercase letter after a lowercase one (`textFrom`),
+            // or at the last capital of a run followed by a lowercase letter (`URLValue`).
+            let after_lowercase = previous.is_some_and(char::is_lowercase);
+            let ends_capitals = previous.is_some_and(char::is_uppercase)
+                && chars.peek().is_some_and(|next| next.is_lowercase());
+            if c.is_uppercase() && (after_lowercase || ends_capitals) {
                 flush(&mut word, &mut words);
             }
             word.extend(c.to_lowercase());
         } else {
             flush(&mut word, &mut words);
         }
+        previous = Some(c);
     }
     flush(&mut word, &mut words);
     words
@@ -170,6 +195,14 @@ mod tests {
     fn subjects_share_words_across_camel_case() {
         assert!(subject_score("fields.textBody", "textFromHtmlBody(html)") > 0.3);
         assert!(subject_score("fields.preview", "textFromHtmlBody(html)") < 0.01);
+        // All-caps names stay whole words: `res.URL` and `u.id` have nothing in common.
+        assert!(!subjects_overlap("res.URL", "u.id"));
+        assert_eq!(
+            subject_words("parseURLValue(res.JSON)"),
+            ["json", "parse", "res", "url", "value"]
+                .map(String::from)
+                .into()
+        );
         // A string literal is one word: the same input matches, a long one doesn't swamp.
         let long = "textFromHtmlBody('<p>preview of the fields</p>', false)";
         assert!(subject_score("fields.preview", long) < 0.01);

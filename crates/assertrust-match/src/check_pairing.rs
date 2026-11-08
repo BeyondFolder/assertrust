@@ -3,7 +3,7 @@
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 
-use assertrust_ir::{Assertion, FactTest, ItemKind, MatcherKind, Test, Value};
+use assertrust_ir::{Assertion, Context, FactTest, ItemKind, MatcherKind, Test, Value};
 
 use crate::similarity::{MARGIN, best_pairs, jaccard, subject_score, subjects_overlap};
 use crate::{
@@ -30,6 +30,10 @@ impl<'a> Side<'a> {
             ItemKind::Assertion(assertion) => assertion,
             _ => unreachable!("only assertion items are tracked"),
         }
+    }
+
+    fn context(&self, item: usize) -> Context {
+        self.test.body.items[item].context
     }
 
     fn take(&mut self, items: &[usize]) {
@@ -98,25 +102,33 @@ fn kind(assertion: &Assertion) -> Option<MatcherKind> {
     assertion.matcher.as_ref().map(|matcher| matcher.kind)
 }
 
-/// Step 1: the same check, first to first.
+/// Step 1: the same check, first to first. Checks in the same place (both plain, or both
+/// in an `if`, …) pair first, so a check that moved into an `if` is the one left to pair
+/// with a changed context, which the rules then see.
 fn identical(old: &mut Side, new: &mut Side, pairs: &mut Vec<CheckPair>) {
-    for item in old.left.clone() {
-        let assertion = old.assertion(item);
-        if let Some(&partner) = new.left.iter().find(|&&n| new.assertion(n) == assertion) {
-            pairs.push(CheckPair {
-                before: vec![item],
-                after: vec![partner],
-                how: CheckMatch::Identical,
+    for same_place in [true, false] {
+        for item in old.left.clone() {
+            let assertion = old.assertion(item);
+            let partner = new.left.iter().copied().find(|&n| {
+                new.assertion(n) == assertion
+                    && (!same_place || new.context(n) == old.context(item))
             });
-            old.take(&[item]);
-            new.take(&[partner]);
+            if let Some(partner) = partner {
+                pairs.push(CheckPair {
+                    before: vec![item],
+                    after: vec![partner],
+                    how: CheckMatch::Identical,
+                });
+                old.take(&[item]);
+                new.take(&[partner]);
+            }
         }
     }
 }
 
 /// Pairs checks with the same key. When both sides have the same number of checks with a
-/// key, they're paired in order. When one side has one and the other several, the one with
-/// the closest subject is picked, if it's clearly closest. Otherwise none are paired.
+/// key, they're paired in order. When one side has one and the other several, the closest
+/// check is picked, if it's clearly closest. Otherwise none are paired.
 fn by_key(
     old: &mut Side,
     new: &mut Side,
@@ -165,17 +177,25 @@ fn by_key(
     }
 }
 
-/// The candidate whose subject shares the most words with `assertion`'s, if no other comes
-/// close.
+/// The candidate most like `assertion`, if no other comes close: by the words in the subject,
+/// the expected value, then the same `.not` and the same matcher. So `toBe(200)` goes to
+/// `toBe(201)` rather than `.not.toBe(500)` when all three check `res.status`.
 fn closest(assertion: &Assertion, candidates: &[usize], side: &Side) -> Option<usize> {
+    let alike = |other: &Assertion| {
+        let same_matcher =
+            assertion.matcher.as_ref().map(|m| &m.name) == other.matcher.as_ref().map(|m| &m.name);
+        subject_score(&assertion.subject, &other.subject)
+            + expected_score(assertion, other)
+            + if assertion.negated == other.negated {
+                0.25
+            } else {
+                0.0
+            }
+            + if same_matcher { 0.25 } else { 0.0 }
+    };
     let mut scored: Vec<(f64, usize)> = candidates
         .iter()
-        .map(|&item| {
-            (
-                subject_score(&assertion.subject, &side.assertion(item).subject),
-                item,
-            )
-        })
+        .map(|&item| (alike(side.assertion(item)), item))
         .collect();
     scored.sort_by(|a, b| b.0.total_cmp(&a.0));
     match scored.as_slice() {
@@ -405,19 +425,24 @@ fn distinctive(value: &Value) -> bool {
     }
 }
 
-/// A check removed from one test that shows up, unchanged, in another test of the same
-/// change moved there. Each added check can account for one removed check.
+/// A check removed from one test that shows up, unchanged and in the same place (not newly
+/// inside an `if` or a callback), in another test of the same change moved there. Each
+/// added check can account for one removed check.
 pub(crate) fn find_moves(files: &[FilePair], matching: &mut Matching) {
-    // Checks added anywhere, by their text, in order.
+    // Checks added anywhere, by their text and place, in order.
+    let key = |test: &Test, item: usize| {
+        let item = &test.body.items[item];
+        match &item.kind {
+            ItemKind::Assertion(assertion) => Some(format!("{assertion}\u{0}{:?}", item.context)),
+            _ => None,
+        }
+    };
     let mut added: HashMap<String, VecDeque<TestRef>> = HashMap::new();
     let mut offer = |test_ref: TestRef, items: &mut dyn Iterator<Item = usize>| {
         let test = test(files, test_ref, After);
         for item in items {
-            if let ItemKind::Assertion(assertion) = &test.body.items[item].kind {
-                added
-                    .entry(assertion.to_string())
-                    .or_default()
-                    .push_back(test_ref);
+            if let Some(key) = key(test, item) {
+                added.entry(key).or_default().push_back(test_ref);
             }
         }
     };
@@ -429,10 +454,8 @@ pub(crate) fn find_moves(files: &[FilePair], matching: &mut Matching) {
     }
 
     let mut claim = |test: &Test, removed: &mut RemovedCheck| {
-        if let ItemKind::Assertion(assertion) = &test.body.items[removed.item].kind {
-            removed.moved_to = added
-                .get_mut(&assertion.to_string())
-                .and_then(VecDeque::pop_front);
+        if let Some(key) = key(test, removed.item) {
+            removed.moved_to = added.get_mut(&key).and_then(VecDeque::pop_front);
         }
     };
     for pair in &mut matching.pairs {

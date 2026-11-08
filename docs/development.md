@@ -2,7 +2,7 @@
 
 ## Prerequisites
 
-- Rust 1.85 or newer, installed with [rustup](https://rustup.rs). The minimum is set by `rust-version` in `Cargo.toml`, and CI checks it.
+- Rust 1.88 or newer, installed with [rustup](https://rustup.rs). The minimum is set by `rust-version` in `Cargo.toml`, and CI checks it.
 - git 2.28 or newer.
 
 ## Build and run

@@ -12,7 +12,7 @@
 use std::fmt::Write as _;
 
 use assertrust_git::{Analysis, Classifier, Commit, Comparison, Repo};
-use assertrust_rules::Finding;
+use assertrust_rules::{Finding, RuleId};
 
 use crate::cli::{CheckArgs, Format};
 use crate::load;
@@ -112,30 +112,42 @@ fn render(analysis: &Analysis, report: &Report, verbose: bool) -> String {
         line(&mut out, "nothing to check");
         return out;
     }
-    for (i, located) in report.findings.iter().enumerate() {
+    // Changed outcomes are usually legitimate behaviour changes: noise until the judge can
+    // tell them apart, so only `-v` shows them.
+    let shown: Vec<&Located> = report
+        .findings
+        .iter()
+        .filter(|located| verbose || located.finding.rule != RuleId::OutcomeChanged)
+        .collect();
+    let hidden = report.findings.len() - shown.len();
+    for (i, located) in shown.iter().enumerate() {
         // With `-v` each finding takes several lines, so they're kept apart.
         if verbose && i > 0 {
             line(&mut out, "");
         }
         finding(&mut out, located, verbose);
     }
-    if !report.findings.is_empty() || !report.notes.is_empty() {
+    if !shown.is_empty() || !report.notes.is_empty() {
         line(&mut out, "");
     }
     for note in &report.notes {
         line(&mut out, &format!("note: {note}"));
     }
-    if report.findings.is_empty() {
-        line(&mut out, "no findings");
+    let mut summary = if shown.is_empty() {
+        vec!["no findings".to_owned()]
     } else {
-        line(
-            &mut out,
-            &format!(
-                "{} · warn-only (exit 0)",
-                count(report.findings.len(), "finding")
-            ),
-        );
+        vec![count(shown.len(), "finding")]
+    };
+    if hidden > 0 {
+        summary.push(format!(
+            "{} hidden (-v shows them)",
+            count(hidden, "changed outcome")
+        ));
     }
+    if !shown.is_empty() {
+        summary.push("warn-only (exit 0)".to_owned());
+    }
+    line(&mut out, &summary.join(" · "));
     out
 }
 

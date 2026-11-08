@@ -287,3 +287,34 @@ fn a_file_skipped_in_several_commits_is_noted_once() {
     // Each file, once per version that doesn't parse.
     assert_eq!(notes.len(), 4, "{}", run.stdout);
 }
+
+#[test]
+fn changed_outcomes_show_only_with_verbose() {
+    let mut repo = TestRepo::new();
+    repo.write(
+        "test/a.test.ts",
+        "it('adds', () => { expect(add(1, 2)).toBe(3) });\n",
+    );
+    let base = repo.commit("Add a test");
+    repo.write(
+        "test/a.test.ts",
+        "it('adds', () => { expect(add(1, 2)).toBe(4) });\n",
+    );
+    let head = repo.commit("Change the answer");
+    let range = format!("{base}..HEAD");
+    let run = repo.assertrust(&["check", "--range", &range]);
+    assert_eq!(run.code, 0, "{}", run.stderr);
+    assert_eq!(
+        run.stdout,
+        "no findings · 1 changed outcome hidden (-v shows them)\n"
+    );
+    let run = repo.assertrust(&["check", "--range", &range, "-v"]);
+    assert!(
+        run.stdout.starts_with(&format!(
+            "test/a.test.ts:1  LOW  outcome-changed\n  toBe(3) → toBe(4) · {}\n",
+            &head[..7]
+        )),
+        "{}",
+        run.stdout
+    );
+}

@@ -3,20 +3,26 @@ source: crates/assertrust/tests/check.rs
 expression: run.stdout
 ---
 test/checkout.test.ts  HIGH  test-disabled
-  deleted: checkout > applies a coupon · f3e6655
+  deleted: checkout > applies a coupon · 8add97b
 test/checkout.test.ts:5  HIGH  check-removed
-  removed expect(order.receipt).toMatchObject({ sentTo: 'ada@example.…; the test name dropped "and emails a receipt" · f3e6655
+  removed expect(order.receipt).toMatchObject({ sentTo: 'ada@example.…; the test name dropped "and emails a receipt" · 8add97b
 test/checkout.test.ts:17  HIGH  check-cant-fail
-  await dropped from expect(loadOrder('order-1')).resolves.toMatchObject({ statu…: the test may end before it fails · f3e6655
+  await dropped from expect(loadOrder('order-1')).resolves.toMatchObject({ statu…: the test may end before it fails · 8add97b
 test/checkout.test.ts:20  HIGH  test-disabled
-  now skipped (skip) · f3e6655
+  now skipped (skip) · 8add97b
 test/checkout.test.ts:27  HIGH  check-cant-fail
-  a return now comes before 1 check: it never runs · f3e6655
+  a return now comes before 1 check: it never runs · 8add97b
 test/checkout.test.ts:33  HIGH  check-cant-fail
-  expect(log.last()) has no matcher: it checks nothing · f3e6655
+  expect(log.last()) has no matcher: it checks nothing · 8add97b
+test/checkout.test.ts:38  HIGH  expectation-loosened
+  toMatchObject no longer checks currency · 8add97b
+test/checkout.test.ts:40  HIGH  matcher-loosened
+  toEqual(new Date('2026-01-01')) → toBeTruthy(): now any truthy value passes · 8add97b
 test/checkout.test.ts:12  MEDIUM  check-cant-fail
-  expect.assertions lowered from 2 to 1 · f3e6655
+  expect.assertions lowered from 2 to 1 · 8add97b
 test/checkout.test.ts:15  MEDIUM  check-cant-fail
-  expect(result.ok).toBe(true) is now inside an if: it may not run · f3e6655
+  expect(result.ok).toBe(true) is now inside an if: it may not run · 8add97b
+test/checkout.test.ts:39  MEDIUM  matcher-loosened
+  toBe(1200) → toBeGreaterThan(0): now a range of values passes · 8add97b
 
-8 findings · warn-only (exit 0)
+11 findings · 1 changed outcome hidden (-v shows them) · warn-only (exit 0)

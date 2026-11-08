@@ -17,8 +17,11 @@
 //! # Ok::<(), assertrust_ir::ParseError>(())
 //! ```
 
+mod changed_check;
 mod check_cant_fail;
 mod check_removed;
+mod looser;
+mod strength;
 mod test_disabled;
 
 use std::fmt;
@@ -70,6 +73,14 @@ pub enum RuleId {
     TestDisabled,
     /// A check is still there but may no longer run or fail.
     CheckCantFail,
+    /// A matcher moved down the strength ladder: `toEqual(x)` → `toBeTruthy()`.
+    MatcherLoosened,
+    /// A matcher swapped for one at the same level, or any matcher change under `.not`.
+    MatcherSwapped,
+    /// The same matcher accepts more: fields, alternatives or `.each` rows dropped.
+    ExpectationLoosened,
+    /// The expected outcome changed, neither looser nor stricter: `toBe(3)` → `toBe(4)`.
+    OutcomeChanged,
 }
 
 impl RuleId {
@@ -78,6 +89,10 @@ impl RuleId {
             Self::CheckRemoved => "check-removed",
             Self::TestDisabled => "test-disabled",
             Self::CheckCantFail => "check-cant-fail",
+            Self::MatcherLoosened => "matcher-loosened",
+            Self::MatcherSwapped => "matcher-swapped",
+            Self::ExpectationLoosened => "expectation-loosened",
+            Self::OutcomeChanged => "outcome-changed",
         }
     }
 }
@@ -132,6 +147,7 @@ pub fn check(files: &[TestFile]) -> Vec<Finding> {
     check_removed::check(&change, &mut findings);
     test_disabled::check(&change, &mut findings);
     check_cant_fail::check(&change, &mut findings);
+    changed_check::check(&change, &mut findings);
     findings.sort_by(|a, b| {
         (a.confidence, &a.path, a.line, a.rule).cmp(&(b.confidence, &b.path, b.line, b.rule))
     });

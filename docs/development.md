@@ -66,6 +66,9 @@ crates/assertrust-rules/      rules (step 5): whether a change made a test weake
   src/check_removed.rs        one file per rule
   src/test_disabled.rs
   src/check_cant_fail.rs
+  src/changed_check.rs        the four rules that compare a check with what it became
+  src/strength.rs             the matcher strength ladder
+  src/looser.rs               which expected values accept more
   tests/rules.rs              cases each rule must flag and must not
 ```
 

@@ -33,7 +33,7 @@ Options:
           Also show weakening that was undone later in the same PR
 
   -v, --verbose
-          Show the test name, before/after snippets and the full commit message
+          Show the test name, before/after snippets, the full commit message, and changed outcomes
 
   -h, --help
           Print help (see a summary with '-h')

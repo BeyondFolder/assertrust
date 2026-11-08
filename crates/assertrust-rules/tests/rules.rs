@@ -501,3 +501,300 @@ fn a_plain_check_folded_into_one_inside_an_if() {
         ]
     );
 }
+
+// matcher-loosened
+
+/// Findings when one check in a test changes from `before` to `after`.
+fn one_check(before: &str, after: &str) -> Vec<String> {
+    findings(
+        &format!("it('x', async () => {{ {before} }})"),
+        &format!("it('x', async () => {{ {after} }})"),
+    )
+}
+
+#[test]
+fn a_matcher_down_the_ladder_is_looser() {
+    let cases = [
+        (
+            "expect(user).toEqual({ id: 1 })",
+            "expect(user).toBeTruthy()",
+            "matcher-loosened high 1: toEqual({ id: 1 }) → toBeTruthy(): now any truthy value passes",
+        ),
+        (
+            "expect(send).toHaveBeenCalledWith('a@b.com')",
+            "expect(send).toHaveBeenCalled()",
+            "matcher-loosened high 1: toHaveBeenCalledWith('a@b.com') → toHaveBeenCalled(): now any call passes",
+        ),
+        (
+            "expect(ok).toBe(true)",
+            "expect(ok).toBeTruthy()",
+            "matcher-loosened high 1: toBe(true) → toBeTruthy(): now any truthy value passes",
+        ),
+        (
+            "expect(order).toEqual(expected)",
+            "expect(order).toMatchObject(expected)",
+            "matcher-loosened medium 1: toEqual(expected) → toMatchObject(expected): now extra fields pass",
+        ),
+        (
+            "expect(title).toBe('Invoice 42')",
+            "expect(title).toContain('Invoice')",
+            "matcher-loosened medium 1: toBe('Invoice 42') → toContain('Invoice'): now a partial match passes",
+        ),
+        (
+            "expect(total).toBe(1200)",
+            "expect(total).toBeGreaterThan(0)",
+            "matcher-loosened medium 1: toBe(1200) → toBeGreaterThan(0): now a range of values passes",
+        ),
+    ];
+    for (before, after, expected) in cases {
+        assert_eq!(one_check(before, after), [expected], "{before} → {after}");
+    }
+    assert_eq!(
+        findings_in(
+            "a.spec.ts",
+            "test('x', async () => { await expect(link).toHaveAttribute('href', '/billing') })",
+            "test('x', async () => { await expect(link).toHaveAttribute('href') })",
+        ),
+        ["expectation-loosened high 1: toHaveAttribute no longer checks the value of 'href'"]
+    );
+    assert_eq!(
+        findings_in(
+            "a.spec.ts",
+            "test('x', async ({ page }) => { await expect(page.getByRole('status')).toHaveText('Saved') })",
+            "test('x', async ({ page }) => { await expect(page.getByRole('status')).toBeVisible() })",
+        ),
+        [
+            "matcher-loosened high 1: toHaveText('Saved') → toBeVisible(): now only the element's state is checked"
+        ]
+    );
+}
+
+#[test]
+fn the_same_check_written_another_way_is_fine() {
+    let cases = [
+        // Stricter.
+        (
+            "expect(user).toBeTruthy()",
+            "expect(user).toEqual({ id: 1 })",
+        ),
+        (
+            "expect(order).toEqual(expected)",
+            "expect(order).toStrictEqual(expected)",
+        ),
+        // The same check.
+        ("expect(n).toBe(5)", "expect(n).toEqual(5)"),
+        ("expect(x).toBe(null)", "expect(x).toBeNull()"),
+        ("expect(x).not.toBeUndefined()", "expect(x).toBeDefined()"),
+        ("expect(fn).toBeCalled()", "expect(fn).toHaveBeenCalled()"),
+        ("expect(f).toThrowError('bad')", "expect(f).toThrow('bad')"),
+        // Part of the check moved into the subject, or out of it.
+        (
+            "expect(reply.text).toBe('hi')",
+            "expect(reply).toMatchObject({ text: 'hi' })",
+        ),
+        (
+            "expect(list.length).toBe(2)",
+            "expect(list).toHaveLength(2)",
+        ),
+        (
+            "await expect(load()).resolves.toEqual({ ok: true })",
+            "expect(await load()).toEqual({ ok: true })",
+        ),
+        ("expect(a !== b).toBe(true)", "expect(a).not.toBe(b)"),
+        // Fields added, an alternative removed.
+        (
+            "expect(r).toMatchObject({ a: 1 })",
+            "expect(r).toMatchObject({ a: 1, b: 2 })",
+        ),
+        ("expect(s).toMatch(/a|b/)", "expect(s).toMatch(/a/)"),
+    ];
+    for (before, after) in cases {
+        assert_eq!(one_check(before, after), [""; 0], "{before} → {after}");
+    }
+}
+
+// matcher-swapped
+
+#[test]
+fn a_matcher_swapped_at_the_same_level() {
+    let cases = [
+        (
+            "expect(user).toBe(admin)",
+            "expect(user).toEqual(admin)",
+            "matcher-swapped low 1: swapped toBe(admin) for toEqual(admin)",
+        ),
+        (
+            "expect(log).toContain('sent')",
+            "expect(log).toMatch(/sent/)",
+            "matcher-swapped low 1: swapped toContain('sent') for toMatch(/sent/)",
+        ),
+        // Under `.not`, a looser matcher makes a stricter check, so nothing is ranked.
+        (
+            "expect(a).not.toEqual(b)",
+            "expect(a).not.toBe(b)",
+            "matcher-swapped low 1: swapped .not.toEqual(b) for .not.toBe(b)",
+        ),
+    ];
+    for (before, after, expected) in cases {
+        assert_eq!(one_check(before, after), [expected], "{before} → {after}");
+    }
+}
+
+// expectation-loosened
+
+#[test]
+fn the_same_matcher_accepting_more() {
+    let cases = [
+        // The shape of Mailyond's 10d8742.
+        (
+            "expect(res.body).toMatchObject({ email: 'me@x.com', status: 'pending', domainIds: null })",
+            "expect(res.body).toMatchObject({ email: 'me@x.com' })",
+            "expectation-loosened high 1: toMatchObject no longer checks domainIds, status",
+        ),
+        (
+            "expect(r).toMatchObject({ user: { id: 1, name: 'Ada' } })",
+            "expect(r).toMatchObject({ user: { id: 1 } })",
+            "expectation-loosened high 1: toMatchObject no longer checks user.name",
+        ),
+        (
+            "expect(r).toMatchObject({ id: 7, status: 'paid' })",
+            "expect(r).toMatchObject({ id: expect.any(Number), status: 'paid' })",
+            "expectation-loosened high 1: toMatchObject now accepts any id (expect.any(Number))",
+        ),
+        (
+            "expect(r).toEqual({ id: 7 })",
+            "expect(r).toEqual(expect.objectContaining({ id: 7 }))",
+            "expectation-loosened high 1: toEqual now allows extra fields",
+        ),
+        (
+            "expect(tables).toEqual(expect.arrayContaining(['users', 'emails']))",
+            "expect(tables).toEqual(expect.arrayContaining(['users']))",
+            "expectation-loosened high 1: toEqual no longer checks 'emails'",
+        ),
+        // The shape of Mailyond's 71110c0.
+        (
+            "expect(page).not.toMatch(/support@|resend|inboxes\\.net/)",
+            "expect(page).not.toMatch(/support@|inboxes\\.net/)",
+            "expectation-loosened high 1: .not.toMatch no longer rules out resend",
+        ),
+        (
+            "expect(kind).toMatch(/^(inbox|sent)$|draft/)",
+            "expect(kind).toMatch(/^(inbox|sent)$|draft|spam/)",
+            "expectation-loosened high 1: toMatch now also accepts spam",
+        ),
+        (
+            "expect(() => pay()).toThrow('card declined')",
+            "expect(() => pay()).toThrow()",
+            "expectation-loosened high 1: toThrow no longer checks which error",
+        ),
+        (
+            "expect(r).toHaveProperty('user.id', 1)",
+            "expect(r).toHaveProperty('user.id')",
+            "expectation-loosened high 1: toHaveProperty no longer checks the value of 'user.id'",
+        ),
+        (
+            "expect(r).not.toMatchObject({ role: 'admin' })",
+            "expect(r).not.toMatchObject({ role: 'admin', active: true })",
+            "expectation-loosened high 1: .not.toMatchObject now fails only if active match too",
+        ),
+        (
+            "expect(body).toContain('Hello there')",
+            "expect(body).toContain('Hello')",
+            "expectation-loosened medium 1: toContain now only needs 'Hello'",
+        ),
+        (
+            "expect(count).toBeGreaterThan(5)",
+            "expect(count).toBeGreaterThan(3)",
+            "expectation-loosened medium 1: toBeGreaterThan lower bound lowered from 5 to 3",
+        ),
+        (
+            "expect(ms).toBeLessThanOrEqual(100)",
+            "expect(ms).toBeLessThanOrEqual(500)",
+            "expectation-loosened medium 1: toBeLessThanOrEqual upper bound raised from 100 to 500",
+        ),
+        (
+            "expect(sum).toBeCloseTo(0.3, 5)",
+            "expect(sum).toBeCloseTo(0.3, 1)",
+            "expectation-loosened medium 1: toBeCloseTo precision lowered from 5 to 1 digits",
+        ),
+        // Split, with part of the check left behind.
+        (
+            "expect(r).toMatchObject({ a: 1, b: 2 })",
+            "expect(r.a).toBe(1)",
+            "expectation-loosened high 1: no longer checks r.b == 2",
+        ),
+    ];
+    for (before, after, expected) in cases {
+        assert_eq!(one_check(before, after), [expected], "{before} → {after}");
+    }
+}
+
+#[test]
+fn each_rows_dropped() {
+    // The shape of Mailyond's billing test: one plan no longer tested.
+    assert_eq!(
+        findings(
+            "it.each(['pro', 'agency'])('upgrades to %s', (plan) => { expect(upgrade(plan)).toBe(true) })",
+            "it.each(['pro'])('upgrades to %s', (plan) => { expect(upgrade(plan)).toBe(true) })",
+        ),
+        ["expectation-loosened high 1: .each no longer runs 1 row: 'agency'"]
+    );
+    // A column removed along with a row: only the count can be compared.
+    assert_eq!(
+        findings(
+            "it.each([[50, 500, 100], [150, 500, 100], [2000, 51, 51]])('canary for %i', (n, max, size) => { expect(canary(n)).toBe(size) })",
+            "it.each([[50, 100], [150, 100]])('canary for %i', (n, size) => { expect(canary(n)).toBe(size) })",
+        ),
+        ["expectation-loosened medium 1: .each now runs 2 rows instead of 3"]
+    );
+    // A row added is fine.
+    assert_eq!(
+        findings(
+            "it.each(['pro'])('upgrades to %s', (plan) => { expect(upgrade(plan)).toBe(true) })",
+            "it.each(['pro', 'agency'])('upgrades to %s', (plan) => { expect(upgrade(plan)).toBe(true) })",
+        ),
+        [""; 0]
+    );
+}
+
+// outcome-changed
+
+#[test]
+fn a_different_expected_outcome() {
+    let cases = [
+        (
+            "expect(total).toBe(3)",
+            "expect(total).toBe(4)",
+            "outcome-changed low 1: toBe(3) → toBe(4)",
+        ),
+        (
+            "expect(x).not.toBe(1)",
+            "expect(x).toBe(1)",
+            "outcome-changed low 1: .not removed: .not.toBe(1) → toBe(1)",
+        ),
+        (
+            "expect(sentAt).toBeGreaterThan(cutoff)",
+            "expect(sentAt).toBeLessThanOrEqual(cutoff)",
+            "outcome-changed low 1: toBeGreaterThan(cutoff) → toBeLessThanOrEqual(cutoff)",
+        ),
+        (
+            "expect(fields(html)).toEqual({ preview: 'Hello there', text: 'Hello there' })",
+            "expect(previewFor(html)).toBe('Hello there')",
+            "outcome-changed low 1: toEqual({ preview: 'Hello there', text: 'Hello there' }) → toBe('Hello there')",
+        ),
+        (
+            "expect(r).toEqual({ a: 1, b: 2 })",
+            "expect(r).toEqual({ a: 1 })",
+            "outcome-changed low 1: toEqual({ a: 1, b: 2 }) → toEqual({ a: 1 })",
+        ),
+        // Under `.not`, accepting anything rules out more: not looser.
+        (
+            "expect(send).not.toHaveBeenCalledWith('a@b.com')",
+            "expect(send).not.toHaveBeenCalledWith(expect.anything())",
+            "outcome-changed low 1: .not.toHaveBeenCalledWith('a@b.com') → .not.toHaveBeenCalledWith(expect.anything())",
+        ),
+    ];
+    for (before, after, expected) in cases {
+        assert_eq!(one_check(before, after), [expected], "{before} → {after}");
+    }
+}

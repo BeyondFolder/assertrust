@@ -760,6 +760,28 @@ fn each_rows_dropped() {
 // outcome-changed
 
 #[test]
+fn fields_renamed_with_their_values_are_a_changed_outcome() {
+    // The shape of h3's d684744: an API renamed its fields, the test followed.
+    assert_eq!(
+        one_check(
+            "expect(await res.json()).toMatchObject({ statusCode: 422, statusMessage: 'Bad' })",
+            "expect(await res.json()).toMatchObject({ status: 422, statusText: 'Bad' })",
+        ),
+        [
+            "outcome-changed low 1: toMatchObject({ statusCode: 422, statusMessage: 'Bad' }) → toMatchObject({ status: 422, statusText: 'Bad' })"
+        ]
+    );
+    // Another value under the new name: the old field is no longer checked.
+    assert_eq!(
+        one_check(
+            "expect(r).toMatchObject({ statusCode: 422 })",
+            "expect(r).toMatchObject({ status: 500 })",
+        ),
+        ["expectation-loosened high 1: toMatchObject no longer checks statusCode"]
+    );
+}
+
+#[test]
 fn a_different_expected_outcome() {
     let cases = [
         (

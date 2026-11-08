@@ -125,10 +125,27 @@ fn value(old: &Value, new: &Value, mode: Mode, path: &str, diff: &mut Diff) {
             } else {
                 mode
             };
+            // New keys a dropped one was renamed to.
+            let mut renamed_to: Vec<&String> = Vec::new();
             for (key, old_value) in old {
                 match new.get(key) {
                     Some(new_value) => value(old_value, new_value, inner, &join(path, key), diff),
-                    None if mode != Mode::Exact => diff.dropped.push(join(path, key)),
+                    None if mode != Mode::Exact => {
+                        // The same value under a new key (`statusCode: 422` → `status: 422`):
+                        // renamed along with the code, not dropped.
+                        let renamed = new.iter().find(|(other, new_value)| {
+                            !old.contains_key(*other)
+                                && !renamed_to.contains(other)
+                                && *new_value == old_value
+                        });
+                        match renamed {
+                            Some((other, _)) => {
+                                renamed_to.push(other);
+                                diff.changed = true;
+                            }
+                            None => diff.dropped.push(join(path, key)),
+                        }
+                    }
                     None => diff.changed = true,
                 }
             }

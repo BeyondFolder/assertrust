@@ -6,19 +6,36 @@
 //! → job test, step "npm test": failures no longer fail it
 //! ```
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use assertrust_ir::{Command, Gate, Job, Package, Script, Setting, TestStep, Value, Workflow};
 
 use crate::{Confidence, Finding, GateFile, RuleId, number, short};
 
 pub(crate) fn check(gates: &[GateFile], findings: &mut Vec<Finding>) {
+    // The projects each folder's configs list now, in any file: vitest 3 moves them from
+    // `vitest.workspace.ts` into `vitest.config.ts`'s `test.projects`.
+    let projects: BTreeSet<(&str, &str)> = gates
+        .iter()
+        .filter_map(|file| file.after)
+        .flat_map(|after| {
+            let settings = match after.gate {
+                Gate::Config(settings) => settings.as_slice(),
+                _ => &[],
+            };
+            settings
+                .iter()
+                .filter_map(|setting| project_name(&setting.path))
+                .map(|name| (folder(after.path), name))
+        })
+        .collect();
     for file in gates {
         let Some(before) = file.before else { continue };
         let path = file.after.unwrap_or(before).path;
         let mut found = Found {
             path,
             findings: &mut *findings,
+            projects: &projects,
         };
         match (before.gate, file.after.map(|after| after.gate)) {
             (Gate::Workflow(old), Some(Gate::Workflow(new))) => found.workflow(old, new),
@@ -35,6 +52,8 @@ pub(crate) fn check(gates: &[GateFile], findings: &mut Vec<Finding>) {
 struct Found<'f> {
     path: &'f str,
     findings: &'f mut Vec<Finding>,
+    /// The projects listed now, by folder, in any config file.
+    projects: &'f BTreeSet<(&'f str, &'f str)>,
 }
 
 impl Found<'_> {
@@ -97,19 +116,22 @@ impl Found<'_> {
     }
 
     fn job(&mut self, old: &Job, new: &Job) {
-        let at = format!("job {}", new.id);
-        self.condition(
-            &at,
-            new.line,
-            old.condition.as_deref(),
-            new.condition.as_deref(),
-        );
-        self.continue_on_error(
-            &at,
-            new.line,
-            old.continue_on_error.as_deref(),
-            new.continue_on_error.as_deref(),
-        );
+        // Only a job that ran tests can let their failures through: not `lint` or `publish`.
+        if !old.steps.is_empty() {
+            let at = format!("job {}", new.id);
+            self.condition(
+                &at,
+                new.line,
+                old.condition.as_deref(),
+                new.condition.as_deref(),
+            );
+            self.continue_on_error(
+                &at,
+                new.line,
+                old.continue_on_error.as_deref(),
+                new.continue_on_error.as_deref(),
+            );
+        }
         let (pairs, removed) = pair_steps(&old.steps, &new.steps);
         for (step, other) in pairs {
             self.step(&new.id, step, other);
@@ -227,7 +249,7 @@ impl Found<'_> {
                 ),
             ));
         }
-        let (only, dropped) = narrowed(&old.filters, &new.filters);
+        let (only, dropped) = narrowed(old, new);
         if !only.is_empty() {
             changes.push((
                 Confidence::Medium,
@@ -322,8 +344,8 @@ impl Found<'_> {
                     Some(old_command),
                     command,
                 ),
-                // `echo skip` passes without testing anything; another command (`turbo
-                // test`) may still run the tests in a way assertrust doesn't follow.
+                // `echo skip` passes without testing anything; another command (`node
+                // scripts/ci.js`) may still run the tests in a way assertrust doesn't follow.
                 None => self.push(
                     Some(after.line),
                     if after.noop {
@@ -342,16 +364,47 @@ impl Found<'_> {
 
     /// Test config settings, by path.
     fn settings(&mut self, old: &[Setting], new: &[Setting]) {
+        let (old, new) = (&normalized(old), &normalized(new));
         let new_by_path: BTreeMap<&str, &Setting> = new
             .iter()
             .map(|setting| (setting.path.as_str(), setting))
             .collect();
+        let old_projects = project_names(old);
+        // What each project includes, to tell a file moved to another project from a skip.
+        let included: Vec<(Option<String>, String)> = new
+            .iter()
+            .filter(|setting| {
+                let key = setting.path.rsplit('.').next().unwrap_or_default();
+                matches!(key, "include" | "testMatch") && picks_tests(&setting.path)
+            })
+            .flat_map(|setting| {
+                let project = project(&setting.path);
+                items(Some(&setting.value))
+                    .into_iter()
+                    .map(move |item| (project.clone(), item))
+            })
+            .collect();
         for setting in new {
+            let project = project(&setting.path);
+            // A new project only adds tests.
+            if project
+                .as_ref()
+                .is_some_and(|project| !old_projects.contains(project))
+            {
+                continue;
+            }
             let before = old.iter().find(|other| other.path == setting.path);
             if before.is_some_and(|before| before.value == setting.value) {
                 continue;
             }
-            if let Some((confidence, what)) = loosened(&setting.path, before, Some(setting)) {
+            let elsewhere: Vec<&str> = included
+                .iter()
+                .filter(|(other, _)| *other != project)
+                .map(|(_, item)| item.as_str())
+                .collect();
+            if let Some((confidence, what)) =
+                loosened(&setting.path, before, Some(setting), &elsewhere)
+            {
                 self.push(
                     Some(setting.line),
                     confidence,
@@ -365,7 +418,7 @@ impl Found<'_> {
             if new_by_path.contains_key(setting.path.as_str()) {
                 continue;
             }
-            if let Some((confidence, what)) = loosened(&setting.path, Some(setting), None) {
+            if let Some((confidence, what)) = loosened(&setting.path, Some(setting), None, &[]) {
                 self.push(
                     None,
                     confidence,
@@ -378,19 +431,15 @@ impl Found<'_> {
         self.projects(old, new);
     }
 
-    /// A Playwright or vitest project removed: its tests no longer run.
+    /// A Playwright or vitest project removed: its tests no longer run. Unless it's now
+    /// listed in another config file of the same folder.
     fn projects(&mut self, old: &[Setting], new: &[Setting]) {
-        let names = |settings: &[Setting]| -> Vec<String> {
-            let mut names: Vec<String> = settings
-                .iter()
-                .filter_map(|setting| project(&setting.path))
-                .collect();
-            names.dedup();
-            names
-        };
-        let kept = names(new);
-        for name in names(old) {
-            if !kept.contains(&name) {
+        let kept = project_names(new);
+        let folder = folder(self.path);
+        for name in project_names(old) {
+            let moved =
+                project_name(&name).is_some_and(|bare| self.projects.contains(&(folder, bare)));
+            if !kept.contains(&name) && !moved {
                 self.push(
                     None,
                     Confidence::High,
@@ -413,10 +462,11 @@ fn pair_steps<'s>(
     let mut left: Vec<&TestStep> = old.iter().collect();
     let mut new: Vec<&TestStep> = new.iter().collect();
     let mut pairs = Vec::new();
-    let ways: [fn(&TestStep, &TestStep) -> bool; 3] = [
+    let ways: [fn(&TestStep, &TestStep) -> bool; 4] = [
         |a, b| a.run == b.run,
         |a, b| a.name.is_some() && a.name == b.name,
         |a, b| a.command.runner == b.command.runner,
+        |a, b| script(&a.command.runner) == script(&b.command.runner),
     ];
     for same in ways {
         left.retain(
@@ -436,11 +486,41 @@ fn pair_steps<'s>(
     (pairs, left)
 }
 
+/// The script a runner runs, whatever tool runs it: `pnpm test` and `nub run test` both
+/// run `test`, `pnpm run --filter api test:all` runs `--filter api test:all`.
+fn script(runner: &str) -> String {
+    let words: Vec<&str> = runner
+        .split(' ')
+        .skip_while(|word| word.contains('='))
+        .skip(1)
+        .collect();
+    let words = match words.first() {
+        Some(&"run" | &"run-script") => &words[1..],
+        _ => &words[..],
+    };
+    words.join(" ")
+}
+
 /// Which filters make a test run smaller: the ones it now runs only (`test/unit` where
 /// there was no path), and the ones it dropped (`test/api` from `test/unit test/api`).
 /// Paths and `--project` add up, so another one runs more. A name pattern (`-t`,
 /// `--grep`) or `--changed` narrows the run whenever it's new.
-fn narrowed<'f>(old: &'f [String], new: &'f [String]) -> (Vec<&'f str>, Vec<&'f str>) {
+///
+/// A run limited one way before and another way now can't be compared, so it isn't
+/// flagged: `--config fastly.config.ts` → `--project fastly`, `test/unit` → `test/api`.
+fn narrowed<'f>(old: &'f Command, new: &'f Command) -> (Vec<&'f str>, Vec<&'f str>) {
+    let swapped = new
+        .filters
+        .iter()
+        .any(|filter| !old.filters.contains(filter))
+        && old
+            .filters
+            .iter()
+            .any(|filter| !new.filters.contains(filter));
+    if swapped || old.config.is_some() && old.config != new.config {
+        return (Vec::new(), Vec::new());
+    }
+    let (old, new) = (&old.filters, &new.filters);
     let kind = |filter: &str| -> String {
         if filter.starts_with('-') {
             filter.split(' ').next().unwrap_or(filter).to_owned()
@@ -485,18 +565,160 @@ fn picks_tests(path: &str) -> bool {
     }
 }
 
-/// `projects[chromium]` in `projects[chromium].use.channel`.
+/// `projects[chromium]` in `projects[chromium].use.channel`. vitest 3.0 also lists them
+/// under `test.workspace`.
 fn project(path: &str) -> Option<String> {
-    let start = path.find("projects[")?;
-    let end = path[start..].find(']')? + start + 1;
-    Some(path[..end].to_owned())
+    let (start, name) = project_at(path)?;
+    Some(path[..start + name.len() + 1].to_owned())
+}
+
+/// `chromium` in `projects[chromium].use.channel`.
+fn project_name(path: &str) -> Option<&str> {
+    project_at(path).map(|(_, name)| name)
+}
+
+/// Where a project's name starts in a setting's path, and the name.
+fn project_at(path: &str) -> Option<(usize, &str)> {
+    let start = ["projects[", "workspace["]
+        .iter()
+        .filter_map(|key| path.find(key).map(|at| at + key.len()))
+        .min()?;
+    let end = path[start..].find(']')? + start;
+    Some((start, &path[start..end]))
+}
+
+/// The projects a config lists, as `projects[chromium]`, in order.
+fn project_names(settings: &[Setting]) -> Vec<String> {
+    let mut names: Vec<String> = settings
+        .iter()
+        .filter_map(|setting| project(&setting.path))
+        .collect();
+    names.dedup();
+    names
+}
+
+/// `packages/web` for `packages/web/vitest.config.ts`, empty at the root.
+fn folder(path: &str) -> &str {
+    path.rsplit_once('/').map_or("", |(folder, _)| folder)
+}
+
+/// The settings with vitest's negated includes as excludes, the same thing written another
+/// way: `include: ['src/**', '!src/legacy/**']` excludes `src/legacy/**`.
+fn normalized(settings: &[Setting]) -> Vec<Setting> {
+    let mut out = settings.to_vec();
+    let mut moved = Vec::new();
+    for setting in &mut out {
+        let Some(place) = setting.path.strip_suffix(".include") else {
+            continue;
+        };
+        let Value::Array(items) = &mut setting.value else {
+            continue;
+        };
+        let negated: Vec<Value> = items
+            .iter()
+            .filter_map(|item| match item {
+                Value::String(item) => item
+                    .strip_prefix('!')
+                    .map(|item| Value::String(item.to_owned())),
+                _ => None,
+            })
+            .collect();
+        if negated.is_empty() || !picks_tests(&setting.path) {
+            continue;
+        }
+        items.retain(|item| !matches!(item, Value::String(item) if item.starts_with('!')));
+        moved.push((format!("{place}.exclude"), negated, setting.line));
+    }
+    for (path, items, line) in moved {
+        match out.iter_mut().find(|setting| setting.path == path) {
+            Some(Setting {
+                value: Value::Array(excluded),
+                ..
+            }) => excluded.extend(items),
+            Some(_) => {}
+            None => out.push(Setting {
+                path,
+                value: Value::Array(items),
+                line,
+            }),
+        }
+    }
+    out
+}
+
+/// Patterns with their `{a,b}` alternatives spelled out, without quotes:
+/// `'src/*.{test,spec}.ts'` → `src/*.test.ts`, `src/*.spec.ts`.
+fn expanded<S: AsRef<str>>(patterns: &[S]) -> Vec<String> {
+    let mut out = Vec::new();
+    for pattern in patterns {
+        let pattern = pattern.as_ref().trim_matches(['\'', '"']);
+        expand(pattern, &mut out);
+    }
+    out
+}
+
+fn expand(pattern: &str, out: &mut Vec<String>) {
+    let Some(open) = pattern.find('{') else {
+        out.push(pattern.to_owned());
+        return;
+    };
+    let mut depth = 0;
+    let mut parts = Vec::new();
+    let mut start = open + 1;
+    for (i, c) in pattern.char_indices().skip(open) {
+        match c {
+            '{' => depth += 1,
+            '}' => {
+                depth -= 1;
+                if depth == 0 {
+                    parts.push(&pattern[start..i]);
+                    for part in parts {
+                        expand(
+                            &format!("{}{part}{}", &pattern[..open], &pattern[i + 1..]),
+                            out,
+                        );
+                    }
+                    return;
+                }
+            }
+            ',' if depth == 1 => {
+                parts.push(&pattern[start..i]);
+                start = i + 1;
+            }
+            _ => {}
+        }
+    }
+    // Unbalanced: as written.
+    out.push(pattern.to_owned());
+}
+
+/// A pattern vitest excludes anyway (`**/node_modules/**`, `**/dist/**`), or a spread of
+/// its defaults (`...configDefaults.exclude`): listing it skips nothing new.
+fn excluded_anyway(item: &str) -> bool {
+    let item = item.trim_matches(['\'', '"']);
+    item.starts_with("...")
+        || matches!(
+            item,
+            "**/node_modules/**"
+                | "node_modules"
+                | "**/node_modules"
+                | "**/dist/**"
+                | "**/.git/**"
+                | "**/cypress/**"
+                | "**/.{idea,git,cache,output,temp}/**"
+                | "**/{karma,rollup,webpack,vite,vitest,jest,ava,babel,nyc,cypress,tsup,build,eslint,prettier}.config.*"
+        )
 }
 
 /// Whether a setting's change lets more failures through: its key decides how to read it.
+///
+/// `elsewhere` is what other projects include: a file excluded here but included there
+/// moved, it isn't skipped.
 fn loosened(
     path: &str,
     old: Option<&Setting>,
     new: Option<&Setting>,
+    elsewhere: &[&str],
 ) -> Option<(Confidence, String)> {
     let key = path.rsplit('.').next().unwrap_or(path);
     let old_value = old.map(|setting| &setting.value);
@@ -554,9 +776,18 @@ fn loosened(
         "exclude" | "testIgnore" | "testPathIgnorePatterns" | "coveragePathIgnorePatterns"
             if picks_tests(path) =>
         {
+            // Compared by what the patterns expand to: `*.{browser,server}.ts` adds only
+            // `*.server.ts` to `*.browser.ts`.
+            let before = expanded(&items(old_value));
+            let elsewhere = expanded(elsewhere);
             let added = items(new_value)
                 .into_iter()
-                .filter(|item| !items(old_value).contains(item))
+                .filter(|item| {
+                    expanded(std::slice::from_ref(item))
+                        .iter()
+                        .any(|one| !before.contains(one) && !elsewhere.contains(one))
+                })
+                .filter(|item| !excluded_anyway(item))
                 .collect::<Vec<_>>();
             if added.is_empty() {
                 return None;

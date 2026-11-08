@@ -19,9 +19,9 @@ pub(super) fn parse(source: &str) -> Result<Workflow, ParseError> {
     for (id, job) in jobs {
         let Some(id) = id.as_str() else { continue };
         let line = key_line(source, id, jobs_line);
-        let mut steps = Vec::new();
+        let mut test_steps = Vec::new();
         let mut from = line;
-        for step in job["steps"].as_vec().into_iter().flatten() {
+        for step in steps(&job["steps"]) {
             let Some(run) = step["run"].as_str() else {
                 continue;
             };
@@ -38,7 +38,7 @@ pub(super) fn parse(source: &str) -> Result<Workflow, ParseError> {
             };
             let step_line = line_after(source, text, from);
             from = step_line + 1;
-            steps.push(TestStep {
+            test_steps.push(TestStep {
                 name: step["name"].as_str().map(str::to_owned),
                 run,
                 line: step_line,
@@ -52,10 +52,31 @@ pub(super) fn parse(source: &str) -> Result<Workflow, ParseError> {
             line,
             condition: scalar(&job["if"]),
             continue_on_error: scalar(&job["continue-on-error"]),
-            steps,
+            steps: test_steps,
         });
     }
     Ok(workflow)
+}
+
+/// The steps of a job, in order, also those nested in a step that holds a list of steps
+/// (`- parallel: [{ run: … }, …]`).
+fn steps(list: &Yaml) -> Vec<&Yaml> {
+    let mut steps = Vec::new();
+    for step in list.as_vec().into_iter().flatten() {
+        if !step["run"].is_badvalue() {
+            steps.push(step);
+            continue;
+        }
+        for (_, value) in step.as_hash().into_iter().flatten() {
+            if value
+                .as_vec()
+                .is_some_and(|items| items.iter().any(|item| item.as_hash().is_some()))
+            {
+                steps.extend(self::steps(value));
+            }
+        }
+    }
+    steps
 }
 
 /// A scalar as written: `true`, `false`, `github.event_name == 'push'`.

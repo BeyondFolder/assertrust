@@ -263,13 +263,13 @@ The IR only labels the kind. Which kind is stricter than which is decided by the
 
 CI and test config files (step 1's Gate kind) become facts about which test failures get through. `assertrust_ir::parse_gate` reads one:
 
-- **GitHub Actions workflows** (read with `yaml-rust2`; `serde_yaml` is archived): every job, with its `if:` and `continue-on-error`, and the steps that run tests. A test step is found by the command it runs, not its position: `npm test`, `npm run test:unit`, `pnpm --filter web test`, `pnpm exec playwright test`, `npx vitest run`, `node --test`, …, also behind a wrapper like `xvfb-run` or `timeout 600`. For each one we record its `if:`, `continue-on-error`, and what the command does to failures:
+- **GitHub Actions workflows** (read with `yaml-rust2`; `serde_yaml` is archived): every job, with its `if:` and `continue-on-error`, and the steps that run tests. A test step is found by the command it runs, not its position: `npm test`, `npm run test:unit`, `pnpm --filter web test`, `pnpm exec playwright test`, `npx vitest run`, `node --test`, …, also behind a wrapper like `xvfb-run` or `timeout 600`. A tool assertrust doesn't know counts when it's used the same way: `vp test`, `turbo run test`, `nr test:unit`, `nub exec --node vitest run`. Common shell commands never count, so `echo test` doesn't. Steps nested inside another step (`- parallel: [{ run: … }]`) are read too. For each one we record its `if:`, `continue-on-error`, and what the command does to failures:
   - swallows them: `|| true`, `|| echo …`, `npm test && echo ok || true`, or a later command deciding the result once `set +e` is on. The script is followed the way the shell runs it. A step runs under `bash -e`, so `npm test; exit 0` still fails, and so does a handler that exits non-zero (`|| { cat log; exit 1; }`). Redirects (`2>&1`, `> out.log`) are ignored. A pipe (`npm test | tee log`) is taken to pass a failure on, as it does with `pipefail`.
   - `--passWithNoTests`, and retries (`--retry 2`, `--retries=2`, or the run repeated: `npm test || npm test`)
-  - what narrows the run: file filters (`vitest run test/unit`), `-t`, `--grep`, `--project`
+  - what narrows the run: file filters (`vitest run test/unit`), `-t`, `--grep`, `--project`, and which `--config` picks the tests
   - what skips tests: `--exclude`, `--testPathIgnorePatterns`, `--grep-invert`
 - **vitest, jest and Playwright configs** (`.ts` / `.js` read with oxc, `.json` as JSON): every literal setting by its path, e.g. `test.coverage.thresholds.lines = 80`. The config object is found through `export default`, `module.exports =`, `defineConfig(…)`, `mergeConfig(…)`, a function returning it, or a `const`. An array of named objects is keyed by name: `projects[chromium].retries`, or vitest's `test.projects[unit].test.include`. A vitest workspace (`defineWorkspace([…])`) is read as its projects, and a project given by folder or glob is keyed by it: `projects[packages/*]`. Anything that isn't a literal stays as written (`process.env.CI ? 2 : 0`).
-- **package.json:** the scripts that run tests (`test`, `tests`, `test:unit`, `test-unit`, `e2e`, not `test:build` or `test:watch`), and the `jest` key's settings. A script is read like a workflow step, but npm runs it with `sh -c`, which goes on after a failure: `vitest run; exit 0` passes there.
+- **package.json:** the scripts that run tests (`test`, `tests`, `test:unit`, `test-unit`, `e2e`), and the `jest` key's settings. Not scripts that build or set up for tests (`test:build`), watch (`test:watch`), or check types (`test:types`, `test:tsd`, `test:attw`): type checks aren't tests. A script is read like a workflow step, but npm runs it with `sh -c`, which goes on after a failure: `vitest run; exit 0` passes there.
 
 Lines are found by searching the file, which is enough for reporting.
 
@@ -505,11 +505,11 @@ It compares the gate facts (step 3) of each CI or test config file before and af
   job test, step "npm test || true": failures no longer fail it · 1a2b3c4
 ```
 
-- **Workflows:** jobs are paired by id (or, when renamed, by how they run tests). Test steps are paired by their script, then their name, then how they run tests (`npm test` → `npm test || true`), then the one step left on each side. Then:
+- **Workflows:** jobs are paired by id (or, when renamed, by how they run tests). Test steps are paired by their script, then their name, then how they run tests (`npm test` → `npm test || true`), then the script they run through another tool (`pnpm test` → `nub run test`), then the one step left on each side. Only jobs that ran tests are checked, not `lint` or `publish`. Then:
   - a test job or step removed (high)
   - `continue-on-error` turned on (high; medium for an expression like `${{ matrix.experimental }}`)
   - an `if:` added or changed: `if: false` is high, any other condition medium. One that still runs the step (`always()`, `!cancelled()`) isn't flagged.
-  - the command now swallows failures, passes with no tests, retries more, or skips tests (high), or runs fewer of them (medium). Fewer means a name pattern or `--changed` added, a first path or `--project`, or one of several dropped. Another path or project runs more, so it isn't flagged.
+  - the command now swallows failures, passes with no tests, retries more, or skips tests (high), or runs fewer of them (medium). Fewer means a name pattern or `--changed` added, a first path or `--project`, or one of several dropped. Another path or project runs more, so it isn't flagged. Neither is a run limited one way before and another way now, since the two can't be compared: `--config fastly.config.ts` → `--project fastly`, `test/unit` → `test/api`.
 - **Test config settings,** by key:
   - `retry` / `retries` raised (high), or set to an expression (medium)
   - `passWithNoTests: true` added (high)
@@ -517,8 +517,10 @@ It compares the gate facts (step 3) of each CI or test config file before and af
   - a pattern added to vitest's `test.exclude`, `testIgnore` or `testPathIgnorePatterns` (high), or to a coverage `exclude` (medium: coverage, not tests)
   - a pattern removed from vitest's `test.include`, `testMatch` or `testRegex`, a project removed, including a workspace entry (high), `testDir` changed (medium)
   - only patterns that pick test files count: Vite's `optimizeDeps.exclude` or `server.watch.exclude` don't
+  - patterns are compared for what they mean. A negated include (`'!src/legacy/**'`) is an exclude, and `{a,b}` alternatives are spelled out. A pattern vitest excludes anyway (`**/node_modules/**`, `...configDefaults.exclude`) skips nothing new. A file excluded from one project that another project now includes moved; it wasn't skipped.
+  - a project is removed only if no config in the same folder lists it now: vitest 3 moves `vitest.workspace.ts`'s projects into `vitest.config.ts`'s `test.projects` (or `test.workspace`). A new project's settings aren't checked, since it only adds tests.
   - `forbidOnly` turned off or `allowOnly: true` (medium: a committed `.only` passes)
-- **package.json:** each test script's command, like a workflow step's, and the `jest` settings. A test script that no longer runs a test runner is high when it does nothing (`echo skip`). It's medium when it runs something else, since `turbo test` may still run the tests. A test script removed is medium, because CI calling it would now fail loudly.
+- **package.json:** each test script's command, like a workflow step's, and the `jest` settings. A test script that no longer runs a test runner is high when it does nothing (`echo skip`). It's medium when it runs something else, since `node scripts/ci.js` may still run the tests. A test script removed is medium, because CI calling it would now fail loudly.
 
 A deleted workflow or config counts as all of it removed. So does one renamed or moved where it no longer runs (`ci.yml` → `ci.yml.disabled`). Raising a threshold, removing a skip, or adding a step is stricter and never flagged. Not covered yet: triggers (`on:`), matrix entries, a step's own `shell:`, and which script a renamed `npm run …` step now runs.
 
@@ -540,7 +542,7 @@ A deleted workflow or config counts as all of it removed. So does one renamed or
 
 | Matcher kind | Positive check: looser when… | Under `.not`: looser when… |
 |---|---|---|
-| Subset (`toMatchObject` at every level; `expect.objectContaining` at its own level, since its fields are compared exactly) | keys are removed | keys are added |
+| Subset (`toMatchObject` at every level; `expect.objectContaining` at its own level, since its fields are compared exactly) | keys are removed. A key whose value moved to a new key was renamed with the code (`statusCode: 422` → `status: 422`): `outcome-changed` | keys are added |
 | Any expected value | it becomes `expect.any(…)` or `expect.anything()` that still accepts the old value (`expect.anything()` rejects `null`, `expect.any(String)` a number: those are `outcome-changed`); an exact object becomes `expect.objectContaining(…)` | n/a (it's stricter) |
 | Pattern (`toMatch`, `expect.stringMatching`) | alternatives are added (at least one kept), or a flag that matches more (`i`, `s`, `m`) | alternatives or such a flag are removed |
 | Text (`toMatch` with a string, `toContainText`, `expect.stringContaining`) | the text is shortened | the text is lengthened |
@@ -580,6 +582,21 @@ A deleted workflow or config counts as all of it removed. So does one renamed or
 - **Borderline ones worth a look:** `038cf0b` dropped the `preview` check (the example in step 4), and `11c140f` dropped `toMatchObject({ subdomainPolicy, nonexistentPolicy, adkim, aspf })` from "surfaces sp, np and strict alignment", which still checks the findings for them.
 - **The 43 changed outcomes are legitimate behaviour changes:** new prices in `.each` tables, renamed constants, `toBe(false)` → `toBe('skipped')` when a result became a status. That's why they're hidden.
 - **Other branches:** `10d8742` on `forward_email` is found commit by commit (`toMatchObject no longer checks domainIds, status`), and a PR-style check of the branch finds nothing, since `f8e4323` restored the fields. On `plan/audiences`, `6913cd6` removed a column and a row from an `.each` table: `.each now runs 4 rows instead of 5`, at medium.
+
+### Checked on public repos
+
+The last 600 commits of hono, h3, zod, nuxt/ui and vueuse, one by one: 3 to 5 seconds each, nothing fails to parse. The first run had 71 `gate-loosened` findings, mostly false. Each pattern behind them is now handled and has a test:
+- vitest 3 moving projects from `vitest.workspace.ts` into `vitest.config.ts` (zod, vueuse)
+- a new tool running the same scripts: `pnpm test` → `nub run test` (zod), `vitest` → `vp test` (hono)
+- steps nested under `parallel:` (nuxt/ui)
+- type checks taken for tests: `test:types` renamed `typecheck` (h3)
+- `--config x` → `--project x` read as a narrower run (hono)
+- conditions on jobs that run no tests (zod's `lint` and publish jobs)
+- negated includes moved to `exclude`, default excludes listed, and files moved to a new project (vueuse)
+
+What's left is 23 findings. 19 are correct: a CI job dropped with its tests (hono's lambda jobs), a reverted workflow that ran tests, conditions added to test jobs, a coverage script now running one project, and coverage now ignoring more files. The other 4 come from vueuse splitting or merging CI steps whose scripts point to other scripts. Seeing those needs following `npm run X` into `package.json`, which is listed under "Not covered yet".
+
+In the test rules, 90 of h3's 94 `expectation-loosened` are bundle-size budgets raised (`toBeLessThanOrEqual(5200)` → `5300`). They're correct and stay at medium; a repo that finds them noisy can ignore the path once config lands (step 6). 2 came from fields renamed along with an API, now `outcome-changed`. zod's biggest group of `test-disabled`, 32 of 73, is one revert that deleted a feature with its tests: correct, but 32 lines for one commit. Grouping them is for the output (step 6).
 
 ### Tests
 

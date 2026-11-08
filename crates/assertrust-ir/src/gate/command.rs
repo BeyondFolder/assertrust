@@ -353,7 +353,34 @@ fn test_run(tokens: &[String]) -> Option<usize> {
             }
         }
         "npx" | "bunx" => runner(tokens, runner_flags(tokens, at + 1)),
-        _ => runner(tokens, at),
+        _ => runner(tokens, at).or_else(|| other_tool(tokens, at)),
+    }
+}
+
+/// Shell commands that never run tests, even when followed by `test`: `echo test`,
+/// `cd test`, `git commit -m test:unit`.
+const NOT_RUNNERS: &[&str] = &[
+    "echo", "printf", "cd", "mkdir", "rm", "rmdir", "ls", "cat", "cp", "mv", "touch", "chmod",
+    "chown", "ln", "find", "grep", "sed", "awk", "test", "export", "source", "tar", "unzip",
+    "curl", "wget", "git", "gh", "head", "tail", "wc", "sort", "xargs", "kill", "sleep",
+];
+
+/// A tool assertrust doesn't know that runs tests the way package managers do:
+/// `vp test`, `nr test:unit`, `turbo run test`, `nub exec --node vitest run`, `make test`.
+fn other_tool(tokens: &[String], at: usize) -> Option<usize> {
+    let word = |i: usize| tokens.get(i).map(String::as_str);
+    if NOT_RUNNERS.contains(&binary(word(at)?)) {
+        return None;
+    }
+    match word(at + 1)? {
+        "test" => Some(at + 2),
+        "run" | "run-script" => {
+            let at = manager_flags(tokens, at + 2, "");
+            is_test_script(word(at)?).then_some(at + 1)
+        }
+        "exec" | "x" | "dlx" => runner(tokens, runner_flags(tokens, at + 2)),
+        script if script.contains(':') && is_test_script(script) => Some(at + 2),
+        _ => runner(tokens, at + 1),
     }
 }
 
@@ -412,7 +439,17 @@ fn manager_flags(tokens: &[String], mut at: usize, manager: &str) -> usize {
         "npm" => &["-w", "--workspace", "--prefix"],
         "pnpm" => &["--filter", "-F", "-C", "--dir"],
         "yarn" => &["--cwd"],
-        _ => &["--filter", "--cwd"],
+        "bun" => &["--filter", "--cwd"],
+        // A tool assertrust doesn't know: the usual ones.
+        _ => &[
+            "--filter",
+            "-F",
+            "--cwd",
+            "-C",
+            "--dir",
+            "--workspace",
+            "--prefix",
+        ],
     };
     while let Some(token) = tokens.get(at) {
         if token.starts_with('-') {
@@ -456,16 +493,16 @@ fn runner(tokens: &[String], at: usize) -> Option<usize> {
 
 /// A `package.json` script that runs tests, by its name: `test`, `tests`, `test:unit`,
 /// `test-unit`, `unit:test`, `e2e`. Not one that only builds or sets up for them
-/// (`test:build`), or watches (`test:watch`).
+/// (`test:build`), watches (`test:watch`), or checks types (`test:types`, `test:tsd`).
 pub(crate) fn is_test_script(name: &str) -> bool {
-    let tests = name.starts_with("e2e")
-        || name
-            .split([':', '-', '_', '.', '/'])
-            .any(|word| matches!(word, "test" | "tests" | "e2e"));
+    let words = || name.split([':', '-', '_', '.', '/']);
+    let tests =
+        name.starts_with("e2e") || words().any(|word| matches!(word, "test" | "tests" | "e2e"));
     let support = ["build", "setup", "prepare", "install", "watch"]
         .iter()
         .any(|word| name.contains(word));
-    tests && !support
+    let types = words().any(|word| matches!(word, "types" | "type" | "typecheck" | "tsd" | "attw"));
+    tests && !support && !types
 }
 
 fn is_assignment(token: &str) -> bool {
@@ -479,8 +516,6 @@ fn flags(tokens: &[String], command: &mut Command) {
     // Flags whose value is the next token, unless written `--flag=value`.
     const TAKE_VALUE: &[&str] = &[
         "--reporter",
-        "--config",
-        "-c",
         "--shard",
         "--workers",
         "-j",
@@ -529,6 +564,7 @@ fn flags(tokens: &[String], command: &mut Command) {
                     command.filters.push(format!("{flag} {value}"));
                 }
             }
+            "--config" | "-c" => command.config = value(&mut i),
             "--changed" | "--onlyChanged" | "-o" | "--findRelatedTests" => {
                 command.filters.push(flag.to_owned());
             }
@@ -595,6 +631,15 @@ mod tests {
             ("bun test", "bun test"),
             ("node --test", "node"),
             ("npm ci && npm test", "npm test"),
+            ("vp test --run", "vp test"),
+            ("nr test:unit", "nr test:unit"),
+            ("turbo run test --filter web", "turbo run test"),
+            (
+                "nub run --filter @zod/resolution test:all",
+                "nub run --filter @zod/resolution test:all",
+            ),
+            ("nub exec --node vitest run", "nub exec --node vitest"),
+            ("make test", "make test"),
         ];
         for (script, runner) in cases {
             assert_eq!(
@@ -608,7 +653,13 @@ mod tests {
             "npm run lint",
             "npm run test:build",
             "echo test",
+            "echo test:unit",
+            "cd test",
+            "git commit -m test",
             "time make test",
+            "pnpm test:types",
+            "npm run test:tsd",
+            "docker compose up -d",
         ] {
             assert_eq!(read(script, Shell::StopOnError), None, "{script}");
         }

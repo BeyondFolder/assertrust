@@ -25,6 +25,37 @@ fn findings(path: &str, before: &str, after: &str) -> Vec<String> {
         .collect()
 }
 
+/// Findings for several gate files changed together, as `path confidence line: message`.
+/// Each file is `(path, before, after)`, `None` where it doesn't exist.
+fn findings_together(files: &[(&str, Option<&str>, Option<&str>)]) -> Vec<String> {
+    let parsed: Vec<_> = files
+        .iter()
+        .map(|(path, before, after)| {
+            let parse = |source: &Option<&str>| {
+                source.map(|source| parse_gate(path, source).expect("parses"))
+            };
+            (*path, parse(before), parse(after))
+        })
+        .collect();
+    let gates: Vec<GateFile> = parsed
+        .iter()
+        .map(|(path, before, after)| GateFile {
+            before: before.as_ref().map(|gate| GateSide { path, gate }),
+            after: after.as_ref().map(|gate| GateSide { path, gate }),
+        })
+        .collect();
+    check(&[], &gates)
+        .iter()
+        .map(|finding| {
+            let line = finding.line.map_or("-".to_owned(), |line| line.to_string());
+            format!(
+                "{} {} {line}: {}",
+                finding.path, finding.confidence, finding.message
+            )
+        })
+        .collect()
+}
+
 fn workflow(steps: &str) -> String {
     format!(
         "on: [push]\njobs:\n  test:\n    runs-on: ubuntu-latest\n    steps:\n      - run: npm ci\n{steps}"
@@ -483,7 +514,7 @@ fn a_test_script_emptied_or_removed() {
         findings(
             "package.json",
             before,
-            r#"{ "scripts": { "test": "turbo test", "test:e2e": "playwright test" } }"#
+            r#"{ "scripts": { "test": "node scripts/ci.js", "test:e2e": "playwright test" } }"#
         ),
         ["medium 1: script test: no longer runs vitest"]
     );
@@ -495,5 +526,215 @@ fn a_test_script_emptied_or_removed() {
             r#"{ "scripts": { "test": "vitest run", "e2e": "playwright test --retries 2" } }"#
         ),
         ["high 1: script e2e: retries raised from 0 to 2"]
+    );
+}
+
+#[test]
+fn test_runs_through_tools_assertrust_does_not_know() {
+    for run in [
+        "vp test --run",
+        "nr test:unit",
+        "nub exec --node vitest run",
+        "nub run --filter @zod/resolution test:all",
+    ] {
+        assert_eq!(
+            findings(
+                WORKFLOW,
+                &workflow(&format!("      - run: {run}\n")),
+                &workflow(&format!("      - run: {run} || true\n")),
+            ),
+            [format!(
+                "high 7: job test, step \"{run} || true\": failures no longer fail it"
+            )],
+            "{run}"
+        );
+    }
+    // The same scripts through another tool (zod's e4d67f3).
+    assert_eq!(
+        findings(
+            WORKFLOW,
+            &workflow(
+                "      - run: pnpm test\n      - run: pnpm run --filter api test:all\n      - run: pnpm run --filter web test:all\n"
+            ),
+            &workflow(
+                "      - run: nub run test\n      - run: nub run --filter api test:all\n      - run: nub run --filter web test:all\n"
+            ),
+        ),
+        [""; 0]
+    );
+    assert_eq!(
+        findings(
+            "package.json",
+            r#"{ "scripts": { "test": "vitest --run" } }"#,
+            r#"{ "scripts": { "test": "vp test --run" } }"#,
+        ),
+        [""; 0]
+    );
+}
+
+#[test]
+fn type_checks_are_not_tests() {
+    assert_eq!(
+        findings(
+            WORKFLOW,
+            &workflow("      - run: pnpm test:types\n"),
+            &workflow("      - run: pnpm typecheck\n"),
+        ),
+        [""; 0]
+    );
+}
+
+#[test]
+fn conditions_on_jobs_that_run_no_tests() {
+    let before = "jobs:\n  lint:\n    steps:\n      - run: npm run lint\n  test:\n    steps:\n      - run: npm test\n";
+    let after = "jobs:\n  lint:\n    if: github.event_name == 'push'\n    continue-on-error: true\n    steps:\n      - run: npm run lint\n  test:\n    steps:\n      - run: npm test\n";
+    assert_eq!(findings(WORKFLOW, before, after), [""; 0]);
+}
+
+#[test]
+fn a_run_limited_another_way() {
+    let script = |run: &str| format!(r#"{{ "scripts": {{ "test:fastly": "{run}" }} }}"#);
+    assert_eq!(
+        findings(
+            "package.json",
+            &script("vitest --run --config ./runtime-tests/fastly/vitest.config.ts"),
+            &script("vitest --run --project fastly"),
+        ),
+        [""; 0]
+    );
+    let step = |run: &str| workflow(&format!("      - run: {run}\n"));
+    for (before, after) in [
+        ("npx vitest run test/unit", "npx vitest run test/api"),
+        ("npx vitest run -t refunds", "npx vitest run -t charges"),
+        (
+            "bun test runtime-tests/bun/index.test.tsx",
+            "bun test runtime-tests/bun/*",
+        ),
+    ] {
+        assert_eq!(
+            findings(WORKFLOW, &step(before), &step(after)),
+            [""; 0],
+            "{after}"
+        );
+    }
+}
+
+#[test]
+fn test_steps_nested_in_another_step() {
+    let before = workflow("      - run: pnpm run lint\n      - run: pnpm run test run\n");
+    let nested = |run: &str| {
+        workflow(&format!(
+            "      - parallel:\n          - name: Lint\n            run: pnpm run lint\n          - name: Test\n            run: {run}\n"
+        ))
+    };
+    assert_eq!(
+        findings(WORKFLOW, &before, &nested("pnpm run test run")),
+        [""; 0]
+    );
+    assert_eq!(
+        findings(WORKFLOW, &before, &nested("pnpm run test run || true")),
+        ["high 11: job test, step \"pnpm run test run || true\": failures no longer fail it"]
+    );
+}
+
+#[test]
+fn projects_moved_from_the_workspace_file_into_the_config() {
+    let workspace = "export default defineWorkspace([
+  'packages/*',
+  { test: { name: 'browser', include: ['**/*.browser.test.ts'] } },
+]);";
+    let config = "export default defineConfig({ test: { coverage: { enabled: true } } });";
+    let moved = "export default defineConfig({ test: {
+  coverage: { enabled: true },
+  projects: ['packages/*', { test: { name: 'browser', include: ['**/*.browser.test.ts'] } }],
+} });";
+    // vitest 3: the workspace file goes, its projects move into the config.
+    assert_eq!(
+        findings_together(&[
+            ("vitest.workspace.ts", Some(workspace), None),
+            ("vitest.config.ts", Some(config), Some(moved)),
+        ]),
+        [""; 0]
+    );
+    // vitest 3.0's inline `test.workspace`.
+    let inline = "export default defineConfig({ test: {
+  workspace: ['packages/*', { test: { name: 'browser', exclude: ['**/legacy/**'] } }],
+} });";
+    assert_eq!(
+        findings_together(&[
+            ("vitest.workspace.ts", Some(workspace), None),
+            ("vitest.config.ts", Some(config), Some(inline)),
+        ]),
+        [""; 0]
+    );
+    // Gone from both: still removed. And a config in another folder doesn't count.
+    assert_eq!(
+        findings_together(&[
+            ("vitest.workspace.ts", Some(workspace), None),
+            ("packages/web/vitest.config.ts", Some(config), Some(moved)),
+        ]),
+        [
+            "vitest.workspace.ts high -: projects[packages/*] removed: its tests no longer run",
+            "vitest.workspace.ts high -: projects[browser] removed: its tests no longer run",
+        ]
+    );
+}
+
+#[test]
+fn a_new_project_only_adds_tests() {
+    assert_eq!(
+        findings(
+            "vitest.config.ts",
+            "export default defineConfig({ test: { exclude: ['**/sandbox/**'] } });",
+            "export default defineConfig({ test: { projects: [
+  { test: { name: 'main', exclude: [...configDefaults.exclude, '**/sandbox/**', '**/*.case.test.ts'] } },
+] } });",
+        ),
+        [""; 0]
+    );
+}
+
+#[test]
+fn excludes_written_another_way_or_moved_to_another_project() {
+    let cases = [
+        // A negated include is an exclude.
+        (
+            "export default { test: { include: ['src/**/*.test.ts', '!src/legacy/**'] } }",
+            "export default { test: { include: ['src/**/*.test.ts'], exclude: ['src/legacy/**'] } }",
+        ),
+        (
+            "export default { test: { include: ['src/**/*.test.ts', '!src/legacy/**'] } }",
+            "export default { test: { include: ['src/**/*.test.ts'] } }",
+        ),
+        // vitest excludes these anyway.
+        (
+            "export default { test: { include: ['src/**/*.test.ts'] } }",
+            "export default { test: { include: ['src/**/*.test.ts'], exclude: ['**/node_modules/**', ...configDefaults.exclude] } }",
+        ),
+        // Moved to a new project (vueuse's c541332 and 73aad31).
+        (
+            "export default { test: { projects: [{ test: { name: 'unit', exclude: ['**/*.browser.test.ts'] } }] } }",
+            "export default { test: { projects: [
+  { test: { name: 'unit', exclude: ['**/*.{browser,server}.test.ts', 'test/exports.test.ts'] } },
+  { test: { name: 'server', include: ['**/*.server.test.ts'] } },
+  { test: { name: 'exports', include: ['test/exports.test.ts'] } },
+] } }",
+        ),
+    ];
+    for (before, after) in cases {
+        assert_eq!(
+            findings("vitest.config.ts", before, after),
+            [""; 0],
+            "{after}"
+        );
+    }
+    // A pattern that's skipped for real.
+    assert_eq!(
+        findings(
+            "vitest.config.ts",
+            "export default { test: { include: ['src/**/*.test.ts', '!src/legacy/**'] } }",
+            "export default { test: { include: ['src/**/*.test.ts', '!src/{legacy,billing}/**'] } }",
+        ),
+        ["high 1: test.exclude: now skips 'src/{legacy,billing}/**'"]
     );
 }

@@ -1,2 +1,6 @@
 /target
 .assertrust/
+
+# insta leftovers from failed snapshot runs
+*.pending-snap
+*.snap.new

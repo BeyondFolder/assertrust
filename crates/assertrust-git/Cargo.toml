@@ -1,0 +1,15 @@
+[package]
+name = "assertrust-git"
+description = "The input layer of assertrust: which commits and files a check looks at"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+globset.workspace = true
+tempfile.workspace = true
+
+[lints]
+workspace = true

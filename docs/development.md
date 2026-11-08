@@ -2,7 +2,7 @@
 
 ## Prerequisites
 
-- Rust 1.85 or newer, installed with [rustup](https://rustup.rs). The minimum is set by `rust-version` in `Cargo.toml`, and CI checks it.
+- Rust 1.88 or newer, installed with [rustup](https://rustup.rs). The minimum is set by `rust-version` in `Cargo.toml`, and CI checks it.
 - git 2.28 or newer.
 
 ## Build and run
@@ -28,9 +28,16 @@ Cargo.toml                    workspace: shared versions, dependencies, lints
 crates/assertrust/            the binary
   src/main.rs                 entry point, exit codes
   src/cli.rs                  commands and flags (clap, derive API)
+  src/changes.rs              `assertrust changes` output
   tests/common/mod.rs         test harness: temp git repos, running the binary
   tests/*.rs                  integration tests
   tests/snapshots/*.snap      expected outputs (insta)
+crates/assertrust-git/        input layer (step 1): which commits and files to look at
+  src/mode.rs                 --range / --staged / --worktree / default → revisions
+  src/git.rs                  every git call (from the repo root, read-only, NUL-separated output)
+  src/diff.rs                 parsing `git diff --name-status -z`
+  src/classify.rs             file kinds: test, test-support, gate, source, other
+  src/model.rs                the types handed to later steps
 ```
 
 New crates are added in the PR that gives them code (see `docs/architecture.md` for the planned pieces).
@@ -58,7 +65,7 @@ fn flags_a_loosened_matcher() {
 }
 ```
 
-Other helpers: `branch`, `switch`, `merge` (always a merge commit), `stage`, `remove`, `git` (any git command).
+Other helpers: `branch`, `switch`, `merge` (always a merge commit), `stage`, `remove`, `git` (any git command), `assertrust_in` (run from a subdirectory), `assertrust_into_closed_pipe` (stdout closed early, like `| head`).
 
 **Why the harness isolates git.** Tests must behave the same on every machine. So git runs:
 - without your global or system config: commit signing, hooks or aliases would otherwise change or hang tests
@@ -69,14 +76,18 @@ Other helpers: `branch`, `switch`, `merge` (always a merge commit), `stage`, `re
 
 Some tests compare output against a stored file in `tests/snapshots/` instead of a string in the code, using [insta](https://insta.rs). Examples are the `--help` text and, later, findings output. A change in output shows up as a diff of the `.snap` file in the PR, which is easy to review.
 
+Snapshots come in two forms:
+- **Inline:** the expected text sits in the test itself, after `@r"`, next to the repo the test builds. Most tests use these because they're easy to read.
+- **File:** stored in `tests/snapshots/*.snap`. Used for long output like `--help`.
+
 When output changes on purpose:
 
 ```sh
-INSTA_UPDATE=always cargo test   # rewrite the snapshots
-git diff crates/*/tests/snapshots # review what changed
+cargo install cargo-insta           # once
+cargo insta test --review           # run tests, then accept or reject each changed snapshot
 ```
 
-Alternatively, run `cargo install cargo-insta`, then `cargo insta review` to accept or reject each change interactively. CI never writes snapshots. A mismatch fails the build.
+File snapshots can also be rewritten without cargo-insta, using `INSTA_UPDATE=always cargo test`. Then review them with `git diff`. CI never writes snapshots. A mismatch fails the build.
 
 ## Exit codes
 

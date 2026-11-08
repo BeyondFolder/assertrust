@@ -24,8 +24,16 @@ pub struct Cli {
 pub enum Command {
     /// Check a change for weakened tests
     Check(CheckArgs),
+    /// Show which commits and files a check would look at (for debugging)
+    Changes(ChangesArgs),
     /// Print the tests and checks found in one file, as JSON (for debugging)
     Ir(IrArgs),
+}
+
+#[derive(Debug, Args)]
+pub struct ChangesArgs {
+    #[command(flatten)]
+    pub mode: Mode,
 }
 
 #[derive(Debug, Args)]
@@ -46,12 +54,14 @@ pub struct CheckArgs {
     pub verbose: bool,
 }
 
-/// What to compare. At most one of these can be given.
+/// What to compare. At most one of these can be given. With none, the current branch is
+/// compared with the default branch, PR-style.
 #[derive(Debug, Args)]
 #[group(multiple = false)]
 pub struct Mode {
-    /// Check each commit in a range, e.g. origin/main..HEAD
-    #[arg(long, value_name = "BASE..HEAD")]
+    /// BASE..HEAD checks each commit; BASE...HEAD checks it like a PR (what HEAD adds since it
+    /// split off from BASE)
+    #[arg(long, value_name = "RANGE")]
     pub range: Option<String>,
 
     /// Check a GitHub pull request (merge-base to head)
@@ -65,6 +75,27 @@ pub struct Mode {
     /// Check uncommitted changes (HEAD to files on disk), for coding-agent hooks
     #[arg(long)]
     pub worktree: bool,
+}
+
+impl Mode {
+    /// The input layer's mode. `--pr` isn't supported until the GitHub Action exists.
+    pub fn to_input(&self) -> Result<assertrust_git::Mode, String> {
+        if self.pr.is_some() {
+            return Err(
+                "--pr isn't supported yet (it comes with the GitHub Action); use --range BASE...HEAD"
+                    .to_owned(),
+            );
+        }
+        Ok(if let Some(range) = &self.range {
+            assertrust_git::Mode::Range(range.clone())
+        } else if self.staged {
+            assertrust_git::Mode::Staged
+        } else if self.worktree {
+            assertrust_git::Mode::WorkTree
+        } else {
+            assertrust_git::Mode::Default
+        })
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]

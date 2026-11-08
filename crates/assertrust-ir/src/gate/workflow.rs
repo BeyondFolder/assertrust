@@ -19,9 +19,16 @@ pub(super) fn parse(source: &str) -> Result<Workflow, ParseError> {
     for (id, job) in jobs {
         let Some(id) = id.as_str() else { continue };
         let line = key_line(source, id, jobs_line);
-        let mut steps = Vec::new();
+        let mut test_steps = Vec::new();
         let mut from = line;
-        for step in job["steps"].as_vec().into_iter().flatten() {
+        let mut found = Vec::new();
+        steps(&job["steps"], None, None, &mut found);
+        for Step {
+            yaml: step,
+            condition,
+            continue_on_error,
+        } in found
+        {
             let Some(run) = step["run"].as_str() else {
                 continue;
             };
@@ -38,24 +45,74 @@ pub(super) fn parse(source: &str) -> Result<Workflow, ParseError> {
             };
             let step_line = line_after(source, text, from);
             from = step_line + 1;
-            steps.push(TestStep {
+            test_steps.push(TestStep {
                 name: step["name"].as_str().map(str::to_owned),
                 run,
                 line: step_line,
-                condition: scalar(&step["if"]),
-                continue_on_error: scalar(&step["continue-on-error"]),
+                condition,
+                continue_on_error,
                 command,
             });
         }
         workflow.jobs.push(Job {
             id: id.to_owned(),
+            name: job["name"].as_str().map(str::to_owned),
+            uses: job["uses"].as_str().map(str::to_owned),
             line,
             condition: scalar(&job["if"]),
             continue_on_error: scalar(&job["continue-on-error"]),
-            steps,
+            steps: test_steps,
         });
     }
     Ok(workflow)
+}
+
+/// A step that may run tests, with the `if:` and `continue-on-error` that apply to it.
+struct Step<'y> {
+    yaml: &'y Yaml,
+    condition: Option<String>,
+    continue_on_error: Option<String>,
+}
+
+/// The steps of a job, in order, also those nested in a step that holds a list of steps
+/// (`- parallel: [{ run: … }, …]`). A nested step is under its wrapper's `if:` as well
+/// as its own, and gets the wrapper's `continue-on-error` unless it sets one.
+fn steps<'y>(
+    list: &'y Yaml,
+    condition: Option<&str>,
+    continue_on_error: Option<&str>,
+    out: &mut Vec<Step<'y>>,
+) {
+    for step in list.as_vec().into_iter().flatten() {
+        let own = scalar(&step["if"]);
+        let condition = match (condition, own) {
+            (Some(outer), Some(own)) => Some(format!("{outer} && {own}")),
+            (outer, own) => own.or_else(|| outer.map(str::to_owned)),
+        };
+        let continue_on_error =
+            scalar(&step["continue-on-error"]).or_else(|| continue_on_error.map(str::to_owned));
+        if !step["run"].is_badvalue() {
+            out.push(Step {
+                yaml: step,
+                condition,
+                continue_on_error,
+            });
+            continue;
+        }
+        for (_, value) in step.as_hash().into_iter().flatten() {
+            if value
+                .as_vec()
+                .is_some_and(|items| items.iter().any(|item| item.as_hash().is_some()))
+            {
+                steps(
+                    value,
+                    condition.as_deref(),
+                    continue_on_error.as_deref(),
+                    out,
+                );
+            }
+        }
+    }
 }
 
 /// A scalar as written: `true`, `false`, `github.event_name == 'push'`.

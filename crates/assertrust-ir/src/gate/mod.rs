@@ -33,6 +33,10 @@ pub struct Workflow {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Job {
     pub id: String,
+    /// `name:`, as written.
+    pub name: Option<String>,
+    /// `uses:`: the reusable workflow the job calls, like `./.github/workflows/test.yml`.
+    pub uses: Option<String>,
     pub line: u32,
     /// `if:`, as written.
     pub condition: Option<String>,
@@ -66,6 +70,9 @@ pub struct Command {
     pub retries: Option<u32>,
     /// What narrows which tests run: file filters, `-t name`, `--grep x`, `--project p`.
     pub filters: Vec<String>,
+    /// `--config x`: which config picks the tests. A run with another config can't be
+    /// compared with this one.
+    pub config: Option<String>,
     /// What skips tests: `--exclude x`, `--testPathIgnorePatterns x`, `--grep-invert x`.
     pub excludes: Vec<String>,
 }

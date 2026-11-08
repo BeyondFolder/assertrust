@@ -131,12 +131,13 @@ fn value(old: &Value, new: &Value, mode: Mode, path: &str, diff: &mut Diff) {
                 match new.get(key) {
                     Some(new_value) => value(old_value, new_value, inner, &join(path, key), diff),
                     None if mode != Mode::Exact => {
-                        // The same value under a new key (`statusCode: 422` → `status: 422`):
-                        // renamed along with the code, not dropped.
+                        // The same value under a new key that looks alike (`statusCode: 422`
+                        // → `status: 422`): renamed along with the code, not dropped.
                         let renamed = new.iter().find(|(other, new_value)| {
                             !old.contains_key(*other)
                                 && !renamed_to.contains(other)
                                 && *new_value == old_value
+                                && alike(key, other)
                         });
                         match renamed {
                             Some((other, _)) => {
@@ -447,6 +448,15 @@ fn wider(old: &Value, new: &Value) -> Option<Confidence> {
         }
         _ => None,
     }
+}
+
+/// Whether two keys look like one renamed: one contains the other (`statusCode`,
+/// `status`), or they start the same for at least 4 letters (`statusMessage`,
+/// `statusText`). Case doesn't matter.
+fn alike(a: &str, b: &str) -> bool {
+    let (a, b) = (a.to_lowercase(), b.to_lowercase());
+    let shared = a.chars().zip(b.chars()).take_while(|(x, y)| x == y).count();
+    a.contains(&b) || b.contains(&a) || shared >= 4
 }
 
 fn join(path: &str, key: &str) -> String {

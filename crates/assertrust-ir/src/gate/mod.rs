@@ -33,6 +33,10 @@ pub struct Workflow {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Job {
     pub id: String,
+    /// `name:`, as written.
+    pub name: Option<String>,
+    /// `uses:`: the reusable workflow the job calls, like `./.github/workflows/test.yml`.
+    pub uses: Option<String>,
     pub line: u32,
     /// `if:`, as written.
     pub condition: Option<String>,

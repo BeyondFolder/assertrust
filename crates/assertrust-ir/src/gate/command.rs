@@ -357,19 +357,20 @@ fn test_run(tokens: &[String]) -> Option<usize> {
     }
 }
 
-/// Shell commands that never run tests, even when followed by `test`: `echo test`,
-/// `cd test`, `git commit -m test:unit`.
-const NOT_RUNNERS: &[&str] = &[
-    "echo", "printf", "cd", "mkdir", "rm", "rmdir", "ls", "cat", "cp", "mv", "touch", "chmod",
-    "chown", "ln", "find", "grep", "sed", "awk", "test", "export", "source", "tar", "unzip",
-    "curl", "wget", "git", "gh", "head", "tail", "wc", "sort", "xargs", "kill", "sleep",
+/// JS tools that run package scripts or test runners, besides npm, pnpm, yarn and bun:
+/// monorepo runners (`turbo run test`, `nx test web`), `ni`'s shortcuts (`nr test:unit`),
+/// Vite+ (`vp test`), `deno test`, `nub`. Only these: a guess at any tool also took
+/// `docker run --name test-db` for a test run.
+const TOOLS: &[&str] = &[
+    "turbo", "nx", "lerna", "rush", "rushx", "moon", "lage", "ultra", "ni", "nr", "nlx", "na",
+    "vp", "deno", "nub",
 ];
 
-/// A tool assertrust doesn't know that runs tests the way package managers do:
-/// `vp test`, `nr test:unit`, `turbo run test`, `nub exec --node vitest run`, `make test`.
+/// A tool from [`TOOLS`] running tests: `vp test`, `nr test:unit`, `turbo run test`,
+/// `nub run --filter api test:all`, `nub exec --node vitest run`.
 fn other_tool(tokens: &[String], at: usize) -> Option<usize> {
     let word = |i: usize| tokens.get(i).map(String::as_str);
-    if NOT_RUNNERS.contains(&binary(word(at)?)) {
+    if !TOOLS.contains(&binary(word(at)?)) {
         return None;
     }
     match word(at + 1)? {
@@ -379,7 +380,7 @@ fn other_tool(tokens: &[String], at: usize) -> Option<usize> {
             is_test_script(word(at)?).then_some(at + 1)
         }
         "exec" | "x" | "dlx" => runner(tokens, runner_flags(tokens, at + 2)),
-        script if script.contains(':') && is_test_script(script) => Some(at + 2),
+        script if is_test_script(script) => Some(at + 2),
         _ => runner(tokens, at + 1),
     }
 }
@@ -639,7 +640,8 @@ mod tests {
                 "nub run --filter @zod/resolution test:all",
             ),
             ("nub exec --node vitest run", "nub exec --node vitest"),
-            ("make test", "make test"),
+            ("nx test web", "nx test; only web"),
+            ("deno test -A", "deno test"),
         ];
         for (script, runner) in cases {
             assert_eq!(
@@ -660,6 +662,10 @@ mod tests {
             "pnpm test:types",
             "npm run test:tsd",
             "docker compose up -d",
+            "docker run -d --name test-postgres postgres",
+            "go run ./cmd/test",
+            "make test",
+            "cargo test --features serde",
         ] {
             assert_eq!(read(script, Shell::StopOnError), None, "{script}");
         }

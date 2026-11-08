@@ -779,6 +779,14 @@ fn fields_renamed_with_their_values_are_a_changed_outcome() {
         ),
         ["expectation-loosened high 1: toMatchObject no longer checks statusCode"]
     );
+    // The same value under a key that doesn't look alike: not a rename.
+    assert_eq!(
+        one_check(
+            "expect(user).toMatchObject({ id: 1, verified: true })",
+            "expect(user).toMatchObject({ id: 1, active: true })",
+        ),
+        ["expectation-loosened high 1: toMatchObject no longer checks verified"]
+    );
 }
 
 #[test]

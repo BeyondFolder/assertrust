@@ -29,6 +29,22 @@ pub(crate) fn check(gates: &[GateFile], findings: &mut Vec<Finding>) {
                 .map(|name| (folder(after.path), name))
         })
         .collect();
+    // Each project's settings before, by folder and name, in any file: a project moved to
+    // another file or key is compared with what it was.
+    let mut before_projects: BTreeMap<(&str, &str), Vec<&Setting>> = BTreeMap::new();
+    for before in gates.iter().filter_map(|file| file.before) {
+        let Gate::Config(settings) = before.gate else {
+            continue;
+        };
+        for setting in settings {
+            if let Some(name) = project_name(&setting.path) {
+                before_projects
+                    .entry((folder(before.path), name))
+                    .or_default()
+                    .push(setting);
+            }
+        }
+    }
     for file in gates {
         let Some(before) = file.before else { continue };
         let path = file.after.unwrap_or(before).path;
@@ -36,6 +52,7 @@ pub(crate) fn check(gates: &[GateFile], findings: &mut Vec<Finding>) {
             path,
             findings: &mut *findings,
             projects: &projects,
+            before_projects: &before_projects,
         };
         match (before.gate, file.after.map(|after| after.gate)) {
             (Gate::Workflow(old), Some(Gate::Workflow(new))) => found.workflow(old, new),
@@ -54,6 +71,8 @@ struct Found<'f> {
     findings: &'f mut Vec<Finding>,
     /// The projects listed now, by folder, in any config file.
     projects: &'f BTreeSet<(&'f str, &'f str)>,
+    /// Each project's settings before, by folder and name, in any config file.
+    before_projects: &'f BTreeMap<(&'f str, &'f str), Vec<&'f Setting>>,
 }
 
 impl Found<'_> {
@@ -117,7 +136,7 @@ impl Found<'_> {
 
     fn job(&mut self, old: &Job, new: &Job) {
         // Only a job that ran tests can let their failures through: not `lint` or `publish`.
-        if !old.steps.is_empty() {
+        if !old.steps.is_empty() || looks_like_tests(old) {
             let at = format!("job {}", new.id);
             self.condition(
                 &at,
@@ -364,12 +383,37 @@ impl Found<'_> {
 
     /// Test config settings, by path.
     fn settings(&mut self, old: &[Setting], new: &[Setting]) {
-        let (old, new) = (&normalized(old), &normalized(new));
+        let folder = folder(self.path);
+        let here_before = project_names(old);
+        let mut old = old.to_vec();
+        // A project moved here from another file or key (vitest 3: from `vitest.workspace.ts`
+        // into `test.projects`) is compared with what it was, under its new name.
+        for project in project_names(new) {
+            if here_before.contains(&project) {
+                continue;
+            }
+            let Some(before) =
+                project_name(&project).and_then(|name| self.before_projects.get(&(folder, name)))
+            else {
+                continue;
+            };
+            for setting in before {
+                let rest = project_name(&setting.path)
+                    .and_then(|name| setting.path.split_once(&format!("[{name}]")))
+                    .map_or("", |(_, rest)| rest);
+                old.push(Setting {
+                    path: format!("{project}{rest}"),
+                    ..(*setting).clone()
+                });
+            }
+        }
+        let (old, new) = (&normalized(&old), &normalized(new));
         let new_by_path: BTreeMap<&str, &Setting> = new
             .iter()
             .map(|setting| (setting.path.as_str(), setting))
             .collect();
         let old_projects = project_names(old);
+        let new_projects = project_names(new);
         // What each project includes, to tell a file moved to another project from a skip.
         let included: Vec<(Option<String>, String)> = new
             .iter()
@@ -416,6 +460,14 @@ impl Found<'_> {
         }
         for setting in old {
             if new_by_path.contains_key(setting.path.as_str()) {
+                continue;
+            }
+            // A project that moved is compared under its new name, above.
+            if project(&setting.path).is_some_and(|project| {
+                !new_projects.contains(&project)
+                    && project_name(&project)
+                        .is_some_and(|name| self.projects.contains(&(folder, name)))
+            }) {
                 continue;
             }
             if let Some((confidence, what)) = loosened(&setting.path, Some(setting), None, &[]) {
@@ -466,7 +518,7 @@ fn pair_steps<'s>(
         |a, b| a.run == b.run,
         |a, b| a.name.is_some() && a.name == b.name,
         |a, b| a.command.runner == b.command.runner,
-        |a, b| script(&a.command.runner) == script(&b.command.runner),
+        |a, b| script(&a.command.runner).is_some_and(|run| Some(run) == script(&b.command.runner)),
     ];
     for same in ways {
         left.retain(
@@ -487,8 +539,9 @@ fn pair_steps<'s>(
 }
 
 /// The script a runner runs, whatever tool runs it: `pnpm test` and `nub run test` both
-/// run `test`, `pnpm run --filter api test:all` runs `--filter api test:all`.
-fn script(runner: &str) -> String {
+/// run `test`, `pnpm run --filter api test:all` runs `--filter api test:all`. `None` for a
+/// runner called directly (`vitest`, `node --test`): that's no script.
+fn script(runner: &str) -> Option<String> {
     let words: Vec<&str> = runner
         .split(' ')
         .skip_while(|word| word.contains('='))
@@ -498,29 +551,44 @@ fn script(runner: &str) -> String {
         Some(&"run" | &"run-script") => &words[1..],
         _ => &words[..],
     };
-    words.join(" ")
+    (!words.is_empty()).then(|| words.join(" "))
 }
 
-/// Which filters make a test run smaller: the ones it now runs only (`test/unit` where
-/// there was no path), and the ones it dropped (`test/api` from `test/unit test/api`).
-/// Paths and `--project` add up, so another one runs more. A name pattern (`-t`,
-/// `--grep`) or `--changed` narrows the run whenever it's new.
+/// A job that looks like it runs tests even when assertrust sees no test step: its id or
+/// name says so (`test`, `e2e`), or it calls a reusable workflow that does
+/// (`uses: ./.github/workflows/test.yml`).
+fn looks_like_tests(job: &Job) -> bool {
+    let says_tests = |text: &str| {
+        text.to_lowercase()
+            .split(|c: char| !c.is_ascii_alphanumeric())
+            .any(|word| matches!(word, "test" | "tests" | "e2e"))
+    };
+    let uses = job
+        .uses
+        .as_deref()
+        .map(|uses| uses.split('@').next().unwrap_or(uses))
+        .map(|path| path.rsplit('/').next().unwrap_or(path));
+    [Some(job.id.as_str()), job.name.as_deref(), uses]
+        .into_iter()
+        .flatten()
+        .any(says_tests)
+}
+
+/// Which filters make a test run smaller, judged per kind of filter (paths, `--project`,
+/// `-t`, `--grep`, `--changed`, …): the ones it now runs only, and the ones it dropped.
 ///
-/// A run limited one way before and another way now can't be compared, so it isn't
-/// flagged: `--config fastly.config.ts` → `--project fastly`, `test/unit` → `test/api`.
+/// - A kind of filter the run didn't have narrows it: `vitest run test/unit` where there
+///   was no path, `-t refunds` where there was no name pattern.
+/// - Paths and `--project` add up: another one runs more, while one dropped from several
+///   runs less (`test/unit test/api` → `test/unit`), and so does a path inside a dropped
+///   one (`tests` → `tests/smoke`).
+/// - Otherwise a filter swapped for another of its kind can't be compared, so it isn't
+///   flagged: `test/unit` → `test/api`, `-t refunds` → `-t charges`. Neither is a run with
+///   another `--config` (`--config fastly.config.ts` → `--project fastly`).
 fn narrowed<'f>(old: &'f Command, new: &'f Command) -> (Vec<&'f str>, Vec<&'f str>) {
-    let swapped = new
-        .filters
-        .iter()
-        .any(|filter| !old.filters.contains(filter))
-        && old
-            .filters
-            .iter()
-            .any(|filter| !new.filters.contains(filter));
-    if swapped || old.config.is_some() && old.config != new.config {
+    if old.config.is_some() && old.config != new.config {
         return (Vec::new(), Vec::new());
     }
-    let (old, new) = (&old.filters, &new.filters);
     let kind = |filter: &str| -> String {
         if filter.starts_with('-') {
             filter.split(' ').next().unwrap_or(filter).to_owned()
@@ -528,27 +596,54 @@ fn narrowed<'f>(old: &'f Command, new: &'f Command) -> (Vec<&'f str>, Vec<&'f st
             String::new()
         }
     };
-    let adds_up = |kind: &str| kind.is_empty() || kind == "--project";
-    let has = |filters: &[String], wanted: &str| filters.iter().any(|f| kind(f) == wanted);
-    let only = new
-        .iter()
-        .filter(|filter| !old.contains(filter))
-        .filter(|filter| {
-            let kind = kind(filter);
-            !adds_up(&kind) || !has(old, &kind)
-        })
-        .map(String::as_str)
-        .collect();
-    let dropped = old
-        .iter()
-        .filter(|filter| !new.contains(filter))
-        .filter(|filter| {
-            let kind = kind(filter);
-            adds_up(&kind) && has(new, &kind)
-        })
-        .map(String::as_str)
-        .collect();
+    // In the order they're written.
+    let mut kinds: Vec<String> = Vec::new();
+    for filter in old.filters.iter().chain(&new.filters) {
+        let kind = kind(filter);
+        if !kinds.contains(&kind) {
+            kinds.push(kind);
+        }
+    }
+    let (mut only, mut dropped) = (Vec::new(), Vec::new());
+    for wanted in kinds {
+        let of_kind = |filters: &'f [String]| -> Vec<&'f String> {
+            filters
+                .iter()
+                .filter(|filter| kind(filter) == wanted)
+                .collect()
+        };
+        let (old_kind, new_kind) = (of_kind(&old.filters), of_kind(&new.filters));
+        let added: Vec<&str> = new_kind
+            .iter()
+            .filter(|filter| !old_kind.contains(filter))
+            .map(|filter| filter.as_str())
+            .collect();
+        let gone: Vec<&str> = old_kind
+            .iter()
+            .filter(|filter| !new_kind.contains(filter))
+            .map(|filter| filter.as_str())
+            .collect();
+        if old_kind.is_empty() {
+            only.extend(added);
+        } else if wanted.is_empty() || wanted == "--project" {
+            only.extend(
+                added
+                    .iter()
+                    .filter(|path| wanted.is_empty() && gone.iter().any(|old| inside(path, old))),
+            );
+            if added.is_empty() && !new_kind.is_empty() {
+                dropped.extend(gone);
+            }
+        }
+    }
     (only, dropped)
+}
+
+/// Whether `path` is inside the folder `parent`: `tests/smoke` in `tests`.
+fn inside(path: &str, parent: &str) -> bool {
+    let parent = parent.trim_end_matches('/');
+    path.strip_prefix(parent)
+        .is_some_and(|rest| rest.starts_with('/') && rest.len() > 1)
 }
 
 /// Whether a pattern setting picks which test files run (or count for coverage): vitest's
@@ -665,7 +760,7 @@ fn expand(pattern: &str, out: &mut Vec<String>) {
     let mut depth = 0;
     let mut parts = Vec::new();
     let mut start = open + 1;
-    for (i, c) in pattern.char_indices().skip(open) {
+    for (i, c) in pattern[open..].char_indices().map(|(i, c)| (open + i, c)) {
         match c {
             '{' => depth += 1,
             '}' => {
@@ -693,21 +788,24 @@ fn expand(pattern: &str, out: &mut Vec<String>) {
 }
 
 /// A pattern vitest excludes anyway (`**/node_modules/**`, `**/dist/**`), or a spread of
-/// its defaults (`...configDefaults.exclude`): listing it skips nothing new.
+/// its defaults (`...configDefaults.exclude`): listing it in vitest's `exclude` skips
+/// nothing new. Any other spread (`...flakyTests`) may skip anything.
 fn excluded_anyway(item: &str) -> bool {
     let item = item.trim_matches(['\'', '"']);
-    item.starts_with("...")
-        || matches!(
-            item,
-            "**/node_modules/**"
-                | "node_modules"
-                | "**/node_modules"
-                | "**/dist/**"
-                | "**/.git/**"
-                | "**/cypress/**"
-                | "**/.{idea,git,cache,output,temp}/**"
-                | "**/{karma,rollup,webpack,vite,vitest,jest,ava,babel,nyc,cypress,tsup,build,eslint,prettier}.config.*"
-        )
+    matches!(
+        item,
+        "...configDefaults.exclude" | "...coverageConfigDefaults.exclude" | "...defaultExclude"
+    ) || matches!(
+        item,
+        "**/node_modules/**"
+            | "node_modules"
+            | "**/node_modules"
+            | "**/dist/**"
+            | "**/.git/**"
+            | "**/cypress/**"
+            | "**/.{idea,git,cache,output,temp}/**"
+            | "**/{karma,rollup,webpack,vite,vitest,jest,ava,babel,nyc,cypress,tsup,build,eslint,prettier}.config.*"
+    )
 }
 
 /// Whether a setting's change lets more failures through: its key decides how to read it.
@@ -787,7 +885,7 @@ fn loosened(
                         .iter()
                         .any(|one| !before.contains(one) && !elsewhere.contains(one))
                 })
-                .filter(|item| !excluded_anyway(item))
+                .filter(|item| key != "exclude" || !excluded_anyway(item))
                 .collect::<Vec<_>>();
             if added.is_empty() {
                 return None;

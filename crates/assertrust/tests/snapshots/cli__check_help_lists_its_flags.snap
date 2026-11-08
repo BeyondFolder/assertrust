@@ -1,0 +1,39 @@
+---
+source: crates/assertrust/tests/cli.rs
+expression: run.stdout
+---
+Check a change for weakened tests
+
+Usage: assertrust check [OPTIONS]
+
+Options:
+      --range <BASE..HEAD>
+          Check each commit in a range, e.g. origin/main..HEAD
+
+      --pr <NUMBER>
+          Check a GitHub pull request (merge-base to head)
+
+      --staged
+          Check staged changes (HEAD to the git index), for pre-commit hooks
+
+      --worktree
+          Check uncommitted changes (HEAD to files on disk), for coding-agent hooks
+
+      --format <FORMAT>
+          Output format
+
+          Possible values:
+          - terminal: Short, human-readable findings
+          - json:     Machine-readable findings, for scripts and other tools
+          - github:   GitHub Actions annotations
+          
+          [default: terminal]
+
+      --show-transient
+          Also show weakening that was undone later in the same PR
+
+  -v, --verbose
+          Show the test name, before/after snippets and the full commit message
+
+  -h, --help
+          Print help (see a summary with '-h')

@@ -1,0 +1,6 @@
+---
+source: crates/assertrust/tests/harness.rs
+expression: "format!(\"{first}\\n{second}\")"
+---
+ddf39e5ee0520bf688872a990e646f7d1cf54c07
+085a2e8f9fbef64d97410f54984361c3605e2a98

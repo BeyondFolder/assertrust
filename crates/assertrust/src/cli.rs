@@ -1,7 +1,8 @@
 //! The command-line interface: commands and flags, parsed with clap's derive API.
 //!
 //! The flags follow `docs/architecture.md`: the mode flags pick what to compare (step 1),
-//! `--format` and `--verbose` control output (step 6).
+//! `--format` and `--verbose` control output (step 6), and `tests` shows what parsing finds
+//! in one file (steps 2–3).
 
 #![expect(
     dead_code,
@@ -26,8 +27,8 @@ pub enum Command {
     Check(CheckArgs),
     /// Show which commits and files a check would look at (for debugging)
     Changes(ChangesArgs),
-    /// Print the tests and checks found in one file, as JSON (for debugging)
-    Ir(IrArgs),
+    /// Show the tests and checks assertrust finds in a file (for debugging)
+    Tests(TestsArgs),
 }
 
 #[derive(Debug, Args)]
@@ -109,11 +110,15 @@ pub enum Format {
 }
 
 #[derive(Debug, Args)]
-pub struct IrArgs {
-    /// The test file to read
+pub struct TestsArgs {
+    /// The file to read, e.g. test/forwarding.test.ts
     pub file: PathBuf,
 
-    /// Read the file as it was at this git revision instead of from disk
-    #[arg(long, value_name = "REV")]
+    /// Read the file as it was at this commit (e.g. HEAD~1 or main) instead of from disk
+    #[arg(long, value_name = "REV", conflicts_with = "staged")]
     pub rev: Option<String>,
+
+    /// Read the staged version of the file (from the git index)
+    #[arg(long)]
+    pub staged: bool,
 }

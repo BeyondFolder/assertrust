@@ -1,0 +1,18 @@
+---
+source: crates/assertrust/tests/tests_command.rs
+expression: "fixture(\"checkout.spec.ts\")"
+---
+test/checkout.spec.ts: 4 tests, 1 hook
+   9  hook beforeEach  (checkout)
+  13  test checkout > shows the total  [skip(({ browserName }) => browserName === 'webkit')]
+  14        ui-state   await expect(page.getByTestId('total')).toHaveText('€30')
+  17        ui-state   await expect(page.getByTestId('total')).toHaveText('€27')
+  19        snapshot   await expect(page).toHaveScreenshot()
+  22  test checkout > pays  [skip(({ browserName }) => browserName === 'webkit')]
+  23        skip       skip(isMobile)
+  24        ui-state   await expect(page.getByRole('button', { name: 'Pay' })).toBeEnabled()
+  25        contains   expect(await page.title()).toContain('Checkout')
+  28  test checkout > handles 3-D Secure  [skip(({ browserName }) => browserName === 'webkit'), fixme]
+  29        ui-state   await expect(page.locator('iframe')).toBeVisible()
+  34  test receipts > emails a receipt  [skip(({ browserName }) => browserName === 'webkit'), serial]
+  36        ui-state   await expect(res).toBeOK()

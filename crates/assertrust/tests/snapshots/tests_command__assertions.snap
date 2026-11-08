@@ -1,0 +1,39 @@
+---
+source: crates/assertrust/tests/tests_command.rs
+expression: "fixture(\"assertions.test.ts\")"
+---
+test/assertions.test.ts: 6 tests, custom matchers: toBeWithinRange
+  13  test compares values
+  14        equal      expect(add(1, 2)).toBe(3)
+  15        equal      expect(user).toEqual({ name: 'Ada', roles: ['admin', 'dev'] })
+  16        equal      expect(user).toStrictEqual({ name: 'Ada', roles: ['admin', 'dev'] })
+  17        subset     expect(res.body).toMatchObject({ domainIds: null, email: 'me@example.test', status: 'pending' })
+  18        equal      expect(plan).toBe('pro')
+  19        equal      expect(limits).toEqual({ projects: 10, seats: 3 })
+  20        equal      expect(count).toBe(16)
+  21        compare    expect(delta).toBeCloseTo(-0.5, 2)
+  24  test checks text and lists
+  25        pattern    expect(html).not.toMatch(/support@|resend|inboxes\.net/i)
+  26        contains   expect(tags).toContain('urgent')
+  27        size       expect(list).toHaveLength(2)
+  28        subset     expect(order).toHaveProperty('total', 30)
+  29        truthiness expect(value).toBeTruthy()
+  30        type       expect(error).toBeInstanceOf(TypeError)
+  33  test uses nested matchers
+  34        equal      expect(event).toEqual({ id: expect.any(String), note: expect.not.stringContaining('secret'), payload: expect.objectContaining({ kind: 'email' }), tags: expect.arrayContaining(['a']) })
+  42  test waits for promises
+  43        equal      await expect(load()).resolves.toEqual({ ok: true })
+  44        throws     await expect(save()).rejects.toThrow('disk full')
+  45        truthiness expect(load()).resolves.toBeDefined()
+  46        equal      expect.soft(header).toBe('x')
+  47        equal      await expect.poll(() => status()).toBe('done')
+  50  test counts and spies
+  51        count      expect.assertions(2)
+  52        count      expect.hasAssertions()
+  53        called     expect(send).toHaveBeenCalledWith('me@example.test', expect.anything())
+  54        called     expect(send).toHaveBeenCalledTimes(1)
+  55        snapshot   expect(render()).toMatchInlineSnapshot('"<p>hi</p>"')
+  56        custom     expect(score).toBeWithinRange(1, 10)
+  59  test checks nothing
+  60        no-matcher expect(result)
+  61        no-matcher expect(other)

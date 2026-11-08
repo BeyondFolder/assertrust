@@ -1,0 +1,28 @@
+---
+source: crates/assertrust/tests/tests_command.rs
+expression: "fixture(\"context.test.ts\")"
+---
+test/context.test.ts: 6 tests
+   4  test checks conditionally
+   7        equal      expect(res.status).toBe(200)  (in if)
+   9        truthiness expect(res.error).toBeDefined()  (in if)
+  11        compare    expect(res.attempts).toBeGreaterThan(1)  (short-circuit)
+  12        compare    expect(res.age).toBeLessThan(60)  (in if)
+  15  test checks in loops and callbacks
+  17        equal      expect(item.valid).toBe(true)  (in loop)
+  20        truthiness expect(item.id).toBeDefined()  (in callback)
+  22        equal      expect(done).toBe(true)  (in callback)
+  25  test checks around errors
+  28        equal      expect(state).toBe('saved')  (in try)
+  30        pattern    expect(error.message).toMatch(/timeout/)  (in catch)
+  32        equal      expect(lock.released).toBe(true)
+  36  test returns early
+  37        exit       early return  (in if)
+  38        equal      expect(feature()).toBe('on')
+  39        equal      await expect(flush()).resolves.toBe(true)
+  42  test skips itself
+  43        skip       skip()  (in if)
+  44        equal      expect(local()).toBe(true)
+  47  test skips with a destructured skip
+  48        skip       skip(!hasNetwork)
+  49        truthiness expect(fetchIt()).toBeTruthy()

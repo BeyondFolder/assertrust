@@ -2,7 +2,7 @@
 
 use std::fmt;
 
-/// The result of [`analyze`](crate::analyze): what to compare, and the commits behind it.
+/// The result of [`Repo::analyze`](crate::Repo::analyze): what to compare, and the commits behind it.
 #[derive(Debug, Clone)]
 pub struct Analysis {
     pub kind: ModeKind,

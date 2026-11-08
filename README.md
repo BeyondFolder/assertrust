@@ -9,7 +9,7 @@ test/api/forwarding.test.ts:27  HIGH  expectation-loosened
   toMatchObject no longer checks status, domainIds · 10d8742
 ```
 
-> **Status: pre-alpha. The check itself doesn't run yet.** Two debugging commands work: `assertrust changes` (which commits and files a check would look at) and `assertrust tests <file>` (the tests and checks it finds in a file). The design is in [docs/architecture.md](docs/architecture.md), and it's being built in small public PRs.
+> **Status: pre-alpha. The check itself doesn't run yet.** Three debugging commands work: `assertrust changes` (which commits and files a check would look at), `assertrust tests <file>` (the tests and checks it finds in a file) and `assertrust pairs` (which tests and checks before a change correspond to which after it). The design is in [docs/architecture.md](docs/architecture.md), and it's being built in small public PRs.
 
 ## What it will do
 

@@ -24,8 +24,8 @@ use std::fmt;
 
 pub use crate::matcher::MatcherKind;
 pub use crate::model::{
-    Assertion, Body, Context, ExpectKind, FileIr, Hook, HookKind, Item, ItemKind, Matcher,
-    Modifier, Promise, Test,
+    Assertion, Body, Context, ExpectKind, Fact, FactTest, FileIr, Hook, HookKind, Item, ItemKind,
+    Matcher, Modifier, Promise, Test,
 };
 pub use crate::value::Value;
 

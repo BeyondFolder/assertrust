@@ -1,8 +1,8 @@
 //! The command-line interface: commands and flags, parsed with clap's derive API.
 //!
 //! The flags follow `docs/architecture.md`: the mode flags pick what to compare (step 1),
-//! `--format` and `--verbose` control output (step 6), and `tests` shows what parsing finds
-//! in one file (steps 2–3).
+//! `--format` and `--verbose` control output (step 6), `tests` shows what parsing finds in
+//! one file (steps 2–3), and `pairs` shows what matching pairs up (step 4).
 
 #![expect(
     dead_code,
@@ -29,10 +29,18 @@ pub enum Command {
     Changes(ChangesArgs),
     /// Show the tests and checks assertrust finds in a file (for debugging)
     Tests(TestsArgs),
+    /// Show how tests and checks pair up before and after a change (for debugging)
+    Pairs(PairsArgs),
 }
 
 #[derive(Debug, Args)]
 pub struct ChangesArgs {
+    #[command(flatten)]
+    pub mode: Mode,
+}
+
+#[derive(Debug, Args)]
+pub struct PairsArgs {
     #[command(flatten)]
     pub mode: Mode,
 }

@@ -118,7 +118,7 @@ Integration tests build throwaway git repos in a temp dir with real commits, bra
 
 **Job:** read each before/after file and extract its tests, assertions and assertion helpers. This step only extracts. Judging happens in step 5.
 
-**Built so far:** tests, hooks and checks in one file (crate `assertrust-ir`), shown by `assertrust tests` (see "Debug command" in step 3). **Next:** helper functions and the linked view.
+**Built so far:** tests, hooks and checks in one file (crate `assertrust-ir`), shown by `assertrust tests` (see "Debug command" in step 3). Helper functions and the linked view come after the rules.
 
 **What Mailyond's tests use** (35 test and test-support files, vitest plus one Playwright spec):
 - **Tests:** 390 `it`/`test` calls, 23 of them `it.each`, plus `describe` blocks.
@@ -143,7 +143,7 @@ The `expect(…).toX(…)` style covers essentially all of it.
   - the name: string literals as-is, template literals with each `${…}` normalized, and the format string for `.each`
   - the variants
   - the line
-  - the body text, which step 4 uses for matching (added with matching)
+  - a fingerprint: the distinct words in its source, which step 4 uses to pair renamed tests
 
 ### Assertions
 
@@ -186,7 +186,7 @@ Helpers can change what a test checks without the test file changing, so they're
 
 **In one sentence:** each test becomes a list of checks, written in a form that ignores formatting, so a before/after comparison only sees changes in what is being checked.
 
-**Built so far:** the file IR, without helpers, imports or the fingerprint (those come with helper linking and matching). Gate facts come with the gate rules.
+**Built so far:** the file IR, including each test's fingerprint and each check's facts (used by matching, step 4). Helpers and imports come with helper linking, gate facts with the gate rules.
 
 **Example (Mailyond `10d8742`):**
 
@@ -212,7 +212,6 @@ test "emails a confirmation … and only forwards once confirmed"
   - early exits: a `return` before the test's last statement, possibly inside an `if`
   - runtime skips (`test.skip(cond)`, `ctx.skip()`)
   - `expect.assertions(n)` / `hasAssertions()`
-  - a normalized fingerprint for step 4
 - **Outside tests:** checks at the top level or directly in a `describe`. Checks inside functions declared outside tests belong to helpers.
 - **Per assertion:**
   - the subject (normalized source)
@@ -222,6 +221,7 @@ test "emails a confirmation … and only forwards once confirmed"
   - `awaited`: whether the test waits for it: `await`ed, or returned from the test, hook or `test.step` function (an arrow's body counts as returned). Returning it from another callback doesn't count: `setTimeout` or `forEach` drops what it returns.
   - the matcher: its raw name plus its kind
   - the arguments as values
+  - its facts: what it states, in a form that doesn't depend on how it's written (see "Rewritten checks" in step 4)
   - context: inside an if (or `? :` or `switch` case), loop, try, catch, callback or short-circuit. A `test.step` callback runs right away, so it isn't a callback.
   - a span, used for reporting and never compared
 - **Values:** null, undefined, bool, number, string, template, regex (with its top-level alternatives split by oxc's regex parser), object (keys compared as a set), array, nested matcher (`expect.objectContaining(…)`), or opaque (any other expression, as normalized source).
@@ -291,52 +291,109 @@ Mailyond is a private codebase, so its code is never committed here. This doc qu
 
 **In one sentence:** before comparing checks, work out which test after the change is the same test as before it, and which check inside it is the same check, even when the test was renamed, moved or refactored.
 
+**Built so far:** pairing tests and checks (crate `assertrust-match`), shown by `assertrust pairs` (see "Debug command" below). Hooks and checks outside tests are paired once helpers are linked.
+
 **Example (Mailyond `038cf0b`, "Keep stored text bodies as they were; derive HTML text only in MCP"):**
 
 ```
-before: it('never lets markup or script content into the text or preview')
+before: describe('inboundBodyFields') > it('never lets markup or script content into the text or preview')
           check fields.textBody  equals 'Hi scriptbad() <3'
           check fields.preview   equals 'Hi scriptbad() <3'
-after:  it('never lets markup or script content into the text')
+after:  describe('textFromHtmlBody') > it('never lets markup or script content into the text')
           check textFromHtmlBody(…) equals 'Hi scriptbad() <3'
 ```
 
-- The name changed, so pairing by name fails.
-- But the names share most of their words, and both bodies use the same long HTML input, so the two tests are paired.
-- Inside the pair, `textBody` and the new check expect the same value, so they're paired even though the subject changed with the refactor.
-- The `preview` check has no partner, so it's reported as **removed**. The note says the title also dropped "or preview", which suggests the removal was deliberate.
+- The `describe` and the name both changed, so pairing by name fails.
+- But the names share most of their words and the bodies use the same HTML input, so the two tests are paired (score 0.67).
+- Inside the pair, `textBody` and the new check expect the same value. Both old checks do, but `fields.textBody` shares more words with `textFromHtmlBody(…)`, so that one is paired.
+- The `preview` check has no partner, so it's **removed**. The title also dropped "or preview", which suggests the removal was deliberate.
 
 ### Pairing tests, in order
 
-1. **Same `describe` path and name** → paired. This covers most tests. Duplicate names in a file are told apart by their order.
-2. **Leftovers in the same file** → paired by a similarity score. The score combines:
-   - shared words in the name
-   - shared literal values (strings, numbers, regexes)
-   - shared expected values in checks
-   - the normalized body fingerprint
+Within each file first, then across the files of the change (a test moved to another file):
 
-   A pair needs a high score that's clearly better than any alternative.
-3. **Leftovers across files in the same change** → the same two passes, to catch tests moved to another file.
+1. **Same `describe` path and name** → paired. This covers most tests. Duplicate names in a file are paired in order.
+2. **Same name under another `describe` path** (the `describe` was renamed, or the test moved into another one) → paired, if the name is unique on both sides.
+3. **Leftovers** → paired by a similarity score from 0 to 1:
+   - 40% the words in the names. An old name kept whole inside a longer new one counts as close: "is red with more than one record" → "is red with more than one record, suggesting a merge".
+   - 30% the words in the bodies (a fingerprint of each test's source)
+   - 30% the checks: identical checks and distinctive expected values they share
+
+   A pair needs a score of at least 0.4, must be each other's best candidate, and must beat the runner-up on both sides by 0.1.
 4. **Still unpaired:**
    - old tests count as deleted
    - new tests count as added, which is never a problem
 
 ### Pairing checks inside a paired test, in order
 
-1. Identical checks → unchanged.
-2. Same subject and same matcher kind → paired, then their values are compared (`10d8742`: same `res.body`, same matcher, fewer fields).
-3. Same expected value and same matcher kind → paired, which handles subjects renamed by a refactor (`038cf0b`).
-4. Leftover old checks → removed. Leftover new checks → added.
+1. **Identical** → unchanged. Checks in the same place pair first, so a check that moved into an `if`, `try` or callback is the one paired with a changed context. `pairs` shows it as `context`, and the rules judge it.
+2. **Same subject and matcher kind** → paired, then their values are compared (`10d8742`: same `res.body`, same matcher, fewer fields).
+3. **Same subject, another matcher** → paired: `toEqual({ id: 1 })` → `toBeTruthy()`.
+4. **Same fact, written differently** → paired, see "Rewritten checks" below. This can pair groups: two property checks folded into one object check.
+5. **The same distinctive expected value** (a string of 4+ characters, a regex, a long number, an expression), with the subject refactored → paired: `expect(fields.textBody).toBe('Hi there')` → `expect(textOf(html)).toBe('Hi there')`.
+6. **Same matcher and arguments on a refactored subject, in order**, when the subjects share a word or input: `normalize('a.com').invalid` → `parse('a.com').skipped`, `hasDmarcEnforcement({ dmarc: result })` → `result.enforced`.
+7. **Same matcher kind, scored:** subjects that share a word, plus expected values that mostly match (or subjects that mostly match). Same margin rule as tests.
+8. **Leftover old checks** → removed. **Leftover new checks** → added.
+
+When one check could pair with several, the closest wins if it's clearly ahead: by subject words, then expected value, then the same `.not` and the same matcher. So `toBe(200)` goes to `toBe(201)` rather than `.not.toBe(500)` when all three check `res.status`. Otherwise none are paired. Subjects are compared by their words, splitting camelCase (`parseURLValue` → parse, url, value), with each string literal counted as one word: the same input is a strong sign, but a long one mustn't swamp the rest.
+
+### Rewritten checks
+
+The same check can be written many ways, and refactors and linters move between them. So each check also records its **facts**: what it states about a value, in one form. Two checks that state a fact in common are the same check rewritten:
+
+| Written as | Fact |
+|---|---|
+| `expect(r.text).toBe(v)`, `toMatchObject({ text: v })`, `toHaveProperty('text', v)`, `toEqual(expect.objectContaining({ text: v }))`, `r?.text`, `r['text']` | `r.text == v` |
+| nested: `expect(res.body.user.id).toBe(7)`, `toMatchObject({ user: { id: 7 } })` on `res.body`, `toHaveProperty('body.user.id', 7)` | `res.body.user.id == 7` |
+| `expect(list.length).toBe(2)`, `expect(list).toHaveLength(2)` | `list.length == 2` |
+| `expect(list.includes(v)).toBe(true)`, `expect(list).toContain(v)` | `list toContain(v)` |
+| `expect(a === b).toBe(true)`, `expect(a).toBe(b)`; `!==` or `toBe(false)` for `.not` | `a == b` |
+| `expect(n > 5).toBe(true)`, `expect(n).toBeGreaterThan(5)` (and `>=`, `<`, `<=`) | `n toBeGreaterThan(5)` |
+| `expect(typeof x).toBe('string')`, `expect(x).toBeTypeOf('string')` | `x toBeTypeOf('string')` |
+| `expect(e instanceof E).toBe(true)`, `expect(e).toBeInstanceOf(E)` | `e toBeInstanceOf(E)` |
+| `toBe(true)` / `toBeTruthy()`, `toBe(false)` / `toBeFalsy()` / `expect(!x).toBe(true)`, `toBe(null)` / `toBeNull()`, `toEqual(undefined)` / `toBeUndefined()` | the same fact |
+| `await expect(p).resolves.toEqual(v)`, `expect(await p).toEqual(v)` | `await p == v` |
+| Playwright: `expect(await page.title()).toBe(t)` / `toHaveTitle(t)`, `textContent()` / `innerText()` / `toHaveText`, `toContainText`, `count()` / `toHaveCount`, `url()` / `toHaveURL`, `inputValue()` / `toHaveValue`, `getAttribute(a)` / `toHaveAttribute(a, v)`, `isVisible()` / `toBeVisible()` (and hidden, checked, enabled, disabled, editable), `ok()` / `toBeOK()` | `page.title() == t`, … (a call stays apart from a property: `store.count()` isn't `store.count`) |
+| mocks: `expect(fn.mock.calls.length).toBe(2)` / `toHaveBeenCalledTimes(2)`, `fn.mock.calls[0]` / `toHaveBeenNthCalledWith(1, …)` | `fn.mock.calls.length == 2`, … |
+| `expect(() => f()).toThrow(e)`, `expect(f).toThrow(e)`, and the same for a method, `() => obj.parse()` | `f toThrow(e)` |
+
+A negated check of several fields at once (`.not.toMatchObject({ a: 1, b: 2 })` means "not both") has no facts, and neither does `.rejects`. A negated equality isn't split into fields at all: `.not.toEqual({ a: 1 })` passes for `{ a: 1, b: 2 }`, so it doesn't state `not a == 1`.
+
+Pairing only says the checks correspond. The rules (step 5) decide whether the new form is weaker: folding `expect(r.text).toBe(v)` into `toMatchObject({ text: v, html })` adds a field, which is fine.
 
 ### Moves and splits aren't removals
 
-A deleted test or a removed check is reported only if it doesn't reappear anywhere else in the same change. Splitting one test into two, or moving tests between files, produces no findings.
+A removed check that shows up unchanged, and in the same place (not newly inside an `if` or callback), in another test of the same change moved there. Each added check can account for one removed check. A deleted test whose checks all moved was split or merged into others. Neither produces findings.
 
 ### Defaults
 
 - **When unsure, don't pair.** Missing a weakening is better than a false alarm, because a noisy tool gets turned off.
-- **Renames are information, not findings.** They appear in the output. When a title drops words in the same change that a check disappears, that's noted for the reviewer and the LLM judge (step 7).
-- **Similarity thresholds are tuned on the Mailyond backtest,** not guessed. Each pairing pass is visible in debug output, so a wrong pairing can be traced.
+- **Renames are information, not findings.** They appear in the output, with the words the title dropped. When a title drops words in the same change that a check disappears, that's noted for the reviewer and the LLM judge (step 7).
+- **Thresholds are set on the Mailyond history** (below), not guessed.
+
+### Checked on Mailyond's history
+
+`assertrust pairs` over all 313 non-merge commits takes 2 seconds. Every pairing that isn't by id was read by hand:
+- **21 renamed tests, all correct.** Every candidate above 0.35 that was the other's clear best was a real rename or rewrite. The lowest real one scored 0.37, so the threshold is 0.4.
+- **Rewritten checks:** of 27 tests that still had a check removed next to an added one, 22 are paired now, by steps 4–7. The other 5 are real behaviour changes or have nothing to pair on, e.g. `expect(overLimit).toEqual([…])` → `expect(skipped).toEqual(['You pasted 12 domains…'])`.
+- **20 deleted tests:** a deleted test file, removed functions and removed behaviour. Three were near misses (0.27–0.37), and one was a split with two close candidates. All four were left unpaired on purpose.
+
+### Debug command
+
+`assertrust pairs [--range <range> | --staged | --worktree]` prints how tests and checks pair up, for the net change and each commit, the same way `assertrust changes` lists them. Unchanged tests are only counted. A test file that doesn't parse on either side is skipped for that change with a note: comparing against nothing would make every test in it look deleted. From the `billing` fixture:
+
+```
+test/billing.test.ts: 7 tests paired (1 unchanged), 1 deleted, 1 added
+  same      invoices > stores the pending invoice
+    1 check identical
+    changed      12  expect(res.body).toMatchObject({ amount: 10, currency: 'EUR', status: 'pending' })
+             →   12  expect(res.body).toMatchObject({ amount: 10 })
+  renamed (0.57) invoices > marks an invoice as paid
+         →  invoices > marks a paid invoice  (dropped: "an as")
+    1 check identical
+    rewritten    17  expect(invoice.status).toBe('paid')
+             →   17  expect(invoice).toMatchObject({ method: 'card', status: 'paid' })
+```
 
 ### Tests
 
@@ -349,6 +406,7 @@ Fixtures cover:
 - one test split into two
 - two tests with near-identical bodies (must not be mis-paired)
 - duplicate names in the same file
+- each check-pairing step, groups of folded checks, and every form in the rewritten-checks table
 
 ## 5. Rules
 

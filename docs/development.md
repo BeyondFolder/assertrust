@@ -31,9 +31,12 @@ crates/assertrust/            the binary
   src/cli.rs                  commands and flags (clap, derive API)
   src/changes.rs              `assertrust changes` output
   src/tests_command.rs        `assertrust tests` output
+  src/pairs_command.rs        `assertrust pairs` output
+  src/load.rs                 reading and parsing the test files a comparison touches
   tests/common/mod.rs         test harness: temp git repos, running the binary
   tests/*.rs                  integration tests
   tests/fixtures/parsing/     one test file per pattern the parser must handle
+  tests/fixtures/matching/    a test file before and after a change, for `pairs`
   tests/snapshots/*.snap      expected outputs (insta)
 crates/assertrust-git/        input layer (step 1): which commits and files to look at
   src/mode.rs                 --range / --staged / --worktree / default → revisions
@@ -50,6 +53,12 @@ crates/assertrust-ir/         parsing and the test IR (steps 2–3): tests and c
   src/js/calls.rs             recognizing `describe` / `it` / hooks / `expect(…)` by shape
   src/js/values.rs            expressions → values and normalized source
   src/js/consts.rs            which `const`s can be filled in where they're used
+  src/js/facts.rs             what a check states, however it's written (for matching)
+crates/assertrust-match/      matching (step 4): which test and check after a change is which before
+  src/test_pairing.rs         pairing tests: same id, same name, then similarity
+  src/check_pairing.rs        pairing checks inside a test pair, and checks that moved
+  src/similarity.rs           the scores and thresholds
+  tests/matching.rs           the cases from step 4 of the architecture doc
 ```
 
 New crates are added in the PR that gives them code (see `docs/architecture.md` for the planned pieces).

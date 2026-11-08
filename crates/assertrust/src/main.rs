@@ -5,6 +5,8 @@
 
 mod changes;
 mod cli;
+mod load;
+mod pairs_command;
 mod tests_command;
 
 use std::io::{self, Write as _};
@@ -26,6 +28,7 @@ fn main() -> ExitCode {
         Command::Check(_) => Err(not_implemented("check")),
         Command::Changes(args) => changes::run(&args),
         Command::Tests(args) => tests_command::run(&args),
+        Command::Pairs(args) => pairs_command::run(&args),
     };
 
     match result {

@@ -20,7 +20,7 @@ fn findings_in(path: &str, before: &str, after: &str) -> Vec<String> {
 }
 
 fn render(files: &[TestFile]) -> Vec<String> {
-    check(files)
+    check(files, &[])
         .iter()
         .map(|finding| {
             let line = finding.line.map_or("-".to_owned(), |line| line.to_string());

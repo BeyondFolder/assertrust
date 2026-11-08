@@ -15,6 +15,7 @@
 //! # Ok::<(), assertrust_ir::ParseError>(())
 //! ```
 
+mod gate;
 mod js;
 mod matcher;
 mod model;
@@ -22,6 +23,7 @@ mod value;
 
 use std::fmt;
 
+pub use crate::gate::{Command, Gate, Job, Package, Script, Setting, TestStep, Workflow};
 pub use crate::matcher::MatcherKind;
 pub use crate::model::{
     Assertion, Body, Context, ExpectKind, Fact, FactTest, FileIr, Hook, HookKind, Item, ItemKind,
@@ -33,6 +35,22 @@ pub use crate::value::Value;
 /// (`.ts`, `.tsx`, `.js`, `.jsx`, `.mts`, `.cts`, `.mjs`, `.cjs`).
 pub fn parse_file(path: &str, source: &str) -> Result<FileIr, ParseError> {
     js::parse(path, source)
+}
+
+/// Reads a CI or test config file as gate facts (step 3): a GitHub Actions workflow
+/// (`.yml`), `package.json`, or a vitest / jest / Playwright config (`.ts`, `.js`, `.json`).
+///
+/// ```
+/// let gate = assertrust_ir::parse_gate(
+///     ".github/workflows/ci.yml",
+///     "jobs:\n  test:\n    steps:\n      - run: npm test || true\n",
+/// )?;
+/// let assertrust_ir::Gate::Workflow(workflow) = gate else { unreachable!() };
+/// assert!(workflow.jobs[0].steps[0].command.swallows);
+/// # Ok::<(), assertrust_ir::ParseError>(())
+/// ```
+pub fn parse_gate(path: &str, source: &str) -> Result<Gate, ParseError> {
+    gate::parse(path, source)
 }
 
 /// Why a file couldn't be read. A check skips such a file with a note.

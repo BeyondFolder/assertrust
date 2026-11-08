@@ -23,7 +23,7 @@ pub enum Command {
     Check(CheckArgs),
     /// Show which commits and files a check would look at (for debugging)
     Changes(ChangesArgs),
-    /// Show the tests and checks assertrust finds in a file (for debugging)
+    /// Show the tests and checks assertrust finds in a file, or a CI or test config's gate facts (for debugging)
     Tests(TestsArgs),
     /// Show how tests and checks pair up before and after a change (for debugging)
     Pairs(PairsArgs),

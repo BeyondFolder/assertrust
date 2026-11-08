@@ -177,7 +177,7 @@ impl Values<'_> {
         }
     }
 
-    fn key(&self, key: &PropertyKey, computed: bool) -> String {
+    pub(super) fn key(&self, key: &PropertyKey, computed: bool) -> String {
         if !computed && let Some(name) = key.static_name() {
             return name.as_str().map_or_else(String::new, str::to_owned);
         }

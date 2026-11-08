@@ -11,7 +11,7 @@
 //!     before: Some(Side { path: "a.test.ts", ir: &before }),
 //!     after: Some(Side { path: "a.test.ts", ir: &after }),
 //!     renamed_out: None,
-//! }]);
+//! }], &[]);
 //! assert_eq!(findings[0].rule, RuleId::TestDisabled);
 //! assert_eq!(findings[0].message, "now skipped (skip)");
 //! # Ok::<(), assertrust_ir::ParseError>(())
@@ -20,13 +20,14 @@
 mod changed_check;
 mod check_cant_fail;
 mod check_removed;
+mod gate_loosened;
 mod looser;
 mod strength;
 mod test_disabled;
 
 use std::fmt;
 
-use assertrust_ir::{Assertion, Item, ItemKind, Test, Value};
+use assertrust_ir::{Assertion, Gate, Item, ItemKind, Test, Value};
 use assertrust_match::{FilePair, Matching, TestPair, TestRef, match_files};
 
 pub use assertrust_match::Side;
@@ -42,6 +43,20 @@ pub struct TestFile<'a> {
     /// The new name, when the file was renamed so the test runner no longer picks it up:
     /// `a.test.ts` → `a.test.ts.disabled`. `after` is then `None`.
     pub renamed_out: Option<&'a str>,
+}
+
+/// A CI or test config file before and after a change. A side is `None` when the file was
+/// added or deleted.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct GateFile<'a> {
+    pub before: Option<GateSide<'a>>,
+    pub after: Option<GateSide<'a>>,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct GateSide<'a> {
+    pub path: &'a str,
+    pub gate: &'a Gate,
 }
 
 /// One way a change made a test weaker.
@@ -81,6 +96,9 @@ pub enum RuleId {
     ExpectationLoosened,
     /// The expected outcome changed, neither looser nor stricter: `toBe(3)` → `toBe(4)`.
     OutcomeChanged,
+    /// CI or test config lets more failures through: `|| true`, retries raised, a pattern
+    /// added to `exclude`.
+    GateLoosened,
 }
 
 impl RuleId {
@@ -93,6 +111,7 @@ impl RuleId {
             Self::MatcherSwapped => "matcher-swapped",
             Self::ExpectationLoosened => "expectation-loosened",
             Self::OutcomeChanged => "outcome-changed",
+            Self::GateLoosened => "gate-loosened",
         }
     }
 }
@@ -127,8 +146,9 @@ impl fmt::Display for Confidence {
     }
 }
 
-/// Runs every rule on one change. Findings come most sure first, then by file and line.
-pub fn check(files: &[TestFile]) -> Vec<Finding> {
+/// Runs every rule on one change: its test files and its CI and test config files.
+/// Findings come most sure first, then by file and line.
+pub fn check(files: &[TestFile], gates: &[GateFile]) -> Vec<Finding> {
     let pairs: Vec<FilePair> = files
         .iter()
         .map(|file| FilePair {
@@ -148,6 +168,7 @@ pub fn check(files: &[TestFile]) -> Vec<Finding> {
     test_disabled::check(&change, &mut findings);
     check_cant_fail::check(&change, &mut findings);
     changed_check::check(&change, &mut findings);
+    gate_loosened::check(gates, &mut findings);
     findings.sort_by(|a, b| {
         (a.confidence, &a.path, a.line, a.rule).cmp(&(b.confidence, &b.path, b.line, b.rule))
     });

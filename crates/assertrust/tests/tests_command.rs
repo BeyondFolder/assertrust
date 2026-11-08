@@ -173,3 +173,43 @@ fn rev_and_staged_cant_be_combined() {
     assert_eq!(run.code, 2);
     assert!(run.stderr.contains("cannot be used with"), "{}", run.stderr);
 }
+
+#[test]
+fn gate_facts_of_a_workflow_a_config_and_package_json() {
+    let repo = TestRepo::new();
+    repo.write(
+        ".github/workflows/ci.yml",
+        "jobs:\n  lint:\n    steps:\n      - run: npm run lint\n  test:\n    continue-on-error: true\n    steps:\n      - run: npm ci\n      - run: npm test -- --retry=2 || true\n",
+    );
+    repo.write(
+        "playwright.config.ts",
+        "export default defineConfig({\n  retries: 1,\n  projects: [{ name: 'chromium', use: { channel: 'chrome' } }],\n});\n",
+    );
+    repo.write(
+        "package.json",
+        "{\n  \"scripts\": {\n    \"build\": \"nuxt build\",\n    \"test\": \"vitest run --passWithNoTests\"\n  }\n}\n",
+    );
+    let run = |file: &str| {
+        let run = repo.assertrust(&["tests", file]);
+        assert_eq!(run.code, 0, "{}", run.stderr);
+        run.stdout
+    };
+    assert_eq!(
+        run(".github/workflows/ci.yml"),
+        ".github/workflows/ci.yml: 1 job runs tests\n\
+         \x20  5  job test  [continue-on-error: true]\n\
+         \x20  9    npm test -- --retry=2 || true  (swallows failures; retries 2)\n"
+    );
+    assert_eq!(
+        run("playwright.config.ts"),
+        "playwright.config.ts: 3 settings\n\
+         \x20  2  retries = 1\n\
+         \x20  3  projects[chromium].name = 'chromium'\n\
+         \x20  3  projects[chromium].use.channel = 'chrome'\n"
+    );
+    assert_eq!(
+        run("package.json"),
+        "package.json: 1 test script\n\
+         \x20  4  test: vitest run --passWithNoTests  (passes with no tests)\n"
+    );
+}

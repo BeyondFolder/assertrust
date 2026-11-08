@@ -10,6 +10,7 @@ Commands:
   check    Check a change for weakened tests
   changes  Show which commits and files a check would look at (for debugging)
   tests    Show the tests and checks assertrust finds in a file (for debugging)
+  pairs    Show how tests and checks pair up before and after a change (for debugging)
   help     Print this message or the help of the given subcommand(s)
 
 Options:

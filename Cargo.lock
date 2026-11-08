@@ -73,6 +73,7 @@ version = "0.0.0"
 dependencies = [
  "assertrust-git",
  "assertrust-ir",
+ "assertrust-match",
  "clap",
  "insta",
  "tempfile",
@@ -91,6 +92,13 @@ name = "assertrust-ir"
 version = "0.0.0"
 dependencies = [
  "oxc",
+]
+
+[[package]]
+name = "assertrust-match"
+version = "0.0.0"
+dependencies = [
+ "assertrust-ir",
 ]
 
 [[package]]

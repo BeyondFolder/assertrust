@@ -6,6 +6,7 @@
 
 mod calls;
 mod consts;
+mod facts;
 mod values;
 
 use std::collections::HashSet;
@@ -262,6 +263,9 @@ impl<'a> Collector<'_> {
                     modifiers: all,
                     line: self.line(call.span),
                     body: Body::default(),
+                    fingerprint: callback.map_or_else(Vec::new, |callback| {
+                        fingerprint(self.values.source, callback.span())
+                    }),
                 });
                 let owner = Owner::Test(self.file.tests.len() - 1);
                 self.enter(owner, callback, !has_table);
@@ -369,6 +373,7 @@ impl<'a> Collector<'_> {
                 })
                 .collect(),
         });
+        let facts = facts::facts(&found, &self.values, &self.consts);
         let assertion = Assertion {
             subject: found.subject.map(normalize).unwrap_or_default(),
             expect: found.kind,
@@ -376,6 +381,7 @@ impl<'a> Collector<'_> {
             promise: found.promise,
             awaited: self.awaited.contains(&call.span),
             matcher,
+            facts,
         };
         self.push(ItemKind::Assertion(assertion), call.span);
     }
@@ -618,6 +624,37 @@ fn as_callback<'b, 'a>(expr: &'b Expression<'a>) -> Option<Callback<'b, 'a>> {
         }),
         _ => None,
     }
+}
+
+/// Words that say nothing about what a test does, left out of its fingerprint.
+const COMMON_WORDS: &[&str] = &[
+    "async",
+    "await",
+    "const",
+    "let",
+    "var",
+    "function",
+    "return",
+    "true",
+    "false",
+    "null",
+    "undefined",
+    "new",
+    "expect",
+    "toBe",
+    "toEqual",
+    "typeof",
+    "this",
+];
+
+/// The distinct words (identifiers, numbers, words in strings) in a test's source, sorted.
+fn fingerprint(source: &str, span: Span) -> Vec<String> {
+    let text = &source[span.start as usize..span.end as usize];
+    let words: std::collections::BTreeSet<&str> = text
+        .split(|c: char| !(c.is_alphanumeric() || c == '_' || c == '$'))
+        .filter(|word| word.len() >= 3 && !COMMON_WORDS.contains(word))
+        .collect();
+    words.into_iter().map(str::to_owned).collect()
 }
 
 fn skip_names(params: &FormalParameters) -> SkipNames {

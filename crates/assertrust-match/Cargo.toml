@@ -1,0 +1,14 @@
+[package]
+name = "assertrust-match"
+description = "Matching in assertrust: which test and check after a change is the same as before it"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+assertrust-ir.workspace = true
+
+[lints]
+workspace = true

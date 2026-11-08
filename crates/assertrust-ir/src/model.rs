@@ -33,6 +33,9 @@ pub struct Test {
     pub modifiers: Vec<Modifier>,
     pub line: u32,
     pub body: Body,
+    /// The distinct words in the test's source (names, literals, matchers), sorted. Used to
+    /// pair a test that was renamed: its body usually stays similar.
+    pub fingerprint: Vec<String>,
 }
 
 impl Test {
@@ -143,6 +146,9 @@ pub struct Assertion {
     pub awaited: bool,
     /// `None` for a bare `expect(x)`, which checks nothing.
     pub matcher: Option<Matcher>,
+    /// What the check states, in a form that doesn't depend on how it's written. Empty for
+    /// a bare `expect(x)`, and for a negated check of several things at once.
+    pub facts: Vec<Fact>,
 }
 
 impl fmt::Display for Assertion {
@@ -176,6 +182,66 @@ impl fmt::Display for Assertion {
             f.write_str(")")?;
         }
         Ok(())
+    }
+}
+
+/// One thing a check states about a value. The same fact written two ways is equal:
+/// `expect(reply.text).toBe('hi')`, `expect(reply).toMatchObject({ text: 'hi' })` and
+/// `expect(reply).toHaveProperty('text', 'hi')` all state `reply.text == 'hi'`.
+///
+/// `docs/architecture.md` (step 4) lists the forms that are recognized.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Fact {
+    /// The value checked, without the properties read from it, as normalized source: `reply`
+    /// for `reply.text`. A resolved promise is `await p`.
+    pub base: String,
+    /// The properties read from the base, e.g. `["text"]`. Some forms add a name of their
+    /// own: `["length"]` for `toHaveLength`, `["text"]` for Playwright's `toHaveText`.
+    pub path: Vec<String>,
+    pub negated: bool,
+    pub test: FactTest,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum FactTest {
+    /// Equal to the value (`toBe`, `toEqual`, a field in `toMatchObject`, `toBeNull`, …).
+    Equals(Value),
+    /// Present and not `undefined`: `toBeDefined()`, `toHaveProperty('key')`.
+    Defined,
+    /// `toBeTruthy()`, and `toBe(true)`, which states the same for pairing.
+    Truthy,
+    /// `toBeFalsy()`, and `toBe(false)`.
+    Falsy,
+    /// Any other matcher, with its arguments: `toContain('x')`, `toBeGreaterThan(1)`.
+    Other { matcher: String, args: Vec<Value> },
+}
+
+impl fmt::Display for Fact {
+    /// e.g. `reply.text == 'hi'`, `not res.status == 500`, `items toContain('x')`.
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if self.negated {
+            f.write_str("not ")?;
+        }
+        f.write_str(&self.base)?;
+        for key in &self.path {
+            write!(f, ".{key}")?;
+        }
+        match &self.test {
+            FactTest::Equals(value) => write!(f, " == {value}"),
+            FactTest::Defined => f.write_str(" is defined"),
+            FactTest::Truthy => f.write_str(" is truthy"),
+            FactTest::Falsy => f.write_str(" is falsy"),
+            FactTest::Other { matcher, args } => {
+                write!(f, " {matcher}(")?;
+                for (i, arg) in args.iter().enumerate() {
+                    if i > 0 {
+                        f.write_str(", ")?;
+                    }
+                    write!(f, "{arg}")?;
+                }
+                f.write_str(")")
+            }
+        }
     }
 }
 

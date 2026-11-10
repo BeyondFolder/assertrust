@@ -83,6 +83,51 @@ impl Repo {
             .transpose()
     }
 
+    /// Several files' raw contents on one side of a comparison, in order, with one git call:
+    /// `None` for a file that doesn't exist there (or is a directory). Bytes, so a file
+    /// that isn't UTF-8 text is the caller's call to skip.
+    pub fn read_files(&self, rev: &Rev, paths: &[String]) -> Result<Vec<Option<Vec<u8>>>, Error> {
+        match rev {
+            Rev::Commit(sha) => {
+                let specs: Vec<String> = paths.iter().map(|path| format!("{sha}:{path}")).collect();
+                self.git.read_blobs(&specs)
+            }
+            Rev::Index => {
+                let specs: Vec<String> = paths.iter().map(|path| format!(":0:{path}")).collect();
+                self.git.read_blobs(&specs)
+            }
+            Rev::WorkTree => paths
+                .iter()
+                .map(|path| {
+                    let full = self.git.root().join(path);
+                    if !full.is_file() {
+                        return Ok(None);
+                    }
+                    fs::read(&full)
+                        .map(Some)
+                        .map_err(|err| Error::new(format!("couldn't read `{path}`: {err}")))
+                })
+                .collect(),
+        }
+    }
+
+    /// The files on one side of a comparison whose contents match the extended regular
+    /// expression `pattern`, among `pathspecs` (git pathspecs, like `*.ts`). On disk, files
+    /// git ignores are left out.
+    pub fn files_matching(
+        &self,
+        rev: &Rev,
+        pattern: &str,
+        pathspecs: &[&str],
+    ) -> Result<Vec<String>, Error> {
+        let tree = match rev {
+            Rev::Commit(sha) => sha.as_str(),
+            Rev::Index => "--cached",
+            Rev::WorkTree => "--untracked",
+        };
+        self.git.grep_files(tree, pattern, pathspecs)
+    }
+
     /// A path typed by the user (relative to the directory the repo was opened from, or
     /// absolute) as a path relative to the repo root, with `/` separators.
     pub fn path_in_repo(&self, path: &Path) -> Result<String, Error> {

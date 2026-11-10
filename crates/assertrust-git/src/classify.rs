@@ -4,8 +4,7 @@
 //! 1. **Test:** `*.test.*` / `*.spec.*` code files, and code files under `__tests__/`
 //! 2. **Gate:** GitHub workflows, vitest/jest/playwright config, `package.json`
 //! 3. **Test support:** other code files under `test/`, `tests/`, `__tests__/`, `__mocks__/`
-//!    or `e2e/`. Files imported by tests from elsewhere are added when helpers are linked
-//!    (step 2).
+//!    or `e2e/`. Helpers are followed into these files and Test files only (step 2).
 //! 4. **Source:** other code files
 //! 5. **Other:** everything else
 

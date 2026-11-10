@@ -1,0 +1,25 @@
+---
+source: crates/assertrust/tests/tests_command.rs
+expression: "fixture(\"helpers.test.ts\")"
+---
+test/helpers.test.ts: 2 tests, 4 helpers
+      imports seed from ./support
+      imports default as expectSorted from ./sorted
+      passes on * from ./shared
+   6  helper expectOk(res, …)
+   7        equal      expect(res.status).toBe(status)
+   8        equal      expect(res.ok).toBe(true)
+  11  helper expectRow(row, …)
+  12        equal      expect(row).toEqual(seed())  (in if)
+  15  helper async expectSaved(id)
+  16        truthiness expect(await db.get(id)).toBeDefined()
+  20  helper expectEmpty(rows)  (rows)
+  21        size       expect(rows).toHaveLength(0)
+  24  test rows > lists
+  25        call       expectOk(await list())
+  26        call       expectEmpty(await rows())
+  27        call       expectSorted(await rows())
+  28        call       expectSaved('a')
+  31  test rows > stores
+  32        call       seed()
+  33        call       expectRow(row, { strict: true })

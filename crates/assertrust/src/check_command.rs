@@ -74,8 +74,9 @@ fn report<'a>(
         findings: Vec::new(),
         notes: Vec::new(),
     };
+    let mut carry = None;
     for (comparison, commit) in comparisons {
-        let loaded = load::load(repo, comparison, classifier)?;
+        let loaded = load::load(repo, comparison, classifier, &mut carry)?;
         for note in &loaded.notes {
             // The same file can be skipped in several commits.
             if !report.notes.contains(note) {

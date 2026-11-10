@@ -31,8 +31,9 @@ pub(crate) fn check(change: &Change, findings: &mut Vec<Finding>) {
             let Some((rule, confidence, message)) = verdict(before, after, check) else {
                 continue;
             };
-            let line = after.body.items[check.after[0]].line;
-            let mut finding = change.at(pair, line, rule, confidence);
+            let old = check.before.first().map(|&item| &before.body.items[item]);
+            let new = &after.body.items[check.after[0]];
+            let mut finding = change.at_item(pair, old, new, rule, confidence);
             finding.message = message;
             finding.before = check
                 .before

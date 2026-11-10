@@ -73,7 +73,7 @@ fn comparison(
     classifier: &Classifier,
     indent: &str,
 ) -> Result<(), String> {
-    let mut loaded = load::load(repo, comparison, classifier)?;
+    let mut loaded = load::load(repo, comparison, classifier, &mut None)?;
     loaded.notes.dedup();
     for note in &loaded.notes {
         line(out, &format!("{indent}{note}"));
@@ -240,19 +240,24 @@ fn render_file(out: &mut String, view: &View, index: usize, file: &FilePair, ind
     }
 }
 
-/// Same id, same file, same modifiers and an identical body.
+/// Same id, same file, same modifiers and an identical body. Calls to helpers show through
+/// the checks they run.
 fn is_unchanged(view: &View, pair: &TestPair) -> bool {
     let (before, after) = (view.before(pair.before), view.after(pair.after));
     pair.how == TestMatch::SameId
         && pair.before.file == pair.after.file
         && before.modifiers == after.modifiers
-        && before.body.items.len() == after.body.items.len()
-        && before
-            .body
-            .items
-            .iter()
-            .zip(&after.body.items)
-            .all(|(a, b)| a.kind == b.kind && a.context == b.context)
+        && own_items(before) == own_items(after)
+}
+
+/// A test's items without calls, as `(kind, context)`.
+fn own_items(test: &Test) -> Vec<(&ItemKind, assertrust_ir::Context)> {
+    test.body
+        .items
+        .iter()
+        .filter(|item| !matches!(item.kind, ItemKind::Call(_)))
+        .map(|item| (&item.kind, item.context))
+        .collect()
 }
 
 fn render_pair(out: &mut String, view: &View, pair: &TestPair, indent: &str) {
@@ -376,17 +381,18 @@ fn removed_line(
 }
 
 /// The items that aren't checks (early returns, runtime skips, `expect.assertions`), with
-/// where they sit, for spotting a change.
+/// where they sit, for spotting a change. Calls to helpers show through their checks.
 fn other_items(test: &Test) -> Vec<String> {
     test.body
         .items
         .iter()
-        .filter(|item| !matches!(item.kind, ItemKind::Assertion(_)))
+        .filter(|item| !matches!(item.kind, ItemKind::Assertion(_) | ItemKind::Call(_)))
         .map(|item| format!("{:?} {:?}", item.kind, item.context))
         .collect()
 }
 
-/// `12  expect(x).toBe(1)`, with the context when it matters.
+/// `12  expect(x).toBe(1)`, with the context when it matters, and the helpers (or hook) it
+/// runs through: `via expectOk(res) > expectStatus(res, 200)`.
 fn check_text(test: &Test, item: usize) -> String {
     let item = &test.body.items[item];
     let ItemKind::Assertion(assertion) = &item.kind else {
@@ -395,6 +401,9 @@ fn check_text(test: &Test, item: usize) -> String {
     let mut text = format!("{:>4}  {assertion}", item.line);
     if !item.context.is_plain() {
         write!(text, "  ({})", item.context).expect("writing to a String");
+    }
+    if let Some(via) = item.via_text() {
+        write!(text, "  {via}").expect("writing to a String");
     }
     text
 }

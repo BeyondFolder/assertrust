@@ -85,6 +85,105 @@ impl Git {
         Err(failed(&args, &output))
     }
 
+    /// Several blobs in one call (`git cat-file --batch`), in order: `None` for one that
+    /// doesn't exist or isn't a file (a directory).
+    pub(crate) fn read_blobs(&self, specs: &[String]) -> Result<Vec<Option<Vec<u8>>>, Error> {
+        // A name with a line break can't go on a line of its own; no import names one.
+        let sent: Vec<&String> = specs.iter().filter(|spec| !spec.contains('\n')).collect();
+        let mut input = String::new();
+        for spec in &sent {
+            input.push_str(spec);
+            input.push('\n');
+        }
+        let args = ["cat-file", "--batch"];
+        let output = self.output_with(
+            &args,
+            Extra {
+                env: &[],
+                stdin: Some(input.as_bytes()),
+            },
+        )?;
+        if !output.status.success() {
+            return Err(failed(&args, &output));
+        }
+        let malformed = || Error::new("unexpected output from `git cat-file --batch`");
+        let mut rest = output.stdout.as_slice();
+        let mut found = Vec::with_capacity(sent.len());
+        for _ in &sent {
+            let end = rest
+                .iter()
+                .position(|&b| b == b'\n')
+                .ok_or_else(malformed)?;
+            let header = String::from_utf8_lossy(&rest[..end]).into_owned();
+            rest = &rest[end + 1..];
+            // `<name> missing` (or `ambiguous`), else `<oid> <type> <size>` and the contents.
+            let mut fields = header.rsplitn(3, ' ');
+            let (Some(size), Some(kind), Some(_)) = (fields.next(), fields.next(), fields.next())
+            else {
+                found.push(None);
+                continue;
+            };
+            let Ok(size) = size.parse::<usize>() else {
+                found.push(None);
+                continue;
+            };
+            let contents = rest.get(..size).ok_or_else(malformed)?;
+            rest = rest.get(size + 1..).ok_or_else(malformed)?;
+            found.push((kind == "blob").then(|| contents.to_vec()));
+        }
+        let mut found = found.into_iter();
+        Ok(specs
+            .iter()
+            .map(|spec| {
+                if spec.contains('\n') {
+                    None
+                } else {
+                    found.next().flatten()
+                }
+            })
+            .collect())
+    }
+
+    /// The files whose contents match the extended regular expression `pattern`, among
+    /// `pathspecs` (`git grep`). `tree` is a commit, `--cached` (the index) or `--untracked`
+    /// (the files on disk). Paths come back relative to the repo root.
+    pub(crate) fn grep_files(
+        &self,
+        tree: &str,
+        pattern: &str,
+        pathspecs: &[&str],
+    ) -> Result<Vec<String>, Error> {
+        let mut args = vec![
+            "grep",
+            "--no-color",
+            "--no-recurse-submodules",
+            "-I",
+            "-l",
+            "-z",
+            "-E",
+            "-e",
+            pattern,
+            tree,
+            "--",
+        ];
+        args.extend_from_slice(pathspecs);
+        let output = self.output(&args)?;
+        // Exit code 1 with no output means nothing matched.
+        if !output.status.success() {
+            if output.status.code() == Some(1) && output.stderr.is_empty() {
+                return Ok(Vec::new());
+            }
+            return Err(failed(&args, &output));
+        }
+        // From a commit, each path comes as `<sha>:<path>`.
+        let prefix = format!("{tree}:");
+        Ok(stdout(&output)
+            .split('\0')
+            .filter(|path| !path.is_empty())
+            .map(|path| path.strip_prefix(&prefix).unwrap_or(path).to_owned())
+            .collect())
+    }
+
     /// The full SHA of the commit `rev` points to.
     pub(crate) fn rev_parse(&self, rev: &str) -> Result<String, Error> {
         let spec = format!("{rev}^{{commit}}");

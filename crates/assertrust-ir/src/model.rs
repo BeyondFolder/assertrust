@@ -18,6 +18,43 @@ pub struct FileIr {
     pub outside: Body,
     /// Matchers added with `expect.extend({ … })`. Tracked, never judged.
     pub custom_matchers: Vec<String>,
+    /// Named functions outside tests and hooks, which tests may call:
+    /// `function expectOk(res) { … }`, `const expectOk = (res) => { … }`.
+    pub helpers: Vec<Helper>,
+    /// What this file imports (`import { expectOk } from './utils'`) or passes on
+    /// (`export * from './api'`). Imports from packages aren't followed.
+    pub imports: Vec<Import>,
+}
+
+/// A named function outside tests and hooks. Its checks run for the tests that call it,
+/// once [`link`](crate::link) has put them there.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Helper {
+    pub name: String,
+    /// The `describe` blocks it's defined in, outermost first: it's visible to tests in them.
+    pub suites: Vec<String>,
+    /// Its parameters in order: a name, or `None` for one that isn't a plain name
+    /// (`{ a, b }`, `x = 1`, `...rest`). A call's arguments are filled in for the names.
+    pub params: Vec<Option<String>>,
+    /// `async`: a call that isn't awaited may finish after the test.
+    pub is_async: bool,
+    /// `export default`.
+    pub default_export: bool,
+    pub line: u32,
+    pub body: Body,
+}
+
+/// One name imported, or passed on, from another file or a package.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Import {
+    /// The name in this file. `*` for `export * from './api'`.
+    pub local: String,
+    /// The name where it's defined: `default` for a default import, `*` for `export *`.
+    pub imported: String,
+    /// As written: `./utils`.
+    pub from: String,
+    /// `export … from`: the file passes it on rather than using it.
+    pub reexport: bool,
 }
 
 /// One `it(…)` / `test(…)`.
@@ -115,9 +152,79 @@ impl Body {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Item {
     pub kind: ItemKind,
-    /// Used for reporting, never compared.
+    /// Used for reporting, never compared. In the file the item is written in: a helper's
+    /// file for one that runs through a helper.
     pub line: u32,
     pub context: Context,
+    /// The helpers (or hook) it runs through for the test, outermost first. Empty for an
+    /// item written in the test itself.
+    pub via: Vec<Via>,
+}
+
+impl Item {
+    /// The file the item is written in: its helper's, or `None` for the test's own file.
+    pub fn path(&self) -> Option<&str> {
+        self.via.last().and_then(|via| via.path.as_deref())
+    }
+
+    /// How it runs for the test, as `via expectOk(res) > expectStatus(res, 200)`. `None`
+    /// for an item written in the test itself.
+    pub fn via_text(&self) -> Option<String> {
+        let calls: Vec<&str> = self.via.iter().map(|via| via.call.as_str()).collect();
+        (!calls.is_empty()).then(|| format!("via {}", calls.join(" > ")))
+    }
+}
+
+/// One step from a test to a check that runs on its behalf: a call to a helper, or a hook.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Via {
+    /// The helper or hook: `expectOk`, `beforeEach`.
+    pub name: String,
+    /// The call as written (`expectOk(res)`), or the hook's name.
+    pub call: String,
+    /// The line of the call (or the hook), in the file it's written in.
+    pub line: u32,
+    /// Where the call sits.
+    pub context: Context,
+    /// The call is `await`ed (or returned). Always true for a hook.
+    pub awaited: bool,
+    /// The call's arguments, filled into the helper's checks.
+    pub args: Vec<Value>,
+    /// The file the helper is defined in, when it isn't the test's.
+    pub path: Option<String>,
+    /// The helper's (or hook's) line, in that file.
+    pub defined: u32,
+}
+
+/// A call to a function by its name, which may be a helper: `expectOk(res)`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Call {
+    pub name: String,
+    pub args: Vec<Value>,
+    /// The call as normalized source, for messages: [`Call::text_of`].
+    pub text: String,
+    /// `await`ed or returned, so the caller waits for it.
+    pub awaited: bool,
+    /// Where linking found the helper it runs. `None` before linking, and for a call
+    /// linking couldn't follow: to a package, through an alias it can't resolve, or into a
+    /// file it doesn't read.
+    pub defined: Option<Defined>,
+}
+
+impl Call {
+    /// A call's text from its name and arguments: `expectStatus(res, 200)`.
+    pub fn text_of(name: &str, args: &[Value]) -> String {
+        let args: Vec<String> = args.iter().map(ToString::to_string).collect();
+        format!("{name}({})", args.join(", "))
+    }
+}
+
+/// Where a helper (or hook) is defined.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Defined {
+    /// Its file, when it isn't the test's.
+    pub path: Option<String>,
+    pub line: u32,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -126,11 +233,15 @@ pub enum ItemKind {
     Assertion(Assertion),
     /// `expect.assertions(n)` (with `n`) or `expect.hasAssertions()` (without).
     AssertionCount(Option<Value>),
-    /// A `return` before the end of the test, so what follows may not run.
+    /// A `return` before the end of the test, hook or helper, so what follows in it may not
+    /// run.
     EarlyReturn,
     /// A skip decided while the test runs: `test.skip(cond)`, `ctx.skip()`. Holds the
     /// condition, if any, as normalized source.
     RuntimeSkip(Option<String>),
+    /// A call to a helper defined in the file, or to something imported. Linking follows it
+    /// with the helper's items. In a linked test, each hook it runs is a call too.
+    Call(Call),
 }
 
 /// One check: `expect(subject)`, then optionally `.not` / `.resolves` / `.rejects`, then a
@@ -283,11 +394,27 @@ pub struct Context {
     pub in_callback: bool,
     /// On the right of `&&`, `||` or `??`.
     pub short_circuit: bool,
+    /// In an async helper the caller doesn't `await`: it may finish after the test.
+    pub not_awaited: bool,
 }
 
 impl Context {
     pub fn is_plain(self) -> bool {
         self == Self::default()
+    }
+
+    /// Everything either context has: a check in an `if` in a helper called from a loop is
+    /// in an `if` and in a loop.
+    pub fn with(self, other: Self) -> Self {
+        Self {
+            in_if: self.in_if || other.in_if,
+            in_loop: self.in_loop || other.in_loop,
+            in_try: self.in_try || other.in_try,
+            in_catch: self.in_catch || other.in_catch,
+            in_callback: self.in_callback || other.in_callback,
+            short_circuit: self.short_circuit || other.short_circuit,
+            not_awaited: self.not_awaited || other.not_awaited,
+        }
     }
 }
 
@@ -301,6 +428,7 @@ impl fmt::Display for Context {
             (self.in_catch, "in catch"),
             (self.in_callback, "in callback"),
             (self.short_circuit, "short-circuit"),
+            (self.not_awaited, "not awaited"),
         ];
         let names: Vec<&str> = flags
             .iter()

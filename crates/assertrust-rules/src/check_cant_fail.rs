@@ -12,11 +12,12 @@
 
 use std::collections::BTreeMap;
 
-use assertrust_ir::{Assertion, Context, ExpectKind, ItemKind, Test, Value};
+use assertrust_ir::{Assertion, Context, ExpectKind, Item, ItemKind, Test, Value, Via};
 use assertrust_match::TestPair;
 
 use crate::{
-    Change, Confidence, Finding, RuleId, assertion, count, item_text, never_runs, number, short,
+    Change, Confidence, Finding, RuleId, assertion, changed_call, count, item_text, never_runs,
+    number, same_way, short,
 };
 
 pub(crate) fn check(change: &Change, findings: &mut Vec<Finding>) {
@@ -29,6 +30,7 @@ pub(crate) fn check(change: &Change, findings: &mut Vec<Finding>) {
             change,
             pair,
             findings: &mut *findings,
+            moved_calls: Vec::new(),
         };
         for check in &pair.checks.pairs {
             for &item in &check.after {
@@ -36,9 +38,10 @@ pub(crate) fn check(change: &Change, findings: &mut Vec<Finding>) {
                 found.matcher_dropped(before, after, &check.before, item);
             }
             if let ([old], [new]) = (check.before.as_slice(), check.after.as_slice()) {
-                found.await_dropped(assertion(before, *old), after, *new);
+                found.await_dropped(&before.body.items[*old], after, *new);
             }
         }
+        found.moved_calls();
         found.early_return(before, after);
         found.assertion_count(before, after);
     }
@@ -49,9 +52,24 @@ struct Found<'f, 'c, 'a> {
     change: &'f Change<'c, 'a>,
     pair: &'f TestPair,
     findings: &'f mut Vec<Finding>,
+    /// Calls to helpers that moved somewhere new (into an `if`, a loop, …), with the checks
+    /// they run: one finding each, not one per check.
+    moved_calls: Vec<MovedCall<'a>>,
 }
 
-impl Found<'_, '_, '_> {
+struct MovedCall<'a> {
+    /// The call's level (0 in the test) and the way to it.
+    at: (usize, &'a [Via]),
+    /// Where the call now sits that it didn't.
+    places: Context,
+    /// The first check it runs, before and after.
+    old: Option<&'a Item>,
+    new: &'a Item,
+    before: Vec<String>,
+    after: Vec<String>,
+}
+
+impl<'a> Found<'_, '_, 'a> {
     fn push(
         &mut self,
         line: u32,
@@ -69,8 +87,27 @@ impl Found<'_, '_, '_> {
         self.findings.push(finding);
     }
 
+    /// A finding about the check `new` (that was `old`), where it changed: in the test, or
+    /// in the helper it runs through.
+    fn push_item(
+        &mut self,
+        old: Option<&Item>,
+        new: &Item,
+        confidence: Confidence,
+        message: String,
+        before: Vec<String>,
+    ) {
+        let mut finding =
+            self.change
+                .at_item(self.pair, old, new, RuleId::CheckCantFail, confidence);
+        finding.message = message;
+        finding.before = before;
+        finding.after = vec![item_text(new)];
+        self.findings.push(finding);
+    }
+
     /// The check at `item` sits somewhere new that may stop it from running or failing.
-    fn context(&mut self, before: &Test, after: &Test, old: &[usize], item: usize) {
+    fn context(&mut self, before: &'a Test, after: &'a Test, old: &[usize], item: usize) {
         // What every old check had: one plain check folded into one in an `if` is now in
         // an `if`.
         let was = old
@@ -79,7 +116,40 @@ impl Found<'_, '_, '_> {
             .reduce(both)
             .unwrap_or_default();
         let new_item = &after.body.items[item];
-        let places = places(minus(new_item.context, was));
+        let first = old.first().map(|&old| &before.body.items[old]);
+        let added = minus(new_item.context, was);
+        // A call on the way to it moved (in the test, or in a helper): reported once for the
+        // call.
+        if let Some(level) = changed_call(first, new_item)
+            && !added.is_plain()
+            && minus(added, call_context(&new_item.via[level])).is_plain()
+        {
+            let texts = |items: &mut dyn Iterator<Item = &Item>| items.map(item_text).collect();
+            let at = (level, &new_item.via[..=level]);
+            match self
+                .moved_calls
+                .iter_mut()
+                .find(|moved| moved.at.0 == at.0 && same_way(moved.at.1, at.1))
+            {
+                Some(moved) => {
+                    moved.places = moved.places.with(added);
+                    moved
+                        .before
+                        .extend(old.iter().map(|&old| item_text(&before.body.items[old])));
+                    moved.after.push(item_text(new_item));
+                }
+                None => self.moved_calls.push(MovedCall {
+                    at,
+                    places: added,
+                    old: first,
+                    new: new_item,
+                    before: texts(&mut old.iter().map(|&old| &before.body.items[old])),
+                    after: vec![item_text(new_item)],
+                }),
+            }
+            return;
+        }
+        let places = places(added);
         let Some(&(_, consequence, _)) = places.first() else {
             return;
         };
@@ -90,21 +160,79 @@ impl Found<'_, '_, '_> {
             .expect("at least one place");
         let wheres: Vec<&str> = places.iter().map(|&(place, _, _)| place).collect();
         let message = format!(
-            "{} is now {}: {consequence}",
+            "{}{} is now {}: {consequence}",
             short(&assertion(after, item).to_string()),
+            in_helper(new_item),
             wheres.join(" and ")
         );
         let before = old
             .iter()
             .map(|&old| item_text(&before.body.items[old]))
             .collect();
-        self.push(
-            new_item.line,
-            confidence,
-            message,
-            before,
-            vec![item_text(new_item)],
-        );
+        // The new place is inside the helper (it wrapped the check in a `try`): reported
+        // there, once for every test, whatever else changed at the call.
+        if !new_item.via.is_empty() && !minus(added, on_the_way(new_item)).is_plain() {
+            let mut finding =
+                self.change
+                    .at(self.pair, new_item.line, RuleId::CheckCantFail, confidence);
+            if let Some(path) = new_item.path() {
+                finding.move_to(path);
+            }
+            finding.message = message;
+            finding.before = before;
+            finding.after = vec![item_text(new_item)];
+            self.findings.push(finding);
+            return;
+        }
+        self.push_item(first, new_item, confidence, message, before);
+    }
+
+    /// One finding per call to a helper that moved somewhere new: `expectOk(res) is now
+    /// inside an if, with its 2 checks: it may not run`.
+    fn moved_calls(&mut self) {
+        for moved in std::mem::take(&mut self.moved_calls) {
+            let places = places(moved.places);
+            let Some(&(_, consequence, _)) = places.first() else {
+                continue;
+            };
+            let confidence = places
+                .iter()
+                .map(|&(_, _, confidence)| confidence)
+                .min()
+                .expect("at least one place");
+            // The call itself isn't awaited, rather than sitting in a helper that isn't.
+            let wheres: Vec<&str> = places
+                .iter()
+                .map(|&(place, _, _)| {
+                    if place == NOT_AWAITED {
+                        "not awaited"
+                    } else {
+                        place
+                    }
+                })
+                .collect();
+            let checks = if moved.after.len() == 1 {
+                "its check".to_owned()
+            } else {
+                format!("its {}", count(moved.after.len(), "check"))
+            };
+            let message = format!(
+                "{} is now {}, with {checks}: {consequence}",
+                short(&moved.at.1[moved.at.0].call),
+                wheres.join(" and ")
+            );
+            let mut finding = self.change.at_item(
+                self.pair,
+                moved.old,
+                moved.new,
+                RuleId::CheckCantFail,
+                confidence,
+            );
+            finding.message = message;
+            finding.before = moved.before;
+            finding.after = moved.after;
+            self.findings.push(finding);
+        }
     }
 
     /// `expect(x).toBe(1)` → `expect(x)`: a bare `expect` checks nothing.
@@ -117,39 +245,45 @@ impl Found<'_, '_, '_> {
             return;
         }
         let new_item = &after.body.items[item];
+        let first = old.first().map(|&old| &before.body.items[old]);
         let before = old
             .iter()
             .map(|&old| item_text(&before.body.items[old]))
             .collect();
-        self.push(
-            new_item.line,
+        self.push_item(
+            first,
+            new_item,
             Confidence::High,
             format!(
-                "{} has no matcher: it checks nothing",
-                short(&new.to_string())
+                "{}{} has no matcher: it checks nothing",
+                short(&new.to_string()),
+                in_helper(new_item)
             ),
             before,
-            vec![item_text(new_item)],
         );
     }
 
     /// `await expect(p).resolves.toBe(1)` → `expect(p).resolves.toBe(1)`: the test may end
     /// before the check fails.
-    fn await_dropped(&mut self, old: &Assertion, after: &Test, item: usize) {
+    fn await_dropped(&mut self, old_item: &Item, after: &Test, item: usize) {
+        let ItemKind::Assertion(old) = &old_item.kind else {
+            return;
+        };
         let new = assertion(after, item);
         if !old.awaited || new.awaited || !returns_promise(new) {
             return;
         }
         let new_item = &after.body.items[item];
-        self.push(
-            new_item.line,
+        self.push_item(
+            Some(old_item),
+            new_item,
             Confidence::High,
             format!(
-                "await dropped from {}: the test may end before it fails",
-                short(&new.to_string())
+                "await dropped from {}{}: the test may end before it fails",
+                short(&new.to_string()),
+                in_helper(new_item)
             ),
-            vec![old.to_string()],
-            vec![item_text(new_item)],
+            vec![item_text(old_item)],
         );
     }
 
@@ -177,7 +311,8 @@ impl Found<'_, '_, '_> {
         for (at, items) in behind {
             let ret = &after.body.items[at];
             let checks = count(items.len(), "check");
-            let (confidence, message) = if ret.context.is_plain() {
+            let own = own_context(ret);
+            let (confidence, message) = if own.is_plain() {
                 let them = if items.len() == 1 {
                     "it never runs"
                 } else {
@@ -185,22 +320,34 @@ impl Found<'_, '_, '_> {
                 };
                 (
                     Confidence::High,
-                    format!("a return now comes before {checks}: {them}"),
+                    format!(
+                        "a return{} now comes before {checks}: {them}",
+                        in_helper(ret)
+                    ),
                 )
             } else {
                 let them = if items.len() == 1 { "it" } else { "they" };
                 (
                     Confidence::Medium,
                     format!(
-                        "a return ({}) now comes before {checks}: {them} may not run",
-                        ret.context
+                        "a return{} ({own}) now comes before {checks}: {them} may not run",
+                        in_helper(ret)
                     ),
                 )
             };
-            let after_lines = std::iter::once(item_text(ret))
+            let after_lines: Vec<String> = std::iter::once(item_text(ret))
                 .chain(items.iter().map(|&item| item_text(&after.body.items[item])))
                 .collect();
-            self.push(ret.line, confidence, message, Vec::new(), after_lines);
+            // Reported where the `return` is written: in a helper, once for every test.
+            let mut finding =
+                self.change
+                    .at(self.pair, ret.line, RuleId::CheckCantFail, confidence);
+            if let Some(path) = ret.path() {
+                finding.move_to(path);
+            }
+            finding.message = message;
+            finding.after = after_lines;
+            self.findings.push(finding);
         }
     }
 
@@ -235,10 +382,18 @@ impl Found<'_, '_, '_> {
     }
 }
 
+const NOT_AWAITED: &str = "in an async helper that isn't awaited";
+
 /// Where a check can sit that stops it from running or failing, as `(where, what that
 /// means, how sure)`, most serious first.
 fn places(context: Context) -> Vec<(&'static str, &'static str, Confidence)> {
     let all = [
+        (
+            context.not_awaited,
+            NOT_AWAITED,
+            "it may run after the test ends",
+            Confidence::Medium,
+        ),
         (
             context.in_callback,
             "inside a callback",
@@ -291,6 +446,7 @@ fn both(a: Context, b: Context) -> Context {
         in_catch: a.in_catch && b.in_catch,
         in_callback: a.in_callback && b.in_callback,
         short_circuit: a.short_circuit && b.short_circuit,
+        not_awaited: a.not_awaited && b.not_awaited,
     }
 }
 
@@ -303,21 +459,69 @@ fn minus(a: Context, b: Context) -> Context {
         in_catch: a.in_catch && !b.in_catch,
         in_callback: a.in_callback && !b.in_callback,
         short_circuit: a.short_circuit && !b.short_circuit,
+        not_awaited: a.not_awaited && !b.not_awaited,
     }
 }
 
+/// Where a call to a helper sits, as its checks see it: a call that isn't awaited leaves
+/// them not awaited.
+fn call_context(call: &Via) -> Context {
+    Context {
+        not_awaited: !call.awaited,
+        ..call.context
+    }
+}
+
+/// ` in expectOk` for a check written in a helper (or ` in beforeEach`), empty for one
+/// written in the test.
+fn in_helper(item: &Item) -> String {
+    item.via
+        .last()
+        .map_or_else(String::new, |via| format!(" in {}", via.name))
+}
+
 /// The early `return` before `item` in the test's body that's most sure to stop it: the
-/// first unconditional one, else the first one inside an `if`.
+/// first unconditional one, else the first one inside an `if`. A `return` ends the function
+/// it's written in: the test, or one call of a hook or helper.
 fn return_before(test: &Test, item: usize) -> Option<usize> {
+    let target = &test.body.items[item];
     let mut returns = test.body.items[..item]
         .iter()
         .enumerate()
-        .filter(|(_, item)| matches!(item.kind, ItemKind::EarlyReturn));
+        .filter(|(_, ret)| matches!(ret.kind, ItemKind::EarlyReturn) && ends(ret, target));
     let first = returns.next()?;
     let unconditional = std::iter::once(first)
         .chain(returns)
-        .find(|(_, item)| item.context.is_plain());
+        .find(|(_, ret)| own_context(ret).is_plain());
     Some(unconditional.unwrap_or(first).0)
+}
+
+/// Whether `ret` keeps `item` from running: `item` runs later in the same call of the same
+/// function. `afterEach` and `afterAll` run however the test ends.
+fn ends(ret: &Item, item: &Item) -> bool {
+    if ret.via.is_empty() {
+        return !item
+            .via
+            .first()
+            .is_some_and(|via| matches!(via.name.as_str(), "afterEach" | "afterAll"));
+    }
+    item.via.len() >= ret.via.len() && same_way(&ret.via, &item.via[..ret.via.len()])
+}
+
+/// Where a `return` sits inside its own function, leaving out what the calls on the way add:
+/// an unconditional `return` in a helper called from an `if` still stops the rest of it.
+fn own_context(ret: &Item) -> Context {
+    let mut on_the_way = on_the_way(ret);
+    on_the_way.not_awaited = true;
+    minus(ret.context, on_the_way)
+}
+
+/// What the calls on the way to `item` add to where it sits: a helper called in an `if`,
+/// or an async one that isn't awaited.
+fn on_the_way(item: &Item) -> Context {
+    item.via.iter().fold(Context::default(), |context, via| {
+        context.with(call_context(via))
+    })
 }
 
 /// Whether a `return` stops a check: not at all, sometimes, or always.
@@ -331,15 +535,16 @@ enum Blocked {
 fn blocked(test: &Test, at: Option<usize>) -> Blocked {
     match at {
         None => Blocked::No,
-        Some(at) if test.body.items[at].context.is_plain() => Blocked::Always,
+        Some(at) if own_context(&test.body.items[at]).is_plain() => Blocked::Always,
         Some(_) => Blocked::Sometimes,
     }
 }
 
-/// The test's first `expect.assertions(n)` / `expect.hasAssertions()`, with `n`.
-fn assertion_count(test: &Test) -> Option<(&assertrust_ir::Item, Option<&Value>)> {
+/// The test's first own `expect.assertions(n)` / `expect.hasAssertions()`, with `n`. One in
+/// a hook or helper doesn't stand in for the test's.
+fn assertion_count(test: &Test) -> Option<(&Item, Option<&Value>)> {
     test.body.items.iter().find_map(|item| match &item.kind {
-        ItemKind::AssertionCount(n) => Some((item, n.as_ref())),
+        ItemKind::AssertionCount(n) if item.via.is_empty() => Some((item, n.as_ref())),
         _ => None,
     })
 }

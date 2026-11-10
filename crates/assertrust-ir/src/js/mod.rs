@@ -17,10 +17,12 @@ use std::collections::HashSet;
 use oxc::allocator::Allocator;
 use oxc::ast::ast::{
     ArrowFunctionExpression, AwaitExpression, BindingPattern, BlockStatement, BreakStatement,
-    CallExpression, ConditionalExpression, ContinueStatement, DoWhileStatement, Expression,
-    ForInStatement, ForOfStatement, ForStatement, FormalParameters, Function, FunctionBody,
-    IfStatement, LogicalExpression, Program, ReturnStatement, Statement, SwitchStatement,
-    TryStatement, WhileStatement,
+    CallExpression, ConditionalExpression, ContinueStatement, DoWhileStatement,
+    ExportAllDeclaration, ExportDefaultDeclaration, ExportDefaultDeclarationKind,
+    ExportFromDeclaration, Expression, ForInStatement, ForOfStatement, ForStatement,
+    FormalParameters, Function, FunctionBody, IfStatement, ImportDeclaration,
+    ImportDeclarationSpecifier, LogicalExpression, Program, ReturnStatement, Statement,
+    SwitchStatement, TryStatement, VariableDeclarator, WhileStatement,
 };
 use oxc::ast_visit::{Visit, walk};
 use oxc::parser::{ParseOptions, Parser};
@@ -30,11 +32,12 @@ use oxc::syntax::scope::ScopeFlags;
 
 use self::calls::{RawArg, RawModifier, Structure};
 use self::consts::Consts;
-use self::values::{Values, normalize};
+use self::values::{Values, js_str, normalize};
 use crate::ParseError;
 use crate::matcher::MatcherKind;
 use crate::model::{
-    Assertion, Body, Context, FileIr, Hook, Item, ItemKind, Matcher, Modifier, Test,
+    Assertion, Body, Call, Context, FileIr, Helper, Hook, Import, Item, ItemKind, Matcher,
+    Modifier, Test,
 };
 use crate::value::Value;
 
@@ -64,9 +67,63 @@ pub(crate) fn parse(path: &str, source: &str) -> Result<FileIr, ParseError> {
         runner_waits: false,
         last_statement: None,
         skip_names: SkipNames::default(),
+        default_export: None,
     };
     collector.visit_program(&program);
-    Ok(collector.file)
+    let mut file = collector.file;
+    if let Some(name) = collector.default_export {
+        for helper in file.helpers.iter_mut().filter(|helper| helper.name == name) {
+            helper.default_export = true;
+        }
+    }
+    keep_helper_calls(&mut file);
+    Ok(file)
+}
+
+/// Drops calls to anything but a helper: one defined in the file, or imported from a
+/// relative path. Helpers can be defined after the tests that call them, so this runs last.
+fn keep_helper_calls(file: &mut FileIr) {
+    let known: HashSet<String> = file
+        .helpers
+        .iter()
+        .map(|helper| helper.name.clone())
+        .chain(
+            file.imports
+                .iter()
+                .filter(|import| !import.reexport)
+                .map(|import| import.local.clone()),
+        )
+        .collect();
+    let keep = |body: &mut Body| {
+        body.items.retain(|item| match &item.kind {
+            ItemKind::Call(call) => known.contains(&call.name),
+            _ => true,
+        });
+    };
+    file.tests.iter_mut().for_each(|test| keep(&mut test.body));
+    file.hooks.iter_mut().for_each(|hook| keep(&mut hook.body));
+    file.helpers
+        .iter_mut()
+        .for_each(|helper| keep(&mut helper.body));
+    keep(&mut file.outside);
+}
+
+/// A function's parameters as helper parameters: plain names, `None` for anything else.
+fn param_names(params: &FormalParameters) -> Vec<Option<String>> {
+    let mut names: Vec<Option<String>> = params
+        .items
+        .iter()
+        .map(|param| match &param.pattern {
+            BindingPattern::BindingIdentifier(id) if param.initializer.is_none() => {
+                Some(id.name.to_string())
+            }
+            _ => None,
+        })
+        .collect();
+    if params.rest.is_some() {
+        names.push(None);
+    }
+    names
 }
 
 /// Parses one file into oxc's syntax tree, or says why it can't.
@@ -135,6 +192,14 @@ enum Owner {
     Outside,
     Test(usize),
     Hook(usize),
+    Helper(usize),
+}
+
+impl Owner {
+    /// A test or hook: what the runner itself calls.
+    fn runs_tests(self) -> bool {
+        matches!(self, Self::Test(_) | Self::Hook(_))
+    }
 }
 
 /// Names that skip the running test when called: `ctx` in `it('…', (ctx) => ctx.skip())`,
@@ -166,6 +231,8 @@ struct Collector<'s> {
     /// The last statement of the current test or hook, so a `return` there isn't "early".
     last_statement: Option<Span>,
     skip_names: SkipNames,
+    /// `export default expectOk;`: marked on the helper once the file is read.
+    default_export: Option<String>,
 }
 
 impl<'a> Collector<'_> {
@@ -178,13 +245,98 @@ impl<'a> Collector<'_> {
             kind,
             line: self.line(span),
             context: self.context,
+            via: Vec::new(),
         };
         match self.owner {
             Owner::Outside if self.in_helper => {}
             Owner::Outside => self.file.outside.items.push(item),
             Owner::Test(index) => self.file.tests[index].body.items.push(item),
             Owner::Hook(index) => self.file.hooks[index].body.items.push(item),
+            Owner::Helper(index) => self.file.helpers[index].body.items.push(item),
         }
+    }
+
+    /// A helper can be defined here: outside tests, hooks and other functions.
+    fn can_define_helper(&self) -> bool {
+        matches!(self.owner, Owner::Outside) && !self.in_helper
+    }
+
+    /// Walks a named function outside tests as a helper.
+    fn helper(
+        &mut self,
+        name: String,
+        params: &FormalParameters<'a>,
+        is_async: bool,
+        span: Span,
+        body: &CallbackBody<'_, 'a>,
+    ) {
+        self.file.helpers.push(Helper {
+            name,
+            suites: self.suite_names(),
+            params: param_names(params),
+            is_async,
+            default_export: false,
+            line: self.line(span),
+            body: Body::default(),
+        });
+        let saved = (
+            self.owner,
+            self.context,
+            self.depth,
+            self.runner_waits,
+            self.last_statement,
+        );
+        self.owner = Owner::Helper(self.file.helpers.len() - 1);
+        self.context = Context::default();
+        self.depth = 0;
+        // What a helper returns, its caller gets: a check returned from it is awaited when
+        // the call is.
+        self.runner_waits = true;
+        self.last_statement = None;
+        self.visit_callback_body(body);
+        (
+            self.owner,
+            self.context,
+            self.depth,
+            self.runner_waits,
+            self.last_statement,
+        ) = saved;
+    }
+
+    /// A call to a function by its name, which may be a helper: kept if one turns up.
+    fn call(&mut self, call: &CallExpression<'a>) {
+        let Expression::Identifier(callee) = call.callee.get_inner_expression() else {
+            return;
+        };
+        if matches!(self.owner, Owner::Outside) {
+            return;
+        }
+        let args: Vec<Value> = call
+            .arguments
+            .iter()
+            .map(|arg| match arg.as_expression() {
+                Some(expr) => self.values.value(expr, &self.consts),
+                None => Value::Opaque("...".to_owned()),
+            })
+            .collect();
+        let text = format!(
+            "{}({})",
+            callee.name,
+            args.iter()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
+        let awaited = self.awaited.contains(&call.span);
+        self.push(
+            ItemKind::Call(Call {
+                name: callee.name.to_string(),
+                args,
+                text,
+                awaited,
+            }),
+            call.span,
+        );
     }
 
     fn suite_names(&self) -> Vec<String> {
@@ -297,6 +449,7 @@ impl<'a> Collector<'_> {
                     // In a function outside tests, which may never be called. Helpers are
                     // linked to the tests that call them in a later step.
                     Owner::Outside if self.in_helper => {}
+                    Owner::Helper(_) => {}
                     Owner::Outside => self.skip_suite(Modifier {
                         name: name.to_owned(),
                         arg: condition.map(Value::Opaque),
@@ -452,7 +605,9 @@ impl<'a> Collector<'_> {
         self.runner_waits = false;
         match self.owner {
             Owner::Outside => self.in_helper = true,
-            Owner::Test(_) | Owner::Hook(_) => self.context.in_callback = true,
+            Owner::Test(_) | Owner::Hook(_) | Owner::Helper(_) => {
+                self.context.in_callback = true;
+            }
         }
         walk(self);
         (self.context, self.depth, self.in_helper, self.runner_waits) = saved;
@@ -486,7 +641,7 @@ impl<'a> Visit<'a> for Collector<'_> {
             }
             return;
         }
-        if !matches!(self.owner, Owner::Outside) && self.is_context_skip(call) {
+        if self.owner.runs_tests() && self.is_context_skip(call) {
             let condition = call
                 .arguments
                 .first()
@@ -495,6 +650,7 @@ impl<'a> Visit<'a> for Collector<'_> {
             self.push(ItemKind::RuntimeSkip(condition), call.span);
             return;
         }
+        self.call(call);
         walk::walk_call_expression(self, call);
     }
 
@@ -507,7 +663,7 @@ impl<'a> Visit<'a> for Collector<'_> {
         if let Some(argument) = &it.argument {
             self.returned(argument);
         }
-        let in_body = !matches!(self.owner, Owner::Outside) && self.depth == 0;
+        let in_body = self.owner.runs_tests() && self.depth == 0;
         if in_body && self.last_statement != Some(it.span) {
             self.push(ItemKind::EarlyReturn, it.span);
         }
@@ -609,7 +765,109 @@ impl<'a> Visit<'a> for Collector<'_> {
     }
 
     fn visit_function(&mut self, it: &Function<'a>, flags: ScopeFlags) {
+        if self.can_define_helper()
+            && let (Some(id), Some(body)) = (&it.id, &it.body)
+        {
+            let body = CallbackBody::Block(body);
+            self.helper(id.name.to_string(), &it.params, it.r#async, it.span, &body);
+            return;
+        }
         self.nested_function(|this| walk::walk_function(this, it, flags));
+    }
+
+    /// `const expectOk = (res) => { … }` outside tests is a helper too.
+    fn visit_variable_declarator(&mut self, it: &VariableDeclarator<'a>) {
+        if self.can_define_helper()
+            && let BindingPattern::BindingIdentifier(id) = &it.id
+            && let Some(init) = &it.init
+            && let Some(callback) = as_callback(init)
+        {
+            let is_async = match init.get_inner_expression() {
+                Expression::ArrowFunctionExpression(arrow) => arrow.r#async,
+                Expression::FunctionExpression(function) => function.r#async,
+                _ => false,
+            };
+            let name = id.name.to_string();
+            self.helper(name, callback.params, is_async, it.span, &callback.body);
+            return;
+        }
+        walk::walk_variable_declarator(self, it);
+    }
+
+    fn visit_import_declaration(&mut self, it: &ImportDeclaration<'a>) {
+        let from = js_str(it.source.value);
+        if !from.starts_with('.') || it.import_kind.is_type() {
+            return;
+        }
+        for specifier in it.specifiers.iter().flatten() {
+            let (local, imported) = match specifier {
+                ImportDeclarationSpecifier::ImportSpecifier(specifier) => {
+                    if specifier.import_kind.is_type() {
+                        continue;
+                    }
+                    (
+                        specifier.local.name.to_string(),
+                        specifier.imported.name().to_string(),
+                    )
+                }
+                ImportDeclarationSpecifier::ImportDefaultSpecifier(specifier) => {
+                    (specifier.local.name.to_string(), "default".to_owned())
+                }
+                ImportDeclarationSpecifier::ImportNamespaceSpecifier(_) => continue,
+            };
+            self.file.imports.push(Import {
+                local,
+                imported,
+                from: from.clone(),
+                reexport: false,
+            });
+        }
+    }
+
+    /// `export { expectOk } from './api'`
+    fn visit_export_from_declaration(&mut self, it: &ExportFromDeclaration<'a>) {
+        let from = js_str(it.source.value);
+        if !from.starts_with('.') || it.export_kind.is_type() {
+            return;
+        }
+        for specifier in &it.specifiers {
+            self.file.imports.push(Import {
+                local: specifier.exported.name().to_string(),
+                imported: specifier.local.name().to_string(),
+                from: from.clone(),
+                reexport: true,
+            });
+        }
+    }
+
+    /// `export * from './api'`
+    fn visit_export_all_declaration(&mut self, it: &ExportAllDeclaration<'a>) {
+        let from = js_str(it.source.value);
+        if from.starts_with('.') && it.exported.is_none() && !it.export_kind.is_type() {
+            self.file.imports.push(Import {
+                local: "*".to_owned(),
+                imported: "*".to_owned(),
+                from,
+                reexport: true,
+            });
+        }
+    }
+
+    /// `export default function expectOk() {}`, `export default expectOk;`
+    fn visit_export_default_declaration(&mut self, it: &ExportDefaultDeclaration<'a>) {
+        let helpers = self.file.helpers.len();
+        walk::walk_export_default_declaration(self, it);
+        match &it.declaration {
+            ExportDefaultDeclarationKind::FunctionDeclaration(_)
+                if self.file.helpers.len() > helpers =>
+            {
+                self.file.helpers[helpers].default_export = true;
+            }
+            ExportDefaultDeclarationKind::Identifier(id) => {
+                self.default_export = Some(id.name.to_string());
+            }
+            _ => {}
+        }
     }
 
     fn visit_arrow_function_expression(&mut self, it: &ArrowFunctionExpression<'a>) {

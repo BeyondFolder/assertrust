@@ -169,10 +169,60 @@ pub fn check(files: &[TestFile], gates: &[GateFile]) -> Vec<Finding> {
     check_cant_fail::check(&change, &mut findings);
     changed_check::check(&change, &mut findings);
     gate_loosened::check(gates, &mut findings);
+    let mut findings = merge(findings);
     findings.sort_by(|a, b| {
         (a.confidence, &a.path, a.line, a.rule).cmp(&(b.confidence, &b.path, b.line, b.rule))
     });
     findings
+}
+
+/// One finding for what several tests share: a check removed from a helper they all call
+/// is one finding in the helper, `(in 3 tests)`, not one per test.
+fn merge(findings: Vec<Finding>) -> Vec<Finding> {
+    let mut merged: Vec<(Finding, Vec<String>)> = Vec::new();
+    for finding in findings {
+        let same = merged.iter_mut().find(|(other, _)| {
+            other.test.is_some()
+                && finding.test.is_some()
+                && (
+                    other.rule,
+                    other.confidence,
+                    &other.path,
+                    other.line,
+                    &other.message,
+                ) == (
+                    finding.rule,
+                    finding.confidence,
+                    &finding.path,
+                    finding.line,
+                    &finding.message,
+                )
+        });
+        match same {
+            Some((_, tests)) => {
+                let test = finding.test.expect("checked above");
+                if !tests.contains(&test) {
+                    tests.push(test);
+                }
+            }
+            None => {
+                let tests = finding.test.iter().cloned().collect();
+                merged.push((finding, tests));
+            }
+        }
+    }
+    merged
+        .into_iter()
+        .map(|(mut finding, tests)| {
+            if tests.len() > 1 {
+                finding.test = None;
+                finding
+                    .message
+                    .push_str(&format!(" (in {} tests)", tests.len()));
+            }
+            finding
+        })
+        .collect()
 }
 
 /// One change, as the rules see it.
@@ -199,6 +249,37 @@ impl<'a> Change<'_, 'a> {
         self.pairs[file]
             .after
             .expect("a test after the change has a side after")
+    }
+
+    /// A finding about `new`, an item of the test after the change in `pair`, that was `old`.
+    ///
+    /// An item that runs through a helper (or hook) is reported where it changed: at the
+    /// call in the test when the call changed (`expectStatus(res, 200)` → `expectStatus(res,
+    /// 500)`, or moved into an `if`), else in the helper, so every test calling it shares
+    /// one finding.
+    fn at_item(
+        &self,
+        pair: &TestPair,
+        old: Option<&Item>,
+        new: &Item,
+        rule: RuleId,
+        confidence: Confidence,
+    ) -> Finding {
+        let mut finding = self.at(pair, new.line, rule, confidence);
+        let Some(call) = new.via.first() else {
+            return finding;
+        };
+        let was = old.and_then(|old| old.via.first());
+        let call_changed = was.is_none_or(|was| {
+            (&was.name, &was.args, was.context, was.awaited)
+                != (&call.name, &call.args, call.context, call.awaited)
+        });
+        if call_changed {
+            finding.line = Some(call.line);
+        } else if let Some(path) = new.path() {
+            finding.path = path.to_owned();
+        }
+        finding
     }
 
     /// A finding about the test after the change in `pair`, at `line`.
@@ -243,21 +324,33 @@ fn assertion(test: &Test, item: usize) -> &Assertion {
     }
 }
 
-/// An item as code, with where it sits when that matters: `expect(a).toBe(1) (in if)`.
+/// An item as code, with where it sits when that matters and how it runs for the test:
+/// `expect(a).toBe(1) (in if) via expectOk(res)`.
 fn item_text(item: &Item) -> String {
-    let text = match &item.kind {
+    let mut text = match &item.kind {
         ItemKind::Assertion(assertion) => assertion.to_string(),
         ItemKind::AssertionCount(Some(n)) => format!("expect.assertions({n})"),
         ItemKind::AssertionCount(None) => "expect.hasAssertions()".to_owned(),
         ItemKind::EarlyReturn => "return".to_owned(),
         ItemKind::RuntimeSkip(Some(condition)) => format!("skip({condition})"),
         ItemKind::RuntimeSkip(None) => "skip()".to_owned(),
+        ItemKind::Call(call) => call.text.clone(),
     };
-    if item.context.is_plain() {
-        text
-    } else {
-        format!("{text} ({})", item.context)
+    if !item.context.is_plain() {
+        text.push_str(&format!(" ({})", item.context));
     }
+    if let Some(via) = via_text(item) {
+        text.push(' ');
+        text.push_str(&via);
+    }
+    text
+}
+
+/// How an item runs for the test: `via expectOk(res)`, `via beforeEach`. `None` for the
+/// test's own.
+fn via_text(item: &Item) -> Option<String> {
+    let calls: Vec<&str> = item.via.iter().map(|via| via.call.as_str()).collect();
+    (!calls.is_empty()).then(|| format!("via {}", calls.join(" > ")))
 }
 
 /// A number literal's value.

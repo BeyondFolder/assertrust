@@ -38,6 +38,11 @@ fn where_checks_sit() {
 }
 
 #[test]
+fn helpers_and_imports() {
+    insta::assert_snapshot!("helpers", fixture("helpers.test.ts"));
+}
+
+#[test]
 fn playwright() {
     insta::assert_snapshot!("playwright", fixture("checkout.spec.ts"));
 }

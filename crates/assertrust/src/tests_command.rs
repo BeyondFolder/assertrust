@@ -3,12 +3,16 @@
 //! test config file it shows the gate facts instead.
 //!
 //! ```text
-//! test/forwarding.test.ts: 2 tests
-//!    3  test forwarding > stores the pending forward
-//!    4        equal      expect(res.status).toBe(200)
-//!    5        subset     expect(row).toMatchObject({ domainIds: null, status: 'pending' })
-//!    8  test forwarding > retries  [skip]
+//! test/forwarding.test.ts: 2 tests, 1 helper
+//!    1  helper expectOk(res)
+//!    2        equal      expect(res.status).toBe(200)
+//!    5  test forwarding > stores the pending forward
+//!    6        call       expectOk(res)
+//!    7        subset     expect(row).toMatchObject({ domainIds: null, status: 'pending' })
+//!   10  test forwarding > retries  [skip]
 //! ```
+//!
+//! Calls to helpers are shown as written: `assertrust pairs` shows the checks they add.
 
 use std::fmt::Write as _;
 use std::fs;
@@ -97,6 +101,9 @@ fn render(label: &str, ir: &FileIr) -> String {
     if !ir.hooks.is_empty() {
         summary.push(count(ir.hooks.len(), "hook"));
     }
+    if !ir.helpers.is_empty() {
+        summary.push(count(ir.helpers.len(), "helper"));
+    }
     if !ir.custom_matchers.is_empty() {
         summary.push(format!(
             "custom matchers: {}",
@@ -104,6 +111,22 @@ fn render(label: &str, ir: &FileIr) -> String {
         ));
     }
     line(&mut out, &format!("{label}: {}", summary.join(", ")));
+    for import in &ir.imports {
+        let what = if import.reexport {
+            "passes on"
+        } else {
+            "imports"
+        };
+        let name = match (import.local.as_str(), import.imported.as_str()) {
+            ("*", _) => "*".to_owned(),
+            (local, imported) if local == imported => local.to_owned(),
+            (local, imported) => format!("{imported} as {local}"),
+        };
+        line(
+            &mut out,
+            &format!("      {what} {name} from {}", import.from),
+        );
+    }
 
     if !ir.outside.items.is_empty() {
         line(&mut out, "      outside tests");
@@ -119,6 +142,24 @@ fn render(label: &str, ir: &FileIr) -> String {
             write!(heading, "  [{}]", modifiers.join(", ")).expect("writing to a String");
         }
         blocks.push((test.line, heading, &test.body));
+    }
+    for helper in &ir.helpers {
+        let params: Vec<&str> = helper
+            .params
+            .iter()
+            .map(|param| param.as_deref().unwrap_or("…"))
+            .collect();
+        let mut heading = format!("helper {}({})", helper.name, params.join(", "));
+        if helper.is_async {
+            heading.insert_str("helper ".len(), "async ");
+        }
+        if helper.default_export {
+            heading.push_str("  [export default]");
+        }
+        if !helper.suites.is_empty() {
+            write!(heading, "  ({})", helper.suites.join(" > ")).expect("writing to a String");
+        }
+        blocks.push((helper.line, heading, &helper.body));
     }
     for hook in &ir.hooks {
         let mut heading = format!("hook {}", hook.kind.as_str());
@@ -147,6 +188,7 @@ fn body(out: &mut String, body: &Body) {
             ),
             ItemKind::AssertionCount(Some(n)) => ("count", format!("expect.assertions({n})")),
             ItemKind::AssertionCount(None) => ("count", "expect.hasAssertions()".to_owned()),
+            ItemKind::Call(call) => ("call", call.text.clone()),
             ItemKind::EarlyReturn => ("exit", "early return".to_owned()),
             ItemKind::RuntimeSkip(condition) => (
                 "skip",

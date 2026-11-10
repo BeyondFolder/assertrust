@@ -376,17 +376,18 @@ fn removed_line(
 }
 
 /// The items that aren't checks (early returns, runtime skips, `expect.assertions`), with
-/// where they sit, for spotting a change.
+/// where they sit, for spotting a change. Calls to helpers show through their checks.
 fn other_items(test: &Test) -> Vec<String> {
     test.body
         .items
         .iter()
-        .filter(|item| !matches!(item.kind, ItemKind::Assertion(_)))
+        .filter(|item| !matches!(item.kind, ItemKind::Assertion(_) | ItemKind::Call(_)))
         .map(|item| format!("{:?} {:?}", item.kind, item.context))
         .collect()
 }
 
-/// `12  expect(x).toBe(1)`, with the context when it matters.
+/// `12  expect(x).toBe(1)`, with the context when it matters, and the helpers (or hook) it
+/// runs through: `via expectOk(res) > expectStatus(res, 200)`.
 fn check_text(test: &Test, item: usize) -> String {
     let item = &test.body.items[item];
     let ItemKind::Assertion(assertion) = &item.kind else {
@@ -395,6 +396,10 @@ fn check_text(test: &Test, item: usize) -> String {
     let mut text = format!("{:>4}  {assertion}", item.line);
     if !item.context.is_plain() {
         write!(text, "  ({})", item.context).expect("writing to a String");
+    }
+    if !item.via.is_empty() {
+        let calls: Vec<&str> = item.via.iter().map(|via| via.call.as_str()).collect();
+        write!(text, "  via {}", calls.join(" > ")).expect("writing to a String");
     }
     text
 }

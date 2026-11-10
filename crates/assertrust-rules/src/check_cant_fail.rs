@@ -16,7 +16,8 @@ use assertrust_ir::{Assertion, Context, ExpectKind, Item, ItemKind, Test, Value,
 use assertrust_match::TestPair;
 
 use crate::{
-    Change, Confidence, Finding, RuleId, assertion, count, item_text, never_runs, number, short,
+    Change, Confidence, Finding, RuleId, assertion, changed_call, count, item_text, never_runs,
+    number, same_way, short,
 };
 
 pub(crate) fn check(change: &Change, findings: &mut Vec<Finding>) {
@@ -57,8 +58,8 @@ struct Found<'f, 'c, 'a> {
 }
 
 struct MovedCall<'a> {
-    /// The call's line and text in the test.
-    at: (u32, &'a str),
+    /// The call's level (0 in the test) and the way to it.
+    at: (usize, &'a [Via]),
     /// Where the call now sits that it didn't.
     places: Context,
     /// The first check it runs, before and after.
@@ -117,17 +118,19 @@ impl<'a> Found<'_, '_, 'a> {
         let new_item = &after.body.items[item];
         let first = old.first().map(|&old| &before.body.items[old]);
         let added = minus(new_item.context, was);
-        // The call to the helper it runs through moved: reported once for the call.
-        if let Some(call) = new_item.via.first()
+        // A call on the way to it moved (in the test, or in a helper): reported once for the
+        // call.
+        if let Some(level) = changed_call(first, new_item)
             && !added.is_plain()
-            && minus(added, call_context(call)).is_plain()
-            && first.and_then(|old| old.via.first()).is_none_or(|was| {
-                (&was.call, was.context, was.awaited) != (&call.call, call.context, call.awaited)
-            })
+            && minus(added, call_context(&new_item.via[level])).is_plain()
         {
             let texts = |items: &mut dyn Iterator<Item = &Item>| items.map(item_text).collect();
-            let at = (call.line, call.call.as_str());
-            match self.moved_calls.iter_mut().find(|moved| moved.at == at) {
+            let at = (level, &new_item.via[..=level]);
+            match self
+                .moved_calls
+                .iter_mut()
+                .find(|moved| moved.at.0 == at.0 && same_way(moved.at.1, at.1))
+            {
                 Some(moved) => {
                     moved.places = moved.places.with(added);
                     moved
@@ -166,6 +169,21 @@ impl<'a> Found<'_, '_, 'a> {
             .iter()
             .map(|&old| item_text(&before.body.items[old]))
             .collect();
+        // The new place is inside the helper (it wrapped the check in a `try`): reported
+        // there, once for every test, whatever else changed at the call.
+        if !new_item.via.is_empty() && !minus(added, on_the_way(new_item)).is_plain() {
+            let mut finding =
+                self.change
+                    .at(self.pair, new_item.line, RuleId::CheckCantFail, confidence);
+            if let Some(path) = new_item.path() {
+                finding.move_to(path);
+            }
+            finding.message = message;
+            finding.before = before;
+            finding.after = vec![item_text(new_item)];
+            self.findings.push(finding);
+            return;
+        }
         self.push_item(first, new_item, confidence, message, before);
     }
 
@@ -200,7 +218,7 @@ impl<'a> Found<'_, '_, 'a> {
             };
             let message = format!(
                 "{} is now {}, with {checks}: {consequence}",
-                short(moved.at.1),
+                short(&moved.at.1[moved.at.0].call),
                 wheres.join(" and ")
             );
             let mut finding = self.change.at_item(
@@ -293,7 +311,8 @@ impl<'a> Found<'_, '_, 'a> {
         for (at, items) in behind {
             let ret = &after.body.items[at];
             let checks = count(items.len(), "check");
-            let (confidence, message) = if ret.context.is_plain() {
+            let own = own_context(ret);
+            let (confidence, message) = if own.is_plain() {
                 let them = if items.len() == 1 {
                     "it never runs"
                 } else {
@@ -301,22 +320,34 @@ impl<'a> Found<'_, '_, 'a> {
                 };
                 (
                     Confidence::High,
-                    format!("a return now comes before {checks}: {them}"),
+                    format!(
+                        "a return{} now comes before {checks}: {them}",
+                        in_helper(ret)
+                    ),
                 )
             } else {
                 let them = if items.len() == 1 { "it" } else { "they" };
                 (
                     Confidence::Medium,
                     format!(
-                        "a return ({}) now comes before {checks}: {them} may not run",
-                        ret.context
+                        "a return{} ({own}) now comes before {checks}: {them} may not run",
+                        in_helper(ret)
                     ),
                 )
             };
-            let after_lines = std::iter::once(item_text(ret))
+            let after_lines: Vec<String> = std::iter::once(item_text(ret))
                 .chain(items.iter().map(|&item| item_text(&after.body.items[item])))
                 .collect();
-            self.push(ret.line, confidence, message, Vec::new(), after_lines);
+            // Reported where the `return` is written: in a helper, once for every test.
+            let mut finding =
+                self.change
+                    .at(self.pair, ret.line, RuleId::CheckCantFail, confidence);
+            if let Some(path) = ret.path() {
+                finding.move_to(path);
+            }
+            finding.message = message;
+            finding.after = after_lines;
+            self.findings.push(finding);
         }
     }
 
@@ -450,25 +481,47 @@ fn in_helper(item: &Item) -> String {
 }
 
 /// The early `return` before `item` in the test's body that's most sure to stop it: the
-/// first unconditional one, else the first one inside an `if`.
+/// first unconditional one, else the first one inside an `if`. A `return` ends the function
+/// it's written in: the test, or one call of a hook or helper.
 fn return_before(test: &Test, item: usize) -> Option<usize> {
-    // `afterEach` and `afterAll` run however the test ends.
-    if test.body.items[item]
-        .via
-        .first()
-        .is_some_and(|via| matches!(via.name.as_str(), "afterEach" | "afterAll"))
-    {
-        return None;
-    }
+    let target = &test.body.items[item];
     let mut returns = test.body.items[..item]
         .iter()
         .enumerate()
-        .filter(|(_, item)| matches!(item.kind, ItemKind::EarlyReturn));
+        .filter(|(_, ret)| matches!(ret.kind, ItemKind::EarlyReturn) && ends(ret, target));
     let first = returns.next()?;
     let unconditional = std::iter::once(first)
         .chain(returns)
-        .find(|(_, item)| item.context.is_plain());
+        .find(|(_, ret)| own_context(ret).is_plain());
     Some(unconditional.unwrap_or(first).0)
+}
+
+/// Whether `ret` keeps `item` from running: `item` runs later in the same call of the same
+/// function. `afterEach` and `afterAll` run however the test ends.
+fn ends(ret: &Item, item: &Item) -> bool {
+    if ret.via.is_empty() {
+        return !item
+            .via
+            .first()
+            .is_some_and(|via| matches!(via.name.as_str(), "afterEach" | "afterAll"));
+    }
+    item.via.len() >= ret.via.len() && same_way(&ret.via, &item.via[..ret.via.len()])
+}
+
+/// Where a `return` sits inside its own function, leaving out what the calls on the way add:
+/// an unconditional `return` in a helper called from an `if` still stops the rest of it.
+fn own_context(ret: &Item) -> Context {
+    let mut on_the_way = on_the_way(ret);
+    on_the_way.not_awaited = true;
+    minus(ret.context, on_the_way)
+}
+
+/// What the calls on the way to `item` add to where it sits: a helper called in an `if`,
+/// or an async one that isn't awaited.
+fn on_the_way(item: &Item) -> Context {
+    item.via.iter().fold(Context::default(), |context, via| {
+        context.with(call_context(via))
+    })
 }
 
 /// Whether a `return` stops a check: not at all, sometimes, or always.
@@ -482,15 +535,16 @@ enum Blocked {
 fn blocked(test: &Test, at: Option<usize>) -> Blocked {
     match at {
         None => Blocked::No,
-        Some(at) if test.body.items[at].context.is_plain() => Blocked::Always,
+        Some(at) if own_context(&test.body.items[at]).is_plain() => Blocked::Always,
         Some(_) => Blocked::Sometimes,
     }
 }
 
-/// The test's first `expect.assertions(n)` / `expect.hasAssertions()`, with `n`.
-fn assertion_count(test: &Test) -> Option<(&assertrust_ir::Item, Option<&Value>)> {
+/// The test's first own `expect.assertions(n)` / `expect.hasAssertions()`, with `n`. One in
+/// a hook or helper doesn't stand in for the test's.
+fn assertion_count(test: &Test) -> Option<(&Item, Option<&Value>)> {
     test.body.items.iter().find_map(|item| match &item.kind {
-        ItemKind::AssertionCount(n) => Some((item, n.as_ref())),
+        ItemKind::AssertionCount(n) if item.via.is_empty() => Some((item, n.as_ref())),
         _ => None,
     })
 }

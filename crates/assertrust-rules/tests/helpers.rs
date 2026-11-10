@@ -75,7 +75,7 @@ fn a_check_removed_from_a_helper_is_one_finding_for_every_test() {
     assert_eq!(
         findings(&before, &after),
         [
-            "check-removed high test/a.test.ts:3: removed expect(res.body.ok).toBe(true) from expectOk (in 2 tests)"
+            "check-removed high test/a.test.ts:1: removed expect(res.body.ok).toBe(true) from expectOk (in 2 tests)"
         ]
     );
 }
@@ -90,7 +90,9 @@ fn a_removed_call_says_how_many_checks_it_ran() {
             ),
             &format!("{helper}it('refunds', () => {{\n  const res = refund()\n}})"),
         ),
-        ["check-removed high test/a.test.ts:5: removed expectOk(res), which ran 2 checks"]
+        [
+            "check-removed high test/a.test.ts:5: removed expectOk(res), which ran 2 checks; the test has no checks left"
+        ]
     );
 }
 
@@ -252,7 +254,7 @@ it('charges', () => { expectOk(charge()) })";
     assert_eq!(
         findings_with(test, test, (&before, &after)),
         [
-            "check-removed high test/helpers.ts:3: removed expect(res.body.ok).toBe(true) from expectOk (in 2 tests)"
+            "check-removed high test/helpers.ts:1: removed expect(res.body.ok).toBe(true) from expectOk (in 2 tests)"
         ]
     );
 }
@@ -281,6 +283,222 @@ it('refunds', () => { expectOk(refund()) })";
         ),
         [
             "matcher-loosened high test/support/http.ts:2: toBe(true) → toBeDefined(): now any defined value passes"
+        ]
+    );
+}
+
+// Found in code review.
+
+#[test]
+fn a_hook_count_does_not_stand_in_for_the_test_s_own() {
+    let hook = "beforeEach(() => { expect.hasAssertions() })\n";
+    assert_eq!(
+        findings(
+            &format!("{hook}it('a', () => {{\n  expect.assertions(2)\n  expect(a).toBe(1)\n}})"),
+            &format!("{hook}it('a', () => {{\n  expect(a).toBe(1)\n}})"),
+        ),
+        ["check-cant-fail medium test/a.test.ts:2: expect.assertions(2) removed"]
+    );
+}
+
+#[test]
+fn a_return_added_in_a_helper_stops_only_its_checks() {
+    let tests = "\nit('refunds', () => { expectOk(refund()); expect(done).toBe(true) })\nit('charges', () => { expectOk(charge()) })";
+    assert_eq!(
+        findings(
+            &format!(
+                "function expectOk(res) {{\n  log(res)\n  expect(res.ok).toBe(true)\n}}{tests}"
+            ),
+            &format!(
+                "function expectOk(res) {{\n  log(res)\n  return\n  expect(res.ok).toBe(true)\n}}{tests}"
+            ),
+        ),
+        [
+            "check-cant-fail high test/a.test.ts:3: a return in expectOk now comes before 1 check: it never runs (in 2 tests)"
+        ]
+    );
+}
+
+#[test]
+fn a_return_added_in_a_hook_is_flagged() {
+    let tests = "\n  it('a', () => { expect(a).toBe(1) })\n})";
+    assert_eq!(
+        findings(
+            &format!(
+                "describe('db', () => {{\n  beforeEach(() => {{ expect(db.open).toBe(true) }}){tests}"
+            ),
+            &format!(
+                "describe('db', () => {{\n  beforeEach(() => {{ return; expect(db.open).toBe(true) }}){tests}"
+            ),
+        ),
+        [
+            "check-cant-fail high test/a.test.ts:2: a return in beforeEach now comes before 1 check: it never runs"
+        ]
+    );
+}
+
+#[test]
+fn a_guard_in_a_helper_called_from_an_if_still_stops_its_checks() {
+    // The `return` is unconditional inside the helper: the `if` around the call doesn't make
+    // it any less sure to stop the helper's checks.
+    let helper = |body: &str| {
+        format!(
+            "function expectOk(res) {{\n{body}  expect(res.ok).toBe(true)\n}}\nit('a', () => {{ if (x) expectOk(res) }})"
+        )
+    };
+    assert_eq!(
+        findings(&helper(""), &helper("  return\n")),
+        [
+            "check-cant-fail high test/a.test.ts:2: a return in expectOk now comes before 1 check: it never runs"
+        ]
+    );
+}
+
+#[test]
+fn a_check_removed_from_a_helper_points_at_the_helper_as_it_is_now() {
+    // Four lines added above the helper: the check was on line 3, the helper now starts on 5.
+    let tests = "\nit('refunds', () => { expectOk(refund()) })";
+    assert_eq!(
+        findings(
+            &format!(
+                "function expectOk(res) {{\n  expect(res.status).toBe(200)\n  expect(res.ok).toBe(true)\n}}{tests}"
+            ),
+            &format!(
+                "// Shared checks,\n// used by every\n// test.\n\nfunction expectOk(res) {{\n  expect(res.status).toBe(200)\n}}{tests}"
+            ),
+        ),
+        ["check-removed high test/a.test.ts:5: removed expect(res.ok).toBe(true) from expectOk"]
+    );
+}
+
+#[test]
+fn an_await_dropped_from_an_async_helper_call_is_one_finding() {
+    let helper = "async function check(p) {\n  await expect(p).resolves.toBe(1)\n}\n";
+    assert_eq!(
+        findings(
+            &format!("{helper}it('a', async () => {{\n  await check(p)\n}})"),
+            &format!("{helper}it('a', async () => {{\n  check(p)\n}})"),
+        ),
+        [
+            "check-cant-fail medium test/a.test.ts:5: check(p) is now not awaited, with its check: it may run after the test ends"
+        ]
+    );
+}
+
+#[test]
+fn a_call_removed_from_a_helper_is_reported_in_that_helper() {
+    let inner = "function b(r) {\n  expect(r.ok).toBe(true)\n}\n";
+    let test = "\nit('a', () => { a(res) })";
+    assert_eq!(
+        findings(
+            &format!("{inner}function a(r) {{\n  expect(r.s).toBe(1)\n  b(r)\n}}{test}"),
+            &format!("{inner}function a(r) {{\n  expect(r.s).toBe(1)\n}}{test}"),
+        ),
+        ["check-removed high test/a.test.ts:4: removed the call to b from a, which ran 1 check"]
+    );
+    // An argument changed in `a`'s call to `b` is reported at that call, in `a`.
+    let inner = "function b(r, limit) {\n  expect(r.ms).toBeLessThan(limit)\n}\n";
+    assert_eq!(
+        findings(
+            &format!("{inner}function a(r) {{\n  b(r, 100)\n}}{test}"),
+            &format!("{inner}function a(r) {{\n  b(r, 500)\n}}{test}"),
+        ),
+        [
+            "expectation-loosened medium test/a.test.ts:5: toBeLessThan upper bound raised from 100 to 500"
+        ]
+    );
+}
+
+#[test]
+fn a_call_that_can_no_longer_be_followed_is_not_removed() {
+    // `./helpers` became an alias nothing resolves: the call is still there, what it checks
+    // can't be seen.
+    let helpers = Files::default().with(
+        "./helpers",
+        "test/helpers.ts",
+        "export function expectOk(res) {\n  expect(res.ok).toBe(true)\n}",
+    );
+    assert_eq!(
+        findings_with(
+            "import { expectOk } from './helpers'\nit('a', () => { expectOk(res) })",
+            "import { expectOk } from '@/test/helpers'\nit('a', () => { expectOk(res) })",
+            (&helpers, &Files::default()),
+        ),
+        Vec::<String>::new()
+    );
+    // Dropping the call still counts.
+    assert_eq!(
+        findings_with(
+            "import { expectOk } from './helpers'\nit('a', () => { expectOk(res) })",
+            "import { expectOk } from '@/test/helpers'\nit('a', () => {})",
+            (&helpers, &Files::default()),
+        ),
+        [
+            "check-removed high test/a.test.ts:2: removed expectOk(res), which ran 1 check; the test has no checks left"
+        ]
+    );
+}
+
+#[test]
+fn a_try_added_inside_a_helper_is_one_finding_there() {
+    // The calls changed too (an argument dropped), but the `try` is the helper's.
+    let tests = |args: &str| {
+        format!(
+            "\nit('a', async () => {{ await expectOk(res{args}) }})\nit('b', async () => {{ await expectOk(res{args}) }})"
+        )
+    };
+    assert_eq!(
+        findings(
+            &format!(
+                "async function expectOk(res, strict) {{\n  expect(res.ok).toBe(true)\n}}{}",
+                tests(", true")
+            ),
+            &format!(
+                "async function expectOk(res) {{\n  try {{\n    expect(res.ok).toBe(true)\n  }} catch {{}}\n}}{}",
+                tests("")
+            ),
+        ),
+        [
+            "check-cant-fail medium test/a.test.ts:3: expect(res.ok).toBe(true) in expectOk is now inside a try with a catch: its failure may be caught (in 2 tests)"
+        ]
+    );
+}
+
+#[test]
+fn a_catch_that_throws_again_lets_the_failure_through() {
+    assert_eq!(
+        findings(
+            "it('a', () => { expect(a).toBe(1) })",
+            "it('a', () => { try { expect(a).toBe(1) } catch (err) { tidy(err); throw err } })",
+        ),
+        Vec::<String>::new()
+    );
+    // One that may return instead still swallows it.
+    assert_eq!(
+        findings(
+            "it('a', () => { expect(a).toBe(1) })",
+            "it('a', () => { try { expect(a).toBe(1) } catch (err) { if (flaky) return; throw err } })",
+        ),
+        [
+            "check-cant-fail medium test/a.test.ts:1: expect(a).toBe(1) is now inside a try with a catch: its failure may be caught"
+        ]
+    );
+}
+
+#[test]
+fn methods_on_an_object_a_helper_builds_are_not_its_checks() {
+    // `testContext()` hands back methods; their checks run when a test calls them, which
+    // isn't followed. They mustn't stand in for the check the test dropped.
+    let helper = "function testContext() {\n  return { serverAborted(call) { expect(call.aborted).toBe(true) } }\n}\n";
+    assert_eq!(
+        findings(
+            &format!(
+                "{helper}it('stops', () => {{\n  const t = testContext()\n  expect(older.aborted).toBe(false)\n}})"
+            ),
+            &format!("{helper}it('stops', () => {{\n  const t = testContext()\n}})"),
+        ),
+        [
+            "check-removed high test/a.test.ts:4: removed expect(older.aborted).toBe(false); the test has no checks left"
         ]
     );
 }

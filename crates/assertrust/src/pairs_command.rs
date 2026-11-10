@@ -73,7 +73,7 @@ fn comparison(
     classifier: &Classifier,
     indent: &str,
 ) -> Result<(), String> {
-    let mut loaded = load::load(repo, comparison, classifier)?;
+    let mut loaded = load::load(repo, comparison, classifier, &mut None)?;
     loaded.notes.dedup();
     for note in &loaded.notes {
         line(out, &format!("{indent}{note}"));
@@ -240,19 +240,24 @@ fn render_file(out: &mut String, view: &View, index: usize, file: &FilePair, ind
     }
 }
 
-/// Same id, same file, same modifiers and an identical body.
+/// Same id, same file, same modifiers and an identical body. Calls to helpers show through
+/// the checks they run.
 fn is_unchanged(view: &View, pair: &TestPair) -> bool {
     let (before, after) = (view.before(pair.before), view.after(pair.after));
     pair.how == TestMatch::SameId
         && pair.before.file == pair.after.file
         && before.modifiers == after.modifiers
-        && before.body.items.len() == after.body.items.len()
-        && before
-            .body
-            .items
-            .iter()
-            .zip(&after.body.items)
-            .all(|(a, b)| a.kind == b.kind && a.context == b.context)
+        && own_items(before) == own_items(after)
+}
+
+/// A test's items without calls, as `(kind, context)`.
+fn own_items(test: &Test) -> Vec<(&ItemKind, assertrust_ir::Context)> {
+    test.body
+        .items
+        .iter()
+        .filter(|item| !matches!(item.kind, ItemKind::Call(_)))
+        .map(|item| (&item.kind, item.context))
+        .collect()
 }
 
 fn render_pair(out: &mut String, view: &View, pair: &TestPair, indent: &str) {
@@ -397,9 +402,8 @@ fn check_text(test: &Test, item: usize) -> String {
     if !item.context.is_plain() {
         write!(text, "  ({})", item.context).expect("writing to a String");
     }
-    if !item.via.is_empty() {
-        let calls: Vec<&str> = item.via.iter().map(|via| via.call.as_str()).collect();
-        write!(text, "  via {}", calls.join(" > ")).expect("writing to a String");
+    if let Some(via) = item.via_text() {
+        write!(text, "  {via}").expect("writing to a String");
     }
     text
 }

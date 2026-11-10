@@ -20,6 +20,7 @@ mod js;
 mod link;
 mod matcher;
 mod model;
+mod tsconfig;
 mod value;
 
 use std::fmt;
@@ -28,9 +29,10 @@ pub use crate::gate::{Command, Gate, Job, Package, Script, Setting, TestStep, Wo
 pub use crate::link::{Modules, link};
 pub use crate::matcher::MatcherKind;
 pub use crate::model::{
-    Assertion, Body, Call, Context, ExpectKind, Fact, FactTest, FileIr, Helper, Hook, HookKind,
-    Import, Item, ItemKind, Matcher, Modifier, Promise, Test, Via,
+    Assertion, Body, Call, Context, Defined, ExpectKind, Fact, FactTest, FileIr, Helper, Hook,
+    HookKind, Import, Item, ItemKind, Matcher, Modifier, Promise, Test, Via,
 };
+pub use crate::tsconfig::{TsConfig, parse_tsconfig};
 pub use crate::value::Value;
 
 /// Reads the tests and checks in one file. `path` picks the language from its extension

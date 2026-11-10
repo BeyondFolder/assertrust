@@ -172,19 +172,22 @@ test/refund.test.ts: it('refunds', async () => { expectOk(await refund()) })
 → refunds checks expect(res.status).toBe(200) and expect(res.body.ok).toBe(true), via expectOk(await refund())
 ```
 
-- **A helper** is a named function outside tests and hooks: `function expectOk(res) { … }` or `const expectOk = (res) => { … }`, at the top of a file or in a `describe` (then only tests in that `describe` see it). Its body is recorded like a test's: checks, calls and where they sit. Methods (page objects, classes) aren't helpers yet.
-- **A call** to a function by its plain name, from a test, hook or helper, is recorded when the name is a helper in the file or something imported from a relative path. Its arguments are recorded as values.
-- **Where helpers are found:** in the same file, and in files imported through a relative path, but only files in test folders (step 1's Test and Test support kinds). In the six repos we checked, every helper with checks lives in a test folder, and following imports into source files would read and parse many files per commit for nothing. Imports are resolved the way bundlers do: the path with each extension (`.ts`, `.tsx`, `.mts`, `.cts`, `.js`, `.jsx`, `.mjs`, `.cjs`), then an `index` file in it, and `./helpers.js` may name `helpers.ts`. Files that pass helpers on are followed (`export { expectOk } from './http'`, `export * from './http'`), and so are default exports. Only imports a file calls are followed. Imports from packages and tsconfig path aliases aren't.
-- **A test file that didn't change** is loaded too when a helper file it calls changed. A search for the helper file's name in import paths (`git grep`) finds candidates, and resolving their imports confirms them, also through files that pass helpers on. This only happens when the helpers themselves changed, not just their lines, and a test file is kept only when what its tests check changed.
+- **A helper** is a named function outside tests and hooks: `function expectOk(res) { … }` or `const expectOk = (res) => { … }`, at the top of a file or in a `describe` (then only tests in that `describe` see it). Its body is recorded like a test's: checks, calls and where they sit. Methods (page objects, classes) aren't helpers yet. A function a helper puts on an object it builds (`return { sendChunk() { expect(…) } }`) runs when a test calls that method, not with the helper, so its checks aren't the helper's.
+- **A call** to a function by its plain name, from a test, hook or helper, is recorded when the name is a helper in the file or something the file imports. Its arguments are recorded as values.
+- **Where helpers are found:** in the same file, and in files imported through a relative path, but only files in test folders (step 1's Test and Test support kinds). In the six repos we checked, every helper with checks lives in a test folder, and following imports into source files would read and parse many files per commit for nothing. Imports are resolved the way bundlers do: the path with each extension (`.ts`, `.tsx`, `.mts`, `.cts`, `.js`, `.jsx`, `.mjs`, `.cjs`), then an `index` file in it, and `./helpers.js` may name `helpers.ts`. Files that pass helpers on are followed (`export { expectOk } from './http'`, `export * from './http'`), and so are default exports. Only imports a file calls are followed. Files that aren't UTF-8 text are left out.
+- **Aliases** go through the nearest `tsconfig.json` above the importing file: its `paths` (the pattern with the longest prefix wins, `@/test/*` over `@/*`), then its `baseUrl`, including what it `extends` from files in the repo. Packages it extends (`@tsconfig/node20`) aren't read. Aliases that live outside git can't be followed: Nuxt's `~~/…` and `#shared/…` come from a generated `.nuxt/tsconfig.json`, and vite's `resolve.alias` is code. Imports from packages aren't followed either.
+- **A helper that moved out of test folders** (`test/helpers.ts` → `src/testing.ts`, with the import changed) is followed into its new file: it was followed before the change, so the comparison would otherwise lose it.
+- **A call that can't be followed** (an alias that can't be resolved, a package, a file outside test folders) stays in the test's view, marked so. The checks it ran before aren't reported as removed: what it checks now can't be seen. Dropping the call still counts.
+- **A test file that didn't change** is loaded too when a helper file it calls changed. A search for the helper file's name in import paths (`git grep`) finds candidates, and resolving their imports confirms them, also through files that pass helpers on. This only happens when the helpers themselves changed, not just their lines, and when they check something (themselves or through helper files they call): a file of factories or mocks doesn't start a search. All the changed helper files of a change are searched for at once, one `git grep` per step away from them, and a test file is kept only when what its tests check changed.
 - **A helper file that doesn't parse** skips the tests that call it, with a note: comparing without its checks would make them look removed.
 - **Helpers that don't assert still shape what a test does:** setup, seeding and request wrappers, like everything in Mailyond's `test/utils.ts`. Changes there go to the LLM judge (step 7), such as a seed helper's default switching from `'connected'` to `'pending'`.
-- **Not covered yet:** an early `return` or a runtime skip inside a helper (a `return` ends only the helper, and isn't flagged when it comes before the helper's checks), arguments for parameters that aren't plain names (`{ strict }`, `status = 200`), and the subject of a check (`expect(res.status)` stays as the helper writes it, only expected values are filled in).
+- **Not covered yet:** a runtime skip inside a helper, arguments for parameters that aren't plain names (`{ strict }`, `status = 200`), and the subject of a check (`expect(res.status)` stays as the helper writes it, only expected values are filled in).
 
 ### Not in v0.1
 
 - chai style (`expect(x).to.equal(y)`) and `node:assert`
 - `.snap` snapshot files (inline snapshots are covered as arguments)
-- helpers imported from packages, or through tsconfig path aliases
+- helpers imported from packages, or through aliases that aren't in a committed `tsconfig.json`
 
 ### Tests
 
@@ -218,8 +221,9 @@ test "emails a confirmation … and only forwards once confirmed"
    - **Arguments are filled in** for plain parameters: `function expectStatus(res, status) { expect(res.status).toBe(status) }` called as `expectStatus(res, 200)` checks `toBe(200)`, so moving a check into a helper isn't a change.
    - **Where a call sits counts for every check it runs:** a helper called in an `if` puts all of its checks in one.
    - **An async helper that isn't awaited** marks its checks "not awaited": they may run after the test ends. A helper that isn't async runs its checks before it returns, so `await` doesn't matter there.
-   - **A `return` in a hook or helper** ends only that function, so it's dropped from the test's view.
-   - The call itself stays in the view too, so the rules can tell a call removed from a test from a helper that lost a check. Call cycles are guarded, and calls are followed 8 deep.
+   - **A `return` in a hook or helper** stays in the view, tagged like the rest: it ends only the items of that call. A `return` in the test stops everything after it but `afterEach` and `afterAll`.
+   - **A helper that never runs a check** (a factory, a mock, a request wrapper), itself or through the helpers it calls, isn't expanded: its call is all the rules need. Without this, a test calling `newTestService()`, which builds 40 mocks, carried hundreds of items.
+   - **The call itself stays** in the view too, with where its helper is defined, so the rules can tell a call removed from a test from a helper that lost a check, and both from a call they can't see into. Each hook starts with a call to it. Call cycles are guarded, and calls are followed 8 deep.
 
 ### What gets recorded
 
@@ -241,7 +245,7 @@ test "emails a confirmation … and only forwards once confirmed"
   - the matcher: its raw name plus its kind
   - the arguments as values
   - its facts: what it states, in a form that doesn't depend on how it's written (see "Rewritten checks" in step 4)
-  - context: inside an if (or `? :` or `switch` case), loop, try, catch, callback or short-circuit. "Try" means a `try` with a `catch`, or with a `finally` that returns (or `break`s / `continue`s out), which drops the failure. A plain `try { … } finally { cleanup() }` still lets a failure through. A `test.step` callback runs right away, so it isn't a callback. Neither is the function in an awaited `vi.waitFor`, `vi.waitUntil` or Testing Library `waitFor`: they retry it and fail the test if it never passes. Not awaited, the test may end first, so it's a callback.
+  - context: inside an if (or `? :` or `switch` case), loop, try, catch, callback or short-circuit. "Try" means a `try` with a `catch` that doesn't throw again (`catch (err) { tidy(err); throw err }` lets the failure through), or with a `finally` that returns (or `break`s / `continue`s out), which drops the failure. A plain `try { … } finally { cleanup() }` still lets a failure through. A `test.step` callback runs right away, so it isn't a callback. Neither is the function in an awaited `vi.waitFor`, `vi.waitUntil` or Testing Library `waitFor`: they retry it and fail the test if it never passes. Not awaited, the test may end first, so it's a callback.
   - a span, used for reporting and never compared
 - **Values:** null, undefined, bool, number, string, template, regex (with its top-level alternatives split by oxc's regex parser), object (keys compared as a set), array, nested matcher (`expect.objectContaining(…)`), or opaque (any other expression, as normalized source).
 
@@ -519,16 +523,17 @@ test/unit/inbound-body.test.ts:41  HIGH  check-removed
 The rules see each test's linked view (step 3), so a check from a helper or hook is judged like the test's own. Where it's reported depends on where the change happened:
 
 ```
-test/helpers.ts:3  HIGH  check-removed
+test/helpers.ts:1  HIGH  check-removed
   removed expect(res.body.ok).toBe(true) from expectOk (in 2 tests)
 ```
 
-- **The change is in the helper** (a check removed, loosened or moved into an `if` there): reported at the helper's line, in its file. Tests calling it make one finding, ending `(in 2 tests)`.
+- **The change is in the helper** (a check removed, loosened or moved into an `if` there, or a `return` added before checks): reported in its file, at the check, the `return`, or for a removed check the helper itself as it is now. Tests calling it make one finding, ending `(in 2 tests)`, and `-v` names each test with its file (`test/refund.test.ts: refunds`). A `return` added in a helper is `a return in expectOk now comes before 2 checks: they never run`. It's unconditional when nothing inside the helper guards it, even if the call to the helper sits in an `if`. A check whose new place comes from inside the helper (the helper wrapped it in a `try`) is reported in the helper, even when the calls changed too.
 - **The change is at the call** (its arguments changed, it moved into an `if`, its `await` was dropped, or the test stopped calling it): reported at the call, in the test.
   - `expectFast(load(), 100)` → `expectFast(load(), 500)`, where the helper checks `toBeLessThan(limit)`: `toBeLessThan upper bound raised from 100 to 500`.
   - A call that moved is one finding, not one per check: `expectOk(res) is now inside an if, with its 2 checks: it may not run`. An async helper's call that lost its `await`: `expectSaved(1) is now not awaited, with its check: it may run after the test ends`.
-  - A call removed: `removed expectOk(res), which ran 2 checks`. When some of its checks still have a counterpart (it was swapped for a weaker helper): `removed expectOk(refund()); 1 of the 2 checks it ran is gone`.
-- **Hooks** count like helpers called once per test: a check removed from a `beforeEach` is `removed expect(db.open).toBe(true) from beforeEach (in 2 tests)`. An early `return` in a test doesn't stop `afterEach` and `afterAll`, which run however the test ends.
+  - A call removed: `removed expectOk(res), which ran 2 checks`. As with a test's own checks, it's medium when the test also gained checks that didn't pair (`expect(h.history)` replaced by a helper snapshotting the undo and redo stacks). When some of its checks still have a counterpart (it was swapped for a weaker helper): `removed expectOk(refund()); 1 of the 2 checks it ran is gone`.
+- **A call inside a helper** changed the same way is reported there: `removed the call to expectStatus from expectOk, which ran 1 check`, or an argument raised at the call in `expectOk`. The first call that differs on the way to a check decides where.
+- **Hooks** count like helpers called once per test: a check removed from a `beforeEach` is `removed expect(db.open).toBe(true) from beforeEach (in 2 tests)`. An early `return` in a test doesn't stop `afterEach` and `afterAll`, which run however the test ends. `expect.assertions(n)` is the test's own: one in a hook doesn't stand in for it.
 
 ### Comparing a check with what it became
 
@@ -644,17 +649,18 @@ What's left is 23 findings. 19 are correct: a CI job dropped with its tests (hon
 
 In the test rules, 90 of h3's 94 `expectation-loosened` are bundle-size budgets raised (`toBeLessThanOrEqual(5200)` → `5300`). They're correct and stay at medium; a repo that finds them noisy can ignore the path once config lands (step 6). 2 came from fields renamed along with an API, now `outcome-changed`. zod's biggest group of `test-disabled`, 32 of 73, is one revert that deleted a feature with its tests: correct, but 32 lines for one commit. Grouping them is for the output (step 6).
 
-**With helpers linked**, the same 600 commits give 5 more findings by default, plus 8 more changed outcomes with `-v`. hono, nuxt/ui and Mailyond don't change. All of them are correct:
-- h3: a `rejects(promise, pattern)` helper now accepts one more error message (`expectation-loosened` at the call).
-- zod: three tests swap `expectOwnProp(…)` for `expectStripped(…)` when `__proto__` stopped being kept, so a check is gone from each (`check-removed`), and two checks in each flip (`outcome-changed`). One `expectMatch(…)` call moved into a loop (`check-cant-fail`, low).
-- vueuse: two of a helper's checks now also expect the pointer event (`outcome-changed`).
+**With helpers linked**, checked on 10 public repos (the five above plus TanStack Query, tRPC, Excalidraw, cal.com and immich, 600 commits each) and on Mailyond:
+- **False findings gone:** 37 in cal.com, where one commit moved 37 tests' checks into two new helpers (`expectResponsesToBe`, `expectParsingToFail`), so each test seemed to have no checks left. One in tRPC (a check moved into `renderThrowing()`). Duplicate lines for the same deleted test in immich and Excalidraw.
+- **New correct findings:** three Excalidraw test files whose `checkpoint` helper, run after every test, stopped snapshotting `h.history` (replaced by snapshots of the undo and redo stacks, so medium). cal.com's fork removing `expectNoShowAuditToBeDone(…)` calls from its no-show tests. h3's `rejects(promise, pattern)` helper accepting one more error message. In zod, three tests swapping `expectOwnProp(…)` for `expectStripped(…)` when `__proto__` stopped being kept, and one `expectMatch(…)` call moved into a loop (low).
+- **Still wrong:** Excalidraw's `reconcile` helper moving from chai's `expect(x).deep.equal(y)` to `assert.deepEqual(x, y)`, neither of which is read yet ("Not in v0.1").
+- **Fixed along the way:** a `catch` that throws again (`catch (err) { tidy(err); throw err }`), which Excalidraw's `getTextEditor` added, made 40 checks look swallowed; and tRPC's `testContext()`, whose returned methods' checks were counted as the helper's.
 
-Linking costs 5–45% more time (nuxt/ui 3.7s → 5.3s, Mailyond's 385 commits 1.3s → 1.8s), mostly reading and parsing the same helper files again for every commit. Caching parsed files by git blob hash would remove most of that.
+Linking costs 0–15% more time on 9 of the 11 (Excalidraw 55%, Mailyond 33% of 1.2s): each helper file is read once per run unless a commit changes it, helpers that never check aren't expanded, and the search for tests that call a changed helper file runs only when its checks may have changed. A whole history takes about as long as before: hono's 2,835 commits in 22s (20s before), nuxt/ui's 6,019 in 29s (28s before).
 
 ### Tests
 
 There's at least one fixture that must be flagged and one that must not, per rule (`crates/assertrust-rules/tests/rules.rs`), plus:
-- checks through helpers and hooks, linked (`crates/assertrust-rules/tests/helpers.rs`), and helper files followed in real repos, including staged and unsaved changes, `index` files that pass helpers on, helpers outside test folders, and a helper file that stops parsing (`crates/assertrust/tests/helpers.rs`)
+- checks through helpers and hooks, linked (`crates/assertrust-rules/tests/helpers.rs`), and helper files followed in real repos, including staged and unsaved changes, `index` files that pass helpers on or are imported by dots alone, helpers outside test folders and helpers moved there, tsconfig aliases, files that aren't text, and a helper file that stops parsing (`crates/assertrust/tests/helpers.rs`)
 - a fixture with one change of each kind, run through `assertrust check` (`crates/assertrust/tests/fixtures/rules/`)
 - both polarity directions for Pattern and Subset
 - rewrites that state the same thing, and matchers that behave the same, which must produce no findings

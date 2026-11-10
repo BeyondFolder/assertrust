@@ -27,7 +27,7 @@ mod test_disabled;
 
 use std::fmt;
 
-use assertrust_ir::{Assertion, Gate, Item, ItemKind, Test, Value};
+use assertrust_ir::{Assertion, Gate, Item, ItemKind, Test, Value, Via};
 use assertrust_match::{FilePair, Matching, TestPair, TestRef, match_files};
 
 pub use assertrust_match::Side;
@@ -69,8 +69,9 @@ pub struct Finding {
     /// The line after the change. `None` when what the finding is about is gone: a deleted
     /// test or file.
     pub line: Option<u32>,
-    /// The test's id, after the change (before it, for a deleted test). `None` when the
-    /// finding covers several tests.
+    /// The test's id, after the change (before it, for a deleted test), with its file in
+    /// front when that isn't `path` (a finding in a helper file). `None` when the finding
+    /// covers several tests.
     pub test: Option<String>,
     /// One line saying what got weaker.
     pub message: String,
@@ -78,6 +79,20 @@ pub struct Finding {
     pub before: Vec<String>,
     /// The code after the change, the same way.
     pub after: Vec<String>,
+}
+
+impl Finding {
+    /// Points the finding at another file (a helper's): the test then says which file it's
+    /// in, `test/a.test.ts: refunds`.
+    fn move_to(&mut self, path: &str) {
+        if path == self.path {
+            return;
+        }
+        if let Some(test) = &mut self.test {
+            *test = format!("{}: {test}", self.path);
+        }
+        path.clone_into(&mut self.path);
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -266,18 +281,23 @@ impl<'a> Change<'_, 'a> {
         confidence: Confidence,
     ) -> Finding {
         let mut finding = self.at(pair, new.line, rule, confidence);
-        let Some(call) = new.via.first() else {
-            return finding;
-        };
-        let was = old.and_then(|old| old.via.first());
-        let call_changed = was.is_none_or(|was| {
-            (&was.name, &was.args, was.context, was.awaited)
-                != (&call.name, &call.args, call.context, call.awaited)
-        });
-        if call_changed {
-            finding.line = Some(call.line);
-        } else if let Some(path) = new.path() {
-            finding.path = path.to_owned();
+        match changed_call(old, new) {
+            // The same calls all the way: the change is where the item is written.
+            None => {
+                if let Some(path) = new.path() {
+                    finding.move_to(path);
+                }
+            }
+            // The call at `level` changed, in the test (0) or in the helper above it.
+            Some(level) => {
+                finding.line = Some(new.via[level].line);
+                if let Some(path) = level
+                    .checked_sub(1)
+                    .and_then(|above| new.via[above].path.as_deref())
+                {
+                    finding.move_to(path);
+                }
+            }
         }
         finding
     }
@@ -339,18 +359,32 @@ fn item_text(item: &Item) -> String {
     if !item.context.is_plain() {
         text.push_str(&format!(" ({})", item.context));
     }
-    if let Some(via) = via_text(item) {
+    if let Some(via) = item.via_text() {
         text.push(' ');
         text.push_str(&via);
     }
     text
 }
 
-/// How an item runs for the test: `via expectOk(res)`, `via beforeEach`. `None` for the
-/// test's own.
-fn via_text(item: &Item) -> Option<String> {
-    let calls: Vec<&str> = item.via.iter().map(|via| via.call.as_str()).collect();
-    (!calls.is_empty()).then(|| format!("via {}", calls.join(" > ")))
+/// The same calls, by text, line and file: the same way to an item on one side of a change.
+fn same_way(a: &[Via], b: &[Via]) -> bool {
+    a.len() == b.len()
+        && a.iter()
+            .zip(b)
+            .all(|(a, b)| (&a.call, a.line, &a.path) == (&b.call, b.line, &b.path))
+}
+
+/// The first call on the way to `new` that's different from the way to `old`: 0 for the
+/// call in the test, 1 for the call inside that helper, and so on. `None` when they're all
+/// the same, so whatever changed is where the item is written.
+fn changed_call(old: Option<&Item>, new: &Item) -> Option<usize> {
+    (0..new.via.len()).find(|&level| {
+        let call = &new.via[level];
+        old.and_then(|old| old.via.get(level)).is_none_or(|was| {
+            (&was.name, &was.args, was.context, was.awaited)
+                != (&call.name, &call.args, call.context, call.awaited)
+        })
+    })
 }
 
 /// A number literal's value.

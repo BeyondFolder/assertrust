@@ -21,8 +21,8 @@ pub struct FileIr {
     /// Named functions outside tests and hooks, which tests may call:
     /// `function expectOk(res) { … }`, `const expectOk = (res) => { … }`.
     pub helpers: Vec<Helper>,
-    /// What this file imports from relative paths (`import { expectOk } from './utils'`) or
-    /// passes on (`export * from './api'`). Imports from packages aren't followed.
+    /// What this file imports (`import { expectOk } from './utils'`) or passes on
+    /// (`export * from './api'`). Imports from packages aren't followed.
     pub imports: Vec<Import>,
 }
 
@@ -44,7 +44,7 @@ pub struct Helper {
     pub body: Body,
 }
 
-/// One name imported from, or passed on from, a relative path.
+/// One name imported, or passed on, from another file or a package.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Import {
     /// The name in this file. `*` for `export * from './api'`.
@@ -166,6 +166,13 @@ impl Item {
     pub fn path(&self) -> Option<&str> {
         self.via.last().and_then(|via| via.path.as_deref())
     }
+
+    /// How it runs for the test, as `via expectOk(res) > expectStatus(res, 200)`. `None`
+    /// for an item written in the test itself.
+    pub fn via_text(&self) -> Option<String> {
+        let calls: Vec<&str> = self.via.iter().map(|via| via.call.as_str()).collect();
+        (!calls.is_empty()).then(|| format!("via {}", calls.join(" > ")))
+    }
 }
 
 /// One step from a test to a check that runs on its behalf: a call to a helper, or a hook.
@@ -194,10 +201,30 @@ pub struct Via {
 pub struct Call {
     pub name: String,
     pub args: Vec<Value>,
-    /// The call as normalized source, for messages.
+    /// The call as normalized source, for messages: [`Call::text_of`].
     pub text: String,
     /// `await`ed or returned, so the caller waits for it.
     pub awaited: bool,
+    /// Where linking found the helper it runs. `None` before linking, and for a call
+    /// linking couldn't follow: to a package, through an alias it can't resolve, or into a
+    /// file it doesn't read.
+    pub defined: Option<Defined>,
+}
+
+impl Call {
+    /// A call's text from its name and arguments: `expectStatus(res, 200)`.
+    pub fn text_of(name: &str, args: &[Value]) -> String {
+        let args: Vec<String> = args.iter().map(ToString::to_string).collect();
+        format!("{name}({})", args.join(", "))
+    }
+}
+
+/// Where a helper (or hook) is defined.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Defined {
+    /// Its file, when it isn't the test's.
+    pub path: Option<String>,
+    pub line: u32,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -206,13 +233,14 @@ pub enum ItemKind {
     Assertion(Assertion),
     /// `expect.assertions(n)` (with `n`) or `expect.hasAssertions()` (without).
     AssertionCount(Option<Value>),
-    /// A `return` before the end of the test, so what follows may not run.
+    /// A `return` before the end of the test, hook or helper, so what follows in it may not
+    /// run.
     EarlyReturn,
     /// A skip decided while the test runs: `test.skip(cond)`, `ctx.skip()`. Holds the
     /// condition, if any, as normalized source.
     RuntimeSkip(Option<String>),
-    /// A call to a helper defined in the file or imported from a relative path. Linking
-    /// replaces it with the helper's checks.
+    /// A call to a helper defined in the file, or to something imported. Linking follows it
+    /// with the helper's items. In a linked test, each hook it runs is a call too.
     Call(Call),
 }
 

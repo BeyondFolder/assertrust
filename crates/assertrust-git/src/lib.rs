@@ -83,17 +83,18 @@ impl Repo {
             .transpose()
     }
 
-    /// Several files on one side of a comparison, in order, with one git call: `None` for a
-    /// file that doesn't exist there (or is a directory).
-    pub fn read_files(&self, rev: &Rev, paths: &[String]) -> Result<Vec<Option<String>>, Error> {
-        let contents = match rev {
+    /// Several files' raw contents on one side of a comparison, in order, with one git call:
+    /// `None` for a file that doesn't exist there (or is a directory). Bytes, so a file
+    /// that isn't UTF-8 text is the caller's call to skip.
+    pub fn read_files(&self, rev: &Rev, paths: &[String]) -> Result<Vec<Option<Vec<u8>>>, Error> {
+        match rev {
             Rev::Commit(sha) => {
                 let specs: Vec<String> = paths.iter().map(|path| format!("{sha}:{path}")).collect();
-                self.git.read_blobs(&specs)?
+                self.git.read_blobs(&specs)
             }
             Rev::Index => {
                 let specs: Vec<String> = paths.iter().map(|path| format!(":0:{path}")).collect();
-                self.git.read_blobs(&specs)?
+                self.git.read_blobs(&specs)
             }
             Rev::WorkTree => paths
                 .iter()
@@ -106,20 +107,8 @@ impl Repo {
                         .map(Some)
                         .map_err(|err| Error::new(format!("couldn't read `{path}`: {err}")))
                 })
-                .collect::<Result<_, Error>>()?,
-        };
-        paths
-            .iter()
-            .zip(contents)
-            .map(|(path, bytes)| {
-                bytes
-                    .map(|bytes| {
-                        String::from_utf8(bytes)
-                            .map_err(|_| Error::new(format!("`{path}` isn't UTF-8 text")))
-                    })
-                    .transpose()
-            })
-            .collect()
+                .collect(),
+        }
     }
 
     /// The files on one side of a comparison whose contents match the extended regular

@@ -3,8 +3,6 @@ source: crates/assertrust/tests/tests_command.rs
 expression: "fixture(\"checkout.spec.ts\")"
 ---
 test/checkout.spec.ts: 4 tests, 1 hook
-      imports expect from ./fixtures
-      imports test from ./fixtures
    9  hook beforeEach  (checkout)
   13  test checkout > shows the total  [skip(({ browserName }) => browserName === 'webkit')]
   14        ui-state   await expect(page.getByTestId('total')).toHaveText('€30')

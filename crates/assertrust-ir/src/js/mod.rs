@@ -17,12 +17,12 @@ use std::collections::HashSet;
 use oxc::allocator::Allocator;
 use oxc::ast::ast::{
     ArrowFunctionExpression, AwaitExpression, BindingPattern, BlockStatement, BreakStatement,
-    CallExpression, ConditionalExpression, ContinueStatement, DoWhileStatement,
+    CallExpression, CatchClause, ConditionalExpression, ContinueStatement, DoWhileStatement,
     ExportAllDeclaration, ExportDefaultDeclaration, ExportDefaultDeclarationKind,
     ExportFromDeclaration, Expression, ForInStatement, ForOfStatement, ForStatement,
     FormalParameters, Function, FunctionBody, IfStatement, ImportDeclaration,
-    ImportDeclarationSpecifier, LogicalExpression, Program, ReturnStatement, Statement,
-    SwitchStatement, TryStatement, VariableDeclarator, WhileStatement,
+    ImportDeclarationSpecifier, LogicalExpression, ObjectProperty, Program, ReturnStatement,
+    Statement, SwitchStatement, TryStatement, VariableDeclarator, WhileStatement,
 };
 use oxc::ast_visit::{Visit, walk};
 use oxc::parser::{ParseOptions, Parser};
@@ -80,8 +80,9 @@ pub(crate) fn parse(path: &str, source: &str) -> Result<FileIr, ParseError> {
     Ok(file)
 }
 
-/// Drops calls to anything but a helper: one defined in the file, or imported from a
-/// relative path. Helpers can be defined after the tests that call them, so this runs last.
+/// Drops calls to anything but a possible helper: one defined in the file, or something
+/// imported. Helpers can be defined after the tests that call them, so this runs last. The
+/// calls kept get their text.
 fn keep_helper_calls(file: &mut FileIr) {
     let known: HashSet<String> = file
         .helpers
@@ -95,8 +96,14 @@ fn keep_helper_calls(file: &mut FileIr) {
         )
         .collect();
     let keep = |body: &mut Body| {
-        body.items.retain(|item| match &item.kind {
-            ItemKind::Call(call) => known.contains(&call.name),
+        body.items.retain_mut(|item| match &mut item.kind {
+            ItemKind::Call(call) => {
+                let known = known.contains(&call.name);
+                if known {
+                    call.text = Call::text_of(&call.name, &call.args);
+                }
+                known
+            }
             _ => true,
         });
     };
@@ -292,7 +299,7 @@ impl<'a> Collector<'_> {
         // What a helper returns, its caller gets: a check returned from it is awaited when
         // the call is.
         self.runner_waits = true;
-        self.last_statement = None;
+        self.last_statement = body.statements().last().map(GetSpan::span);
         self.visit_callback_body(body);
         (
             self.owner,
@@ -319,21 +326,15 @@ impl<'a> Collector<'_> {
                 None => Value::Opaque("...".to_owned()),
             })
             .collect();
-        let text = format!(
-            "{}({})",
-            callee.name,
-            args.iter()
-                .map(ToString::to_string)
-                .collect::<Vec<_>>()
-                .join(", ")
-        );
         let awaited = self.awaited.contains(&call.span);
+        // The text is written once the call is known to be kept.
         self.push(
             ItemKind::Call(Call {
                 name: callee.name.to_string(),
                 args,
-                text,
+                text: String::new(),
                 awaited,
+                defined: None,
             }),
             call.span,
         );
@@ -663,7 +664,8 @@ impl<'a> Visit<'a> for Collector<'_> {
         if let Some(argument) = &it.argument {
             self.returned(argument);
         }
-        let in_body = self.owner.runs_tests() && self.depth == 0;
+        // A `return` in a helper ends the helper: linking keeps it to the helper's own items.
+        let in_body = !matches!(self.owner, Owner::Outside) && self.depth == 0;
         if in_body && self.last_statement != Some(it.span) {
             self.push(ItemKind::EarlyReturn, it.span);
         }
@@ -712,8 +714,21 @@ impl<'a> Visit<'a> for Collector<'_> {
 
     fn visit_try_statement(&mut self, it: &TryStatement<'a>) {
         // Without a `catch` (`try { … } finally { … }`), a failure still reaches the test,
-        // unless the `finally` block returns, which drops it.
-        let catches = it.handler.is_some() || it.finalizer.as_deref().is_some_and(leaves_early);
+        // unless the `finally` block returns, which drops it. A `catch` that throws again
+        // (`catch (err) { tidy(err); throw err }`) lets it through too.
+        let rethrows = |handler: &CatchClause| {
+            handler
+                .body
+                .body
+                .iter()
+                .any(|statement| matches!(statement, Statement::ThrowStatement(_)))
+                && !leaves_early(&handler.body)
+        };
+        let catches = it
+            .handler
+            .as_deref()
+            .is_some_and(|handler| !rethrows(handler))
+            || it.finalizer.as_deref().is_some_and(leaves_early);
         self.scoped(
             |context| context.in_try |= catches,
             |this| this.visit_block_statement(&it.block),
@@ -796,7 +811,7 @@ impl<'a> Visit<'a> for Collector<'_> {
 
     fn visit_import_declaration(&mut self, it: &ImportDeclaration<'a>) {
         let from = js_str(it.source.value);
-        if !from.starts_with('.') || it.import_kind.is_type() {
+        if it.import_kind.is_type() {
             return;
         }
         for specifier in it.specifiers.iter().flatten() {
@@ -827,7 +842,7 @@ impl<'a> Visit<'a> for Collector<'_> {
     /// `export { expectOk } from './api'`
     fn visit_export_from_declaration(&mut self, it: &ExportFromDeclaration<'a>) {
         let from = js_str(it.source.value);
-        if !from.starts_with('.') || it.export_kind.is_type() {
+        if it.export_kind.is_type() {
             return;
         }
         for specifier in &it.specifiers {
@@ -843,7 +858,7 @@ impl<'a> Visit<'a> for Collector<'_> {
     /// `export * from './api'`
     fn visit_export_all_declaration(&mut self, it: &ExportAllDeclaration<'a>) {
         let from = js_str(it.source.value);
-        if from.starts_with('.') && it.exported.is_none() && !it.export_kind.is_type() {
+        if it.exported.is_none() && !it.export_kind.is_type() {
             self.file.imports.push(Import {
                 local: "*".to_owned(),
                 imported: "*".to_owned(),
@@ -872,6 +887,19 @@ impl<'a> Visit<'a> for Collector<'_> {
 
     fn visit_arrow_function_expression(&mut self, it: &ArrowFunctionExpression<'a>) {
         self.nested_function(|this| walk::walk_arrow_function_expression(this, it));
+    }
+
+    /// A method on an object a helper builds (`return { serverAborted() { expect(…) } }`)
+    /// runs when it's called, not with the helper: its checks aren't the helper's.
+    fn visit_object_property(&mut self, it: &ObjectProperty<'a>) {
+        let is_function = matches!(
+            it.value.get_inner_expression(),
+            Expression::ArrowFunctionExpression(_) | Expression::FunctionExpression(_)
+        );
+        if is_function && matches!(self.owner, Owner::Helper(_)) {
+            return;
+        }
+        walk::walk_object_property(self, it);
     }
 }
 

@@ -7,9 +7,12 @@
 //! → refunds: expect(res.status).toBe(200), via expectStatus(refund(), 200)
 //! ```
 
+use std::cell::RefCell;
 use std::collections::HashMap;
 
-use crate::model::{FactTest, FileIr, Helper, HookKind, Item, ItemKind, Via};
+use crate::model::{
+    Call, Context, Defined, FactTest, FileIr, Helper, Hook, HookKind, Item, ItemKind, Via,
+};
 use crate::value::Value;
 
 /// Where linking finds helpers defined in other files.
@@ -32,7 +35,8 @@ const MAX_DEPTH: usize = 8;
 /// `file` (at `path`) with each test's body linked: each call to a helper followed by the
 /// helper's items, with the call's arguments filled in, and the hooks around it added:
 /// `beforeAll` and `beforeEach` first (outermost `describe` first), then the test's own,
-/// then `afterEach` and `afterAll` (innermost first).
+/// then `afterEach` and `afterAll` (innermost first). Each hook starts with a call to it.
+/// A call that can't be followed stays, with no [`Defined`](crate::Defined).
 ///
 /// ```
 /// let file = assertrust_ir::parse_file(
@@ -48,7 +52,10 @@ const MAX_DEPTH: usize = 8;
 /// # Ok::<(), assertrust_ir::ParseError>(())
 /// ```
 pub fn link(path: &str, file: &FileIr, modules: &dyn Modules) -> FileIr {
-    let linker = Linker { modules };
+    let linker = Linker {
+        modules,
+        checks: RefCell::new(HashMap::new()),
+    };
     let mut linked = file.clone();
     for (index, test) in file.tests.iter().enumerate() {
         let mut items = Vec::new();
@@ -72,15 +79,7 @@ pub fn link(path: &str, file: &FileIr, modules: &dyn Modules) -> FileIr {
         };
         let mut stack = Vec::new();
         for hook in hooks(&[HookKind::BeforeAll, HookKind::BeforeEach], false) {
-            let via = hook_via(hook.kind, hook.line);
-            let from = Expanding::new(&via);
-            linker.expand(
-                &hook.body.items,
-                place(&hook.suites),
-                &from,
-                &mut stack,
-                &mut items,
-            );
+            linker.hook(place(&hook.suites), hook, &mut stack, &mut items);
         }
         let own = Expanding::new(&[]);
         linker.expand(
@@ -91,36 +90,51 @@ pub fn link(path: &str, file: &FileIr, modules: &dyn Modules) -> FileIr {
             &mut items,
         );
         for hook in hooks(&[HookKind::AfterEach, HookKind::AfterAll], true) {
-            let via = hook_via(hook.kind, hook.line);
-            let from = Expanding::new(&via);
-            linker.expand(
-                &hook.body.items,
-                place(&hook.suites),
-                &from,
-                &mut stack,
-                &mut items,
-            );
+            linker.hook(place(&hook.suites), hook, &mut stack, &mut items);
         }
         linked.tests[index].body.items = items;
     }
     linked
 }
 
-fn hook_via(kind: HookKind, line: u32) -> [Via; 1] {
+fn hook_via(hook: &Hook) -> [Via; 1] {
     [Via {
-        name: kind.as_str().to_owned(),
-        call: kind.as_str().to_owned(),
-        line,
-        context: crate::model::Context::default(),
+        name: hook.kind.as_str().to_owned(),
+        call: hook.kind.as_str().to_owned(),
+        line: hook.line,
+        context: Context::default(),
         awaited: true,
         args: Vec::new(),
         path: None,
-        defined: line,
+        defined: hook.line,
     }]
+}
+
+/// A hook, as a call the runner makes for the test: dropping the hook drops it.
+fn hook_call(hook: &Hook) -> Item {
+    Item {
+        kind: ItemKind::Call(Call {
+            name: hook.kind.as_str().to_owned(),
+            args: Vec::new(),
+            text: hook.kind.as_str().to_owned(),
+            awaited: true,
+            defined: Some(Defined {
+                path: None,
+                line: hook.line,
+            }),
+        }),
+        line: hook.line,
+        context: Context::default(),
+        via: Vec::new(),
+    }
 }
 
 struct Linker<'m> {
     modules: &'m dyn Modules,
+    /// Whether each helper (by file, name and line) runs a check, itself or through the
+    /// helpers it calls. One that doesn't (a factory, a mock) isn't expanded: its call is
+    /// all the rules need.
+    checks: RefCell<HashMap<(String, String, u32), bool>>,
 }
 
 /// Where items are written: which file, and in which `describe` blocks.
@@ -139,7 +153,7 @@ struct Expanding<'e> {
     via: &'e [Via],
     /// What every call on the way adds: a helper called in an `if` puts all of its checks
     /// in one.
-    context: crate::model::Context,
+    context: Context,
     /// The helper's parameters, with the values the call passed.
     args: HashMap<String, Value>,
     /// The call is awaited, so the test waits for what the helper returns.
@@ -150,7 +164,7 @@ impl<'e> Expanding<'e> {
     fn new(via: &'e [Via]) -> Self {
         Self {
             via,
-            context: crate::model::Context::default(),
+            context: Context::default(),
             args: HashMap::new(),
             awaited: true,
         }
@@ -158,6 +172,19 @@ impl<'e> Expanding<'e> {
 }
 
 impl<'m> Linker<'m> {
+    /// A hook that runs for the test: a call to it, then its items.
+    fn hook(
+        &self,
+        place: Place<'m>,
+        hook: &Hook,
+        stack: &mut Vec<(String, String)>,
+        out: &mut Vec<Item>,
+    ) {
+        out.push(hook_call(hook));
+        let via = hook_via(hook);
+        self.expand(&hook.body.items, place, &Expanding::new(&via), stack, out);
+    }
+
     fn expand(
         &self,
         items: &[Item],
@@ -167,11 +194,9 @@ impl<'m> Linker<'m> {
         out: &mut Vec<Item>,
     ) {
         for item in items {
+            // A `return` in a hook or helper stays too, tagged like the rest: the rules read
+            // it as ending only that function's items.
             let ItemKind::Call(call) = &item.kind else {
-                // A `return` in a hook or helper ends only that function.
-                if matches!(item.kind, ItemKind::EarlyReturn) && !from.via.is_empty() {
-                    continue;
-                }
                 let mut item = item.clone();
                 item.context = from.context.with(item.context);
                 item.via = from.via.to_vec();
@@ -179,31 +204,31 @@ impl<'m> Linker<'m> {
                 out.push(item);
                 continue;
             };
-            let Some((target, helper)) = self.helper(place, &call.name) else {
-                continue;
-            };
-            let key = (target.path.to_owned(), helper.name.clone());
-            if stack.contains(&key) || stack.len() >= MAX_DEPTH {
-                continue;
-            }
             let args: Vec<Value> = call.args.iter().map(|arg| fill(arg, &from.args)).collect();
-            let text = format!(
-                "{}({})",
-                call.name,
-                args.iter()
-                    .map(ToString::to_string)
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            );
-            // The call stays, so the rules can tell a call removed from a helper that changed.
+            let text = Call::text_of(&call.name, &args);
+            let found = self.helper(place, &call.name);
+            // The call stays, so the rules can tell a call removed from a helper that changed,
+            // and a call they can't see into (no `defined`) from one that's gone.
             let mut kept = item.clone();
             kept.context = from.context.with(item.context);
             kept.via = from.via.to_vec();
             if let ItemKind::Call(kept) = &mut kept.kind {
                 kept.args.clone_from(&args);
                 kept.text.clone_from(&text);
+                kept.defined = found.map(|(target, helper)| Defined {
+                    path: target.other.then(|| target.path.to_owned()),
+                    line: helper.line,
+                });
             }
             out.push(kept);
+            let Some((target, helper)) = found else {
+                continue;
+            };
+            let key = (target.path.to_owned(), helper.name.clone());
+            if stack.contains(&key) || stack.len() >= MAX_DEPTH || !self.runs_checks(target, helper)
+            {
+                continue;
+            }
             let mut via = from.via.to_vec();
             via.push(Via {
                 name: call.name.clone(),
@@ -219,6 +244,9 @@ impl<'m> Linker<'m> {
             // An async helper the caller doesn't wait for may finish after the test.
             let awaited = call.awaited && from.awaited;
             context.not_awaited |= helper.is_async && !awaited;
+            // Inside an async helper its own `await`s decide; whether the test waits for the
+            // helper is `not_awaited` above. A plain helper hands what it returns back.
+            let awaited = helper.is_async || awaited;
             let inner = Expanding {
                 via: &via,
                 context,
@@ -234,6 +262,49 @@ impl<'m> Linker<'m> {
             self.expand(&helper.body.items, target, &inner, stack, out);
             stack.pop();
         }
+    }
+
+    /// Whether `helper` (defined at `place`) runs a check, itself or through the helpers it
+    /// calls.
+    fn runs_checks(&self, place: Place<'m>, helper: &'m Helper) -> bool {
+        let mut working_out = Vec::new();
+        self.runs_checks_in(place, helper, &mut working_out).0
+    }
+
+    /// Also says whether the answer leaned on a helper still being worked out (a call
+    /// cycle): such an answer isn't kept, since it may be wrong once that one is known.
+    fn runs_checks_in(
+        &self,
+        place: Place<'m>,
+        helper: &'m Helper,
+        working_out: &mut Vec<(String, String, u32)>,
+    ) -> (bool, bool) {
+        let key = (place.path.to_owned(), helper.name.clone(), helper.line);
+        if let Some(&checks) = self.checks.borrow().get(&key) {
+            return (checks, false);
+        }
+        if working_out.contains(&key) || working_out.len() >= MAX_DEPTH {
+            return (false, true);
+        }
+        working_out.push(key.clone());
+        let mut unsure = false;
+        let checks = helper.body.items.iter().any(|item| match &item.kind {
+            ItemKind::Assertion(_) | ItemKind::AssertionCount(_) => true,
+            ItemKind::Call(call) => {
+                self.helper(place, &call.name)
+                    .is_some_and(|(target, inner)| {
+                        let (checks, cycle) = self.runs_checks_in(target, inner, working_out);
+                        unsure |= cycle;
+                        checks
+                    })
+            }
+            _ => false,
+        });
+        working_out.pop();
+        if checks || !unsure {
+            self.checks.borrow_mut().insert(key, checks);
+        }
+        (checks, unsure && !checks)
     }
 
     /// The helper `name` called from `place`: one defined in the same file and visible from
@@ -367,7 +438,10 @@ mod tests {
                 test.body.items.iter().map(move |item| {
                     let text = match &item.kind {
                         ItemKind::Assertion(assertion) => assertion.to_string(),
-                        ItemKind::Call(call) => format!("call {}", call.text),
+                        ItemKind::Call(call) if call.defined.is_some() => {
+                            format!("call {}", call.text)
+                        }
+                        ItemKind::Call(call) => format!("call {} (not followed)", call.text),
                         other => format!("{other:?}"),
                     };
                     let context = if item.context.is_plain() {
@@ -408,12 +482,14 @@ it('charges', () => { expectStatus(charge(), 201) });
         assert_eq!(
             linked(source, &()),
             [
+                "refunds: 7 call beforeEach",
                 "refunds: 7 expect(db.isClean()).toBe(true) via beforeEach",
                 "refunds: 11 call expectOk(res) (in if)",
                 "refunds: 5 call expectStatus(res, 200) (in if) via expectOk(res)",
                 "refunds: 3 expect(res.status).toBe(200) (in if) via expectOk(res) > expectStatus(res, 200)",
                 "refunds: 5 expect(res.body.error).toBeUndefined() (in if) via expectOk(res)",
                 "refunds: 12 expect(res.id).toBeDefined()",
+                "refunds: 8 call afterAll",
                 "refunds: 8 expect(leaks()).toEqual([]) via afterAll",
                 "charges: 15 call expectStatus(charge(), 201)",
                 "charges: 3 expect(res.status).toBe(201) via expectStatus(charge(), 201)",
@@ -442,16 +518,60 @@ it('forgets', async () => { expectSaved(2) });
     #[test]
     fn calls_that_go_nowhere_or_in_circles() {
         let source = "
+import { expectOk } from '@/test/helpers';
 function a() { expect(1).toBe(1); b() }
 function b() { a() }
-it('circles', () => { a(); setup(); });
+it('circles', () => { a(); setup(); expectOk(res) });
+";
+        // `setup` isn't a helper or an import; `expectOk` is, but can't be followed.
+        assert_eq!(
+            linked(source, &()),
+            [
+                "circles: 5 call a()",
+                "circles: 3 expect(1).toBe(1) via a()",
+                "circles: 3 call b() via a()",
+                "circles: 4 call a() via a() > b()",
+                "circles: 5 call expectOk(res) (not followed)",
+            ]
+        );
+    }
+
+    #[test]
+    fn a_return_in_a_helper_or_hook_stays_with_it() {
+        let source = "
+function expectOk(res) {
+  if (!res) return;
+  expect(res.ok).toBe(true);
+  return res;
+}
+beforeEach(() => { return; expect(db.open).toBe(true) });
+it('refunds', () => { expectOk(refund()) });
 ";
         assert_eq!(
             linked(source, &()),
             [
-                "circles: 4 call a()",
-                "circles: 2 expect(1).toBe(1) via a()",
-                "circles: 2 call b() via a()",
+                "refunds: 7 call beforeEach",
+                "refunds: 7 EarlyReturn via beforeEach",
+                "refunds: 7 expect(db.open).toBe(true) via beforeEach",
+                "refunds: 8 call expectOk(refund())",
+                "refunds: 3 EarlyReturn (in if) via expectOk(refund())",
+                "refunds: 4 expect(res.ok).toBe(true) via expectOk(refund())",
+            ]
+        );
+    }
+
+    #[test]
+    fn an_async_helper_keeps_its_own_awaits() {
+        // Not awaiting the call is `not awaited`; the check inside is still awaited.
+        let source = "
+async function check(p) { await expect(p).resolves.toBe(1) }
+it('forgets', async () => { check(p) });
+";
+        assert_eq!(
+            linked(source, &()),
+            [
+                "forgets: 3 call check(p)",
+                "forgets: 2 await expect(p).resolves.toBe(1) (not awaited) via check(p)",
             ]
         );
     }

@@ -111,7 +111,23 @@ fn render(label: &str, ir: &FileIr) -> String {
         ));
     }
     line(&mut out, &format!("{label}: {}", summary.join(", ")));
+    // The imports that matter for helpers: the ones called, and the ones passed on.
+    let called: Vec<&str> = ir
+        .tests
+        .iter()
+        .map(|test| &test.body)
+        .chain(ir.hooks.iter().map(|hook| &hook.body))
+        .chain(ir.helpers.iter().map(|helper| &helper.body))
+        .flat_map(|body| &body.items)
+        .filter_map(|item| match &item.kind {
+            ItemKind::Call(call) => Some(call.name.as_str()),
+            _ => None,
+        })
+        .collect();
     for import in &ir.imports {
+        if !import.reexport && !called.contains(&import.local.as_str()) {
+            continue;
+        }
         let what = if import.reexport {
             "passes on"
         } else {

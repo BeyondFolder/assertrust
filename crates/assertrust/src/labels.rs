@@ -32,6 +32,8 @@ use std::path::Path;
 use assertrust_rules::{Finding, RuleId};
 use toml::{Table, Value};
 
+use crate::config::string;
+
 /// A person's verdict on a finding.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Label {
@@ -319,12 +321,6 @@ fn entry_from(value: &Value) -> Result<Entry, String> {
     Ok(entry)
 }
 
-fn string<'v>(key: &str, value: &'v Value) -> Result<&'v str, String> {
-    value
-        .as_str()
-        .ok_or_else(|| format!("`{key}` must be a string"))
-}
-
 fn strings(key: &str, value: &Value) -> Result<Vec<String>, String> {
     let error = || format!("`{key}` must be a list of strings");
     value
@@ -336,6 +332,9 @@ fn strings(key: &str, value: &Value) -> Result<Vec<String>, String> {
 }
 
 /// A TOML basic string: quoted, with quotes, backslashes and control characters escaped.
+/// Written by hand rather than with the `toml` crate's writer, which picks a quote style per
+/// string (`'…'`, `"""…"""`): this keeps every value on one line in one style, for people
+/// editing the file and for `backtest/run.sh`, which reads `repo = "…"` lines.
 fn quoted(text: &str) -> String {
     let mut out = String::with_capacity(text.len() + 2);
     out.push('"');
@@ -387,6 +386,12 @@ mod tests {
         first.pr = Some(12);
         first.label = Some(Label::Unexplained);
         first.note = "dropped\nin a refactor".to_owned();
+        // Every character TOML makes a basic string escape, and some it doesn't.
+        let awkward: String = (0..0x20u8)
+            .map(char::from)
+            .chain(['\u{7f}', '\u{85}', '"', '\'', '\\', '→', '#', '='])
+            .collect();
+        first.before.push(awkward);
         let mut second = entry("9f8e7d6c5b4a", "charges", "expect(b).toBe(2)");
         second.test = None;
         second.tests = vec!["one".to_owned(), "two".to_owned()];

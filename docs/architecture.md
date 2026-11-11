@@ -796,8 +796,8 @@ test/unit/mx-checker.test.ts:290  HIGH  expectation-loosened
 
 Each commit on the branch's first-parent line got there one way, and is checked the way CI would have checked it then, with the `assertrust.toml` it had (at the PR's base):
 - **A merge commit** merged a PR with its commits: checked PR-style, `C^1...C^2`. Findings name the PR's commits, and weakening undone within the PR is hidden.
-- **A squash merge** (`Fix refunds (#12)`, how most GitHub repos merge) leaves one commit on the branch. When the PR's own commits are there (`git fetch origin refs/pull/12/head:refs/pull/12/head`), it's checked PR-style against them, as the GitHub Action will see it. Otherwise it's checked as one commit, and a note says how many were.
-- **Any other commit** was pushed straight to the branch: checked on its own.
+- **A squash merge** (`Fix refunds (#12)`, how most GitHub repos merge) leaves one commit on the branch. When the PR's own commits are there (`git fetch origin refs/pull/12/head:refs/pull/12/head`), it's checked PR-style against them, as the GitHub Action will see it. Otherwise it's checked as one commit, and a note says how many were. The PR's commits must add up to the squash: each file it changed is the same at the PR's last commit, unless the branch changed that file too after the PR split off. A commit that only cites a PR (`Address review comments from (#12)`) fails that, and is checked on its own, with a note.
+- **Any other commit** was pushed straight to the branch: checked on its own. A merge that isn't a PR's (`Merge branch 'main' of …`, from a pull on the branch) is checked PR-style like a merged PR, and counted as an "other merge".
 
 The repo's first commit isn't checked: there's nothing before it. A commit that can't be checked (say, a PR whose commits share no history with a shallow clone) is listed with the reason. assertrust never touches the network: fetching is up to whoever runs it, and `backtest/run.sh` does it for the repos below (`docs/development.md`, "Backtests").
 
@@ -810,27 +810,27 @@ The repo's first commit isn't checked: there's nothing before it. A commit that 
 
 With labels, a run exits with 1 when a finding isn't labelled yet, a finding labelled right is no longer found, or a commit couldn't be checked. So after a change to the rules, it says exactly which findings appeared or went. `--update-labels` adds new findings to the file, unlabelled, and drops false alarms no longer found. A finding is the same one when its commit, rule, file, test and code are the same; the message isn't part of it, so rewording one keeps its label. If its code is printed differently, it keeps the label of the one left-over entry about the same commit, rule, file and test, marked `carried over`.
 
-**First results (2026-11-11).** The last 100 PRs and pushes of each of the 10 public repos below, plus Mailyond's whole history (181), replayed and every finding labelled: 427 findings, **42% right** (181). At high confidence 61% (136 of 222), at medium 22% (45 of 196), at low none of 9. That's well short of the 70% that blocking by default would need, so `fail-on` stays `never`.
+**First results (2026-11-11).** The last 100 PRs and pushes of each of the 10 public repos below, plus Mailyond's whole history (181), replayed and every finding labelled: 424 findings, **42% right** (179). At high confidence 61% (134 of 219), at medium 22% (45 of 196), at low none of 9. That's well short of the 70% that blocking by default would need, so `fail-on` stays `never`.
 
 | Repo | Findings | Right | High: right |
 |---|---|---|---|
 | cal.com | 13 | 13 (100%) | 11 of 11 |
 | Mailyond | 24 | 17 (70%) | 11 of 12 |
-| zod | 39 | 20 (51%) | 18 of 18 |
 | h3 | 22 | 11 (50%) | 0 of 2 |
+| zod | 37 | 18 (48%) | 16 of 16 |
 | Excalidraw | 87 | 38 (43%) | 25 of 38 |
 | vueuse | 12 | 5 (41%) | 5 of 9 |
 | hono | 13 | 5 (38%) | 4 of 7 |
 | immich | 84 | 32 (38%) | 31 of 73 |
 | nuxt/ui | 12 | 4 (33%) | 3 of 4 |
 | TanStack Query | 25 | 8 (32%) | 5 of 8 |
-| tRPC | 96 | 28 (29%) | 23 of 40 |
+| tRPC | 95 | 28 (29%) | 23 of 39 |
 
-By rule: `test-disabled` 117 of 198 (59%), `expectation-loosened` 17 of 29, `check-removed` 40 of 164 (24%), `gate-loosened` 6 of 22, `check-cant-fail` 0 of 11, `matcher-swapped` 0 of 2, `matcher-loosened` 1 of 1. Almost half the findings (205) are about tests the PR itself added and weakened before landing, and they're right about as often as the rest (42%, against 41% for findings about what the main branch had).
+By rule: `test-disabled` 117 of 197 (59%), `expectation-loosened` 17 of 29, `check-removed` 40 of 164 (24%), `gate-loosened` 4 of 20, `check-cant-fail` 0 of 11, `matcher-swapped` 0 of 2, `matcher-loosened` 1 of 1. Almost half the findings (202) are about tests the PR itself added and weakened before landing, and they're right about as often as the rest (42%, against 41% for findings about what the main branch had).
 
-Most right findings are `intended` (139): tests deleted or cut down along with the code they covered. 42 are `unexplained`, most of them in one immich PR ("refactor: web tests") that dropped tests for components that still exist, and Mailyond's `71110c0`.
+Most right findings are `intended` (137): tests deleted or cut down along with the code they covered. 42 are `unexplained`, most of them in one immich PR ("refactor: web tests") that dropped tests for components that still exist, and Mailyond's `71110c0`.
 
-The 246 wrong ones, most common first:
+The 245 wrong ones, most common first:
 - **A test rewritten for a deliberate behaviour change**, still checking the same input against the new result, reported as a removed check or a deleted test instead of a changed outcome. Often the test was renamed too, or split into new tests (hono's percent-encoded paths now giving 404, a tRPC formula changed from square root to linear).
 - **A check rewritten into an equivalent or stronger form that matching doesn't pair:** an `it.each` table replacing a list of tests, a new API or state field asserting the same value, a check moved into a helper the test calls through an object (immich's `ctx.assertSyncResponse`, 20 findings) or into a fixture (`app.dialog`).
 - **Tests or checks moved to another file**, which matching doesn't look for: immich moved component tests into page specs and Playwright specs, hono moved adapter tests into their own packages and CI workflow.
@@ -841,7 +841,7 @@ The 246 wrong ones, most common first:
   - `.each` rows are counted from the outer `describe.each` when the table is an expression (`name === 'Checkbox' ? […] : […]`).
   - A field taken out of `toMatchObject` but asserted on its own line (`toBeCloseTo(239, 1)`) is reported as no longer checked.
   - An added `--project` in a vitest command is read as replacing the others.
-  - Stacked PRs: after the PR below is squash-merged, the PR above still holds its commits, so their findings are reported again (8 in tRPC). GitHub's own diff shows those commits too until a rebase, so the Action would as well.
+  - Stacked PRs: after the PR below is squash-merged, the PR above still holds its commits, so their findings are reported again (7 in tRPC). GitHub's own diff shows those commits too until a rebase, so the Action would as well. The backtest checks a stacked PR on its own only when its commits no longer merge cleanly into what landed.
   - A few removals are reported twice, once against the main branch and once before landing under the file's old name.
 
 The next PRs fix these, one group at a time, each measured with the backtest.

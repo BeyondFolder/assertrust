@@ -89,12 +89,11 @@ impl Config {
         let Some(base) = repo.base(mode).map_err(|err| err.to_string())? else {
             return Ok((Self::load(repo)?, Vec::new()));
         };
-        let at_base = repo.read_file(&base, FILE).map_err(|err| err.to_string())?;
-        let config = match at_base.as_deref().map(Self::parse) {
-            None => Self::default(),
-            Some(Ok(config)) => config,
+        let (at_base, config) = Self::at(repo, &base)?;
+        let config = match config {
+            Ok(config) => config,
             // A broken file on the main branch mustn't block the change that fixes it.
-            Some(Err(err)) => {
+            Err(err) => {
                 let note =
                     format!("{FILE} at {base} doesn't parse ({err}), so the one on disk applies");
                 return Ok((Self::load(repo)?, vec![note]));
@@ -116,24 +115,27 @@ impl Config {
         let Some(base) = repo.base(mode).map_err(|err| err.to_string())? else {
             return Ok((Self::default(), Vec::new()));
         };
-        let at = |rev: &Rev| -> Result<Option<Result<Self, String>>, String> {
-            let source = repo.read_file(rev, FILE).map_err(|err| err.to_string())?;
-            Ok(source.as_deref().map(Self::parse))
-        };
-        match at(&base)? {
-            None => Ok((Self::default(), Vec::new())),
-            Some(Ok(config)) => Ok((config, Vec::new())),
-            Some(Err(err)) => {
+        match Self::at(repo, &base)?.1 {
+            Ok(config) => Ok((config, Vec::new())),
+            Err(err) => {
                 let head = Rev::Commit(head.to_owned());
                 let note =
                     format!("{FILE} at {base} doesn't parse ({err}), so the one at {head} applies");
-                match at(&head)? {
-                    None => Ok((Self::default(), vec![note])),
-                    Some(Ok(config)) => Ok((config, vec![note])),
-                    Some(Err(err)) => Err(format!("{FILE} at {head}: {err}")),
+                match Self::at(repo, &head)?.1 {
+                    Ok(config) => Ok((config, vec![note])),
+                    Err(err) => Err(format!("{FILE} at {head}: {err}")),
                 }
             }
         }
+    }
+
+    /// The file at `rev`, if any, and the config it gives: the defaults when there's none.
+    fn at(repo: &Repo, rev: &Rev) -> Result<(Option<String>, Result<Self, String>), String> {
+        let source = repo.read_file(rev, FILE).map_err(|err| err.to_string())?;
+        let config = source
+            .as_deref()
+            .map_or_else(|| Ok(Self::default()), Self::parse);
+        Ok((source, config))
     }
 
     /// The repo's `assertrust.toml`, or the defaults when there's none.
@@ -348,7 +350,7 @@ impl FailOn {
     }
 }
 
-fn string<'v>(key: &str, value: &'v Value) -> Result<&'v str, String> {
+pub(crate) fn string<'v>(key: &str, value: &'v Value) -> Result<&'v str, String> {
     value
         .as_str()
         .ok_or_else(|| format!("`{key}` must be a string"))

@@ -14,7 +14,7 @@ Options:
           Replay the last N commits on the current branch's first-parent line (default: 100, or the labels file's range)
 
       --labels <FILE>
-          A file with a verdict on each finding, to measure assertrust: prints how often it's right, and exits with 1 on findings not labelled yet or no longer found
+          A file with a verdict on each finding, to measure assertrust: prints how often it's right, and exits with 1 when a finding isn't labelled yet, one labelled right is no longer found, or a commit couldn't be checked
 
       --update-labels
           Add new findings to the labels file, not labelled yet, and drop false alarms no longer found

@@ -1083,18 +1083,6 @@ label = "wrong"
 note = "PR #7996 doesn't touch this file: the commits are from stacked PR #7997, which landed first, so it's attributed to the wrong PR."
 
 [[finding]]
-unit = "1341462e1bff"
-pr = 7998
-rule = "test-disabled"
-path = "packages/tests/server/publicTypeExports.test.ts"
-tests = ["type-only exports stay importable from the public entry points"]
-before = ["type-only exports stay importable from the public entry points"]
-after = []
-message = "file deleted: its test no longer runs"
-label = "wrong"
-note = "PR #7998 doesn't touch this file: the commits are from stacked PR #7997, which landed first, so it's attributed to the wrong PR."
-
-[[finding]]
 unit = "857116837d41"
 pr = 8014
 rule = "test-disabled"

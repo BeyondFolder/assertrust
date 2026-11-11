@@ -137,17 +137,17 @@ File snapshots can also be rewritten without cargo-insta, using `INSTA_UPDATE=al
 `backtest/` holds a labels file for each public repo assertrust is measured on. Each one names the repo, the 100 PRs and pushes to replay (`range`, pinned to SHAs), and a verdict on each finding (see "Backtest" in step 6 of `docs/architecture.md`). To replay them:
 
 ```sh
-backtest/run.sh                    # every repo; exits with 1 when a finding is new or gone
+backtest/run.sh                    # every repo; exits with 1 on a finding not labelled yet or a right one gone
 backtest/run.sh hono zod           # only these
 backtest/run.sh --update-labels    # also write new findings into the labels files
 ```
 
-The script fetches what each replay needs into `target/backtest-clones/`: the range plus a year of history before it (so PRs opened earlier still find where they branched), and the commits of each squash-merged PR (`refs/pull/N/head`). The first run downloads about 1.7 GB, most of it cal.com's checkout; later runs reuse the clones and take a minute or two.
+The script fetches what each replay needs into `target/backtest-clones/`: the range plus a year of history before it (so PRs opened earlier still find where they branched), and the commits of each squash-merged PR (`refs/pull/N/head`). A PR number GitHub has no PR for is remembered and not asked for again; any other failed fetch (say, the network) is retried on the next run. The first run downloads about 1.7 GB, most of it cal.com's checkout; later runs reuse the clones and take a minute or two.
 
 After a change to the rules, run it and look at what moved:
 - a new finding shows `[not labelled]`: label it in the file, `label = "wrong"`, `"intended"` or `"unexplained"`, with a short `note` when the reason isn't obvious;
 - a finding labelled right that's gone is listed under "no longer found": a lost catch, unless the finding was wrong to begin with;
-- a gone false alarm is listed too, and `--update-labels` drops it.
+- a gone false alarm is listed too, without failing the run, and `--update-labels` drops it.
 
 Commit the updated labels with the change, and say in the PR how precision moved.
 

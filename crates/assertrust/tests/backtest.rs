@@ -476,3 +476,112 @@ fn json_lists_every_commit_with_its_findings_and_labels() {
     assert_eq!(json["labels"]["unexplained"], 1);
     assert_eq!(json["labels"]["not_labelled"], 3);
 }
+
+#[test]
+fn a_push_that_only_cites_a_pr_is_checked_on_its_own() {
+    // After PR #2 landed, a push names it but changes more than its commits did.
+    let (mut repo, _) = history();
+    let current = fs::read_to_string(repo.path().join("test/a.test.ts")).unwrap();
+    repo.write(
+        "test/a.test.ts",
+        &current.replace("expect(b).toBeTruthy()", "expect(b).toBeDefined()"),
+    );
+    let cites = repo.commit("Address review comments from (#2)");
+    let run = backtest(&repo, &["--last", "1"]);
+    assert_eq!(
+        run.stdout,
+        format!(
+            "push  {}  Address review comments from (#2)\n\
+             test/a.test.ts:2  LOW  matcher-swapped\n\
+             \x20 swapped toBeTruthy() for toBeDefined() · {}\n\
+             note: ends in (#2), but PR #2's commits don't add up to it (a PR stacked on another, or one it only cites), so it's checked on its own\n\
+             \n\
+             1 commit: 0 PRs, 1 push · 1 finding · Xs\n",
+            short(&cites),
+            short(&cites),
+        )
+    );
+}
+
+#[test]
+fn a_merge_that_is_not_a_pr_is_counted_apart() {
+    let mut repo = TestRepo::new();
+    repo.write("test/a.test.ts", TESTS);
+    repo.commit("Add tests");
+    repo.branch("local");
+    repo.write("test/a.test.ts", &tests_with("  expect(a).toBe(1)\n", ""));
+    let drop_a = repo.commit("Drop a");
+    repo.switch("main");
+    let merge = repo.merge("local", "Merge branch 'local'");
+    let run = backtest(&repo, &[]);
+    assert_eq!(
+        run.stdout,
+        format!(
+            "merge  {}  Merge branch 'local' · 1 commit\n\
+             test/a.test.ts:1  HIGH  check-removed\n\
+             \x20 removed expect(a).toBe(1) · {}\n\
+             \n\
+             1 commit: 0 PRs, 1 other merge, 0 pushes · 1 finding · Xs\n",
+            short(&merge),
+            short(&drop_a),
+        )
+    );
+}
+
+#[test]
+fn credentials_in_the_remote_url_stay_out_of_the_labels_file() {
+    let (repo, _) = history();
+    repo.git(&[
+        "remote",
+        "add",
+        "origin",
+        "https://x-access-token:ghp_secret@github.com/org/repo.git",
+    ]);
+    let labels = repo.path().join("labels.toml");
+    backtest(
+        &repo,
+        &["--labels", labels.to_str().unwrap(), "--update-labels"],
+    );
+    let written = fs::read_to_string(&labels).unwrap();
+    assert!(written.contains("\nrepo = \"https://github.com/org/repo.git\"\n"));
+    assert!(!written.contains("ghp_secret"));
+}
+
+#[test]
+fn a_push_citing_a_pr_that_merges_cleanly_is_still_checked_on_its_own() {
+    // PR #5 only touched the README; a later push names it and drops a check.
+    let mut repo = TestRepo::new();
+    repo.write("test/a.test.ts", TESTS);
+    repo.commit("Add tests");
+    repo.branch("pr5");
+    repo.write("README.md", "Docs\n");
+    repo.commit("Docs");
+    repo.switch("main");
+    repo.git(&["merge", "--squash", "--quiet", "pr5"]);
+    repo.commit("Docs (#5)");
+    repo.git(&["update-ref", "refs/pull/5/head", "pr5"]);
+    repo.write("test/a.test.ts", &tests_with("  expect(a).toBe(1)\n", ""));
+    let cites = repo.commit("Follow-up to (#5)");
+    let run = backtest(&repo, &["--last", "1"]);
+    assert_eq!(
+        run.stdout,
+        format!(
+            "push  {}  Follow-up to (#5)\n\
+             test/a.test.ts:1  HIGH  check-removed\n\
+             \x20 removed expect(a).toBe(1) · {}\n\
+             note: ends in (#5), but PR #5's commits don't add up to it (a PR stacked on another, or one it only cites), so it's checked on its own\n\
+             \n\
+             1 commit: 0 PRs, 1 push · 1 finding · Xs\n",
+            short(&cites),
+            short(&cites),
+        )
+    );
+    // The squash itself is PR #5's, though it changed nothing a test can see.
+    let run = backtest(&repo, &["--last", "2"]);
+    assert!(
+        run.stdout
+            .ends_with("2 commits: 1 PR, 1 push · 1 finding · Xs\n"),
+        "{}",
+        run.stdout
+    );
+}

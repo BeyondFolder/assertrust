@@ -395,28 +395,6 @@ label = "intended"
 note = "The commit reverts 'ci: publish to npm with NPM_TOKEN', which added this workflow; both are stray commits inherited from a since-rewritten main, which never had the file."
 
 [[finding]]
-unit = "c42596bd1c87"
-pr = 6638
-rule = "gate-loosened"
-path = ".github/workflows/publish.yml"
-before = ["nub run test"]
-after = []
-message = "job publish removed: its tests (nub run test) no longer run"
-label = "intended"
-note = "The commit reverts 'ci: publish to npm with NPM_TOKEN', which added this workflow; both are stray commits inherited from a since-rewritten main, which never had the file."
-
-[[finding]]
-unit = "a2ba4a67986a"
-pr = 6645
-rule = "gate-loosened"
-path = ".github/workflows/publish.yml"
-before = ["nub run test"]
-after = []
-message = "job publish removed: its tests (nub run test) no longer run"
-label = "intended"
-note = "The commit reverts 'ci: publish to npm with NPM_TOKEN', which added this workflow; both are stray commits inherited from a since-rewritten main, which never had the file."
-
-[[finding]]
 unit = "a0ebf970f2d7"
 pr = 6652
 rule = "gate-loosened"

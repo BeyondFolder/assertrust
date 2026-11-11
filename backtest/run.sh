@@ -17,7 +17,9 @@ set -euo pipefail
 
 here=$(cd "$(dirname "$0")" && pwd)
 root=$(dirname "$here")
-clones=${ASSERTRUST_BACKTEST_CLONES:-$root/target/backtest-clones}
+# Absolute, since each replay runs from inside its clone.
+absolute() { case $1 in /*) echo "$1" ;; *) echo "$PWD/$1" ;; esac; }
+clones=$(absolute "${ASSERTRUST_BACKTEST_CLONES:-$root/target/backtest-clones}")
 # History kept before the range starts, so PRs opened earlier still find where they branched.
 margin_days=365
 
@@ -26,6 +28,7 @@ if [ -z "$bin" ]; then
   cargo build --release --quiet --manifest-path "$root/Cargo.toml"
   bin=$root/target/release/assertrust
 fi
+bin=$(absolute "$bin")
 
 flags=()
 names=()
@@ -38,7 +41,7 @@ done
 
 files=("$here"/*.toml)
 if [ -n "${ASSERTRUST_PRIVATE_LABELS:-}" ]; then
-  files+=("$ASSERTRUST_PRIVATE_LABELS"/*.toml)
+  files+=("$(absolute "$ASSERTRUST_PRIVATE_LABELS")"/*.toml)
 fi
 
 # A `key = "value"` line at the top of a labels file.
@@ -76,15 +79,22 @@ for labels in "${files[@]}"; do
   while read -r pr; do
     git rev-parse --verify --quiet "refs/pull/$pr/head" >/dev/null && continue
     grep -qx "$pr" "$missing" || refs+=("refs/pull/$pr/head:refs/pull/$pr/head")
-  done < <(git log --first-parent --no-merges --format=%s "$base..$head" | sed -n 's/.*(#\([0-9][0-9]*\))$/\1/p' | sort -un)
+  done < <(git log --first-parent --no-merges --format=%s "$base..$head" | sed -n 's/.*(#\([0-9][0-9]*\))[[:space:]]*$/\1/p' | sort -un)
   since=$(( $(git log -1 --format=%ct "$base") - margin_days * 86400 ))
   for ((i = 0; i < ${#refs[@]}; i += 100)); do
     chunk=("${refs[@]:i:100}")
     # One fetch for many; if one of them doesn't exist, each on its own.
     git fetch --quiet --no-tags --shallow-since="@$since" origin "${chunk[@]}" 2>/dev/null && continue
     for ref in "${chunk[@]}"; do
-      git fetch --quiet --no-tags --shallow-since="@$since" origin "$ref" 2>/dev/null \
-        || { pr=${ref#refs/pull/}; echo "${pr%%/*}" >>"$missing"; }
+      pr=${ref#refs/pull/}
+      pr=${pr%%/*}
+      if ! error=$(git fetch --quiet --no-tags --shallow-since="@$since" origin "$ref" 2>&1); then
+        # Only "no such PR" is for good; a network or auth failure is retried next run.
+        case $error in
+          *"couldn't find remote ref"*) echo "$pr" >>"$missing" ;;
+          *) echo "warning: couldn't fetch PR #$pr: ${error%%$'\n'*}" >&2 ;;
+        esac
+      fi
     done
   done
   unset -f git

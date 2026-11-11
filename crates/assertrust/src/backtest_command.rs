@@ -21,8 +21,11 @@
 
 use std::collections::HashSet;
 use std::fmt::Write as _;
+use std::num::NonZeroUsize;
 use std::path::Path;
 use std::process::ExitCode;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::thread;
 use std::time::Instant;
 
 use assertrust_git::{Commit, Mode, Repo};
@@ -57,10 +60,7 @@ pub fn run(args: &BacktestArgs) -> Result<ExitCode, String> {
         .map(|path| Labels::read(path, args.update_labels))
         .transpose()?;
     let (range, commits) = walk(&repo, args, labels.as_ref())?;
-    let units: Vec<Unit> = commits
-        .into_iter()
-        .map(|commit| Unit::check(&repo, commit, args.show_transient))
-        .collect();
+    let units = check_all(&repo, &commits, args.show_transient);
     let scored = labels.as_ref().map(|labels| Scored::new(labels, &units));
     let output = match args.format {
         BacktestFormat::Terminal => render(&units, scored.as_ref(), args, started),
@@ -129,6 +129,36 @@ fn walk(
     Ok((format!("{base}..{head}"), commits))
 }
 
+/// Checks each commit, several at once (each check only reads the repo), in their order.
+fn check_all(repo: &Repo, commits: &[Commit], show_transient: bool) -> Vec<Unit> {
+    let workers = thread::available_parallelism()
+        .map_or(1, NonZeroUsize::get)
+        .clamp(1, commits.len().max(1));
+    let next = AtomicUsize::new(0);
+    let mut units: Vec<(usize, Unit)> = thread::scope(|scope| {
+        let threads: Vec<_> = (0..workers)
+            .map(|_| {
+                scope.spawn(|| {
+                    let mut done = Vec::new();
+                    loop {
+                        let i = next.fetch_add(1, Ordering::Relaxed);
+                        let Some(commit) = commits.get(i) else {
+                            break done;
+                        };
+                        done.push((i, Unit::check(repo, commit.clone(), show_transient)));
+                    }
+                })
+            })
+            .collect();
+        threads
+            .into_iter()
+            .flat_map(|thread| thread.join().expect("a backtest thread panicked"))
+            .collect()
+    });
+    units.sort_by_key(|(i, _)| *i);
+    units.into_iter().map(|(_, unit)| unit).collect()
+}
+
 /// How a commit got onto the branch.
 enum Landing {
     /// A PR merged with a merge commit.
@@ -140,18 +170,25 @@ enum Landing {
 }
 
 impl Landing {
-    fn of(repo: &Repo, commit: &Commit) -> Self {
+    /// How `commit` landed, and a note when its subject names a PR whose fetched commits
+    /// aren't what it landed.
+    fn of(repo: &Repo, commit: &Commit) -> (Self, Option<String>) {
         if commit.is_merge() {
-            return Self::Merge {
-                pr: merged_pr(commit.subject()),
-            };
+            let pr = merged_pr(commit.subject());
+            return (Self::Merge { pr }, None);
         }
-        match squashed_pr(commit.subject()) {
-            Some(pr) => Self::Squash {
-                pr,
-                head: repo.resolve(&format!("refs/pull/{pr}/head")).ok(),
-            },
-            None => Self::Push,
+        let Some(pr) = squashed_pr(commit.subject()) else {
+            return (Self::Push, None);
+        };
+        let head = repo.resolve(&format!("refs/pull/{pr}/head")).ok();
+        match head {
+            Some(head) if !squashed_from(repo, commit, &head) => (
+                Self::Push,
+                Some(format!(
+                    "ends in (#{pr}), but PR #{pr}'s commits don't add up to it (a PR stacked on another, or one it only cites), so it's checked on its own"
+                )),
+            ),
+            head => (Self::Squash { pr, head }, None),
         }
     }
 
@@ -170,6 +207,17 @@ impl Landing {
             Self::Push => "push",
         }
     }
+}
+
+/// Whether `head`, the last commit of a PR, is what the squash merge `commit` landed: each
+/// file `commit` changed is one that merging `head` into the commit before changes too. A
+/// commit that only cites a PR (`Address review comments from (#12)`) changes files the
+/// PR's commits don't, or the PR is already in. If git can't tell (no shared history in a
+/// shallow clone, an old git), it's taken as the PR's, so the check reports why it can't be
+/// done.
+fn squashed_from(repo: &Repo, commit: &Commit, head: &str) -> bool {
+    repo.squashes(&commit.parents[0], head, &commit.sha)
+        .unwrap_or(true)
 }
 
 /// `Merge pull request #12 from org/branch` → 12.
@@ -236,7 +284,7 @@ impl Owned {
 
 impl Unit {
     fn check(repo: &Repo, commit: Commit, show_transient: bool) -> Self {
-        let landing = Landing::of(repo, &commit);
+        let (landing, note) = Landing::of(repo, &commit);
         let parent = &commit.parents[0];
         // What CI checked, and the commit it ran on.
         let (range, head) = match &landing {
@@ -267,6 +315,7 @@ impl Unit {
             }
             Err(err) => unit.error = Some(err),
         }
+        unit.notes.splice(0..0, note);
         unit
     }
 
@@ -531,13 +580,22 @@ fn render(
 fn summary(units: &[Unit], args: &BacktestArgs, seconds: f64) -> String {
     let prs = units
         .iter()
-        .filter(|unit| !matches!(unit.landing, Landing::Push))
+        .filter(|unit| unit.landing.pr().is_some())
         .count();
+    // Merges that aren't PRs: `Merge branch 'main' of …` from a pull on the branch.
+    let merges = units
+        .iter()
+        .filter(|unit| matches!(unit.landing, Landing::Merge { pr: None }))
+        .count();
+    let mut landed = vec![count(prs, "PR")];
+    if merges > 0 {
+        landed.push(count(merges, "other merge"));
+    }
+    landed.push(pushes(units.len() - prs - merges));
     let mut parts = vec![format!(
-        "{}: {}, {}",
+        "{}: {}",
         count(units.len(), "commit"),
-        count(prs, "PR"),
-        pushes(units.len() - prs)
+        landed.join(", ")
     )];
     let findings = || units.iter().flat_map(|unit| &unit.findings);
     let with = |wanted: fn(&Owned) -> bool| findings().filter(|owned| wanted(owned)).count();
@@ -822,7 +880,10 @@ fn update(
     keyed.sort_by_key(|(key, _)| *key);
     let added = scored.all().filter(|tag| tag.pairing.is_none()).count();
     let updated = Labels {
-        repo: labels.repo.clone().or_else(|| repo.origin_url()),
+        repo: labels
+            .repo
+            .clone()
+            .or_else(|| repo.origin_url().map(|url| without_credentials(&url))),
         range: Some(range),
         entries: keyed.into_iter().map(|(_, entry)| entry).collect(),
     };
@@ -836,9 +897,52 @@ fn update(
     Ok(())
 }
 
+/// `url` without the credentials it may carry, since the labels file gets committed:
+/// `https://x-access-token:ghp_…@github.com/org/repo.git` → `https://github.com/org/repo.git`.
+/// Over HTTP any user name goes (a token is often passed as one); elsewhere only a password
+/// does, so `ssh://git@github.com/…` keeps the `git` user it needs.
+fn without_credentials(url: &str) -> String {
+    let Some((scheme, rest)) = url.split_once("://") else {
+        return url.to_owned();
+    };
+    let authority = &rest[..rest.find('/').unwrap_or(rest.len())];
+    let Some((user, _)) = authority.rsplit_once('@') else {
+        return url.to_owned();
+    };
+    if scheme.starts_with("http") || user.contains(':') {
+        format!("{scheme}://{}", &rest[user.len() + 1..])
+    } else {
+        url.to_owned()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn credentials_stay_out_of_the_repo_url() {
+        assert_eq!(
+            without_credentials("https://x-access-token:ghp_abc@github.com/org/repo.git"),
+            "https://github.com/org/repo.git"
+        );
+        assert_eq!(
+            without_credentials("https://ghp_abc@github.com/org/repo.git"),
+            "https://github.com/org/repo.git"
+        );
+        assert_eq!(
+            without_credentials("ssh://git:secret@host.test/repo.git"),
+            "ssh://host.test/repo.git"
+        );
+        for kept in [
+            "ssh://git@github.com/org/repo.git",
+            "git@github.com:org/repo.git",
+            "https://github.com/org/repo.git",
+            "/srv/repos/a@b.git",
+        ] {
+            assert_eq!(without_credentials(kept), kept);
+        }
+    }
 
     #[test]
     fn pr_numbers_come_from_github_subjects() {

@@ -78,7 +78,8 @@ pub struct BacktestArgs {
     pub last: Option<u64>,
 
     /// A file with a verdict on each finding, to measure assertrust: prints how often it's
-    /// right, and exits with 1 on findings not labelled yet or no longer found
+    /// right, and exits with 1 when a finding isn't labelled yet, one labelled right is no
+    /// longer found, or a commit couldn't be checked
     #[arg(long, value_name = "FILE")]
     pub labels: Option<PathBuf>,
 

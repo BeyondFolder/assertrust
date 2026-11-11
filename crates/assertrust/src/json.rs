@@ -12,8 +12,8 @@
 //!   "mode": "per-commit", "notes": [], "range": "main..HEAD", "schema": 1 }
 //! ```
 //!
-//! Hidden, allowed, undone-later and before-landing findings are all there, with their
-//! `status` (`shown`, `hidden`, `allowed`, `transient`, `before-landing`); an allowed one has
+//! Hidden, allowed, undone-later and PR-added findings are all there, with their `status`
+//! (`shown`, `hidden`, `allowed`, `transient`, `pr-added`); an allowed one has
 //! `"allowed": { "reason", "by" }`.
 
 use assertrust_git::Analysis;
@@ -49,7 +49,7 @@ pub fn finding(reported: &Reported) -> Value {
         Status::Hidden => "hidden",
         Status::Allowed { .. } => "allowed",
         Status::Transient => "transient",
-        Status::BeforeLanding => "before-landing",
+        Status::PrAdded => "pr-added",
     };
     let mut value = json!({
         "rule": finding.rule.as_str(),

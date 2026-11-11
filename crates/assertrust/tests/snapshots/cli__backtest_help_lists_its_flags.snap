@@ -31,6 +31,9 @@ Options:
       --show-transient
           Also show weakening that was undone later in the same PR
 
+      --show-pr-added
+          Also show weakening of tests the PR itself added (it can't fail the check)
+
   -v, --verbose
           Show the test name, before/after snippets, the full commit message, and changed outcomes
 

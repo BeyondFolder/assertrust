@@ -11,15 +11,16 @@
 //! whole PR                 → now skipped (skip) · c3;   c1's finding is transient
 //! ```
 //!
-//! A commit's finding about code the PR itself added (a new test loosened before it
-//! landed) isn't undone, just never on the main branch: it's shown, marked, and can't fail.
+//! A commit's finding about code the PR itself added (a new test loosened in a later commit)
+//! that the PR's head still has isn't undone, just never on the main branch: it's added by
+//! the PR, hidden unless asked for, and can't fail.
 
 use std::collections::{HashMap, HashSet};
 
-use assertrust_git::{Analysis, Commit, Comparison, Repo};
+use assertrust_git::{Analysis, Commit, Comparison, FileKind, Repo, Rev};
 use assertrust_ir::Test;
 use assertrust_match::match_files;
-use assertrust_rules::Finding;
+use assertrust_rules::{Finding, RuleId};
 
 use crate::allow::{self, Blocks, Verdict};
 use crate::config::{self, Config, Setting};
@@ -53,10 +54,10 @@ pub enum Status {
     },
     /// Undone later in the same PR: shown with `--show-transient`.
     Transient,
-    /// About code the PR itself added and weakened before it landed (a new test loosened
-    /// in a later commit): shown, but it can't fail the check, since the main branch lost
-    /// nothing.
-    BeforeLanding,
+    /// About code the PR itself added and weakened in a later commit (a new test loosened),
+    /// and still weaker at the PR's head: shown with `--show-pr-added`, and it can't fail the
+    /// check, since the main branch lost nothing.
+    PrAdded,
 }
 
 impl Status {
@@ -64,7 +65,7 @@ impl Status {
     fn rank(&self) -> u8 {
         match self {
             Self::Shown | Self::Hidden => 0,
-            Self::BeforeLanding => 1,
+            Self::PrAdded => 1,
             Self::Allowed { .. } => 2,
             Self::Transient => 3,
         }
@@ -98,8 +99,8 @@ struct Checked<'a> {
     blocks: Blocks,
 }
 
-/// What a whole PR did to its test files, to trace its commits' findings: which files and
-/// tests were there before it, and which it renamed.
+/// What a change (a whole PR, or one commit) did to its test files, to trace findings across
+/// changes: which files and tests were there before it, and which it renamed or moved.
 #[derive(Default)]
 struct PrTests {
     /// The test files it changed, by path after it (before it, for a deleted one), with the
@@ -109,6 +110,9 @@ struct PrTests {
     renamed: HashSet<(String, String)>,
     /// Files it renamed: the old path, and the new one.
     moved: HashMap<String, String>,
+    /// Tests matching paired under another name or in another file, `(file, id)` before and
+    /// after.
+    pairs: Vec<((String, String), (String, String))>,
 }
 
 impl PrTests {
@@ -143,6 +147,12 @@ impl PrTests {
             };
             let old = before.ir.tests[pair.before.test].id();
             let new = after.ir.tests[pair.after.test].id();
+            if old != new || before.path != after.path {
+                pr.pairs.push((
+                    (before.path.to_owned(), old.clone()),
+                    (after.path.to_owned(), new.clone()),
+                ));
+            }
             if old != new {
                 // A finding in a renamed file names its tests with the new path.
                 for path in [before.path, after.path] {
@@ -165,6 +175,29 @@ impl PrTests {
                 .contains(&(format!("{path}: {old}"), format!("{path}: {new}")))
     }
 
+    /// Where the test `id`, in `path` after the change, was before it, `(file, id)`: in
+    /// `file_before` under the same id, unless matching paired it with another.
+    fn origin(&self, path: &str, id: &str, file_before: &str) -> (String, String) {
+        self.pairs
+            .iter()
+            .find(|(_, after)| after.0 == path && after.1 == id)
+            .map_or_else(
+                || (file_before.to_owned(), id.to_owned()),
+                |(before, _)| before.clone(),
+            )
+    }
+
+    /// Whether the test `id` in `path` before the change is the test `new_id` in `new_path`
+    /// after it: the same id in the same file (or the one it was renamed to), or a test
+    /// matching paired it with.
+    fn became(&self, (path, id): (&str, &str), new_path: &str, new_id: &str) -> bool {
+        let same_file = path == new_path || self.moved.get(path).is_some_and(|to| to == new_path);
+        (same_file && id == new_id)
+            || self.pairs.iter().any(|(before, after)| {
+                before.0 == path && before.1 == id && after.0 == new_path && after.1 == new_id
+            })
+    }
+
     /// Whether `test`, in a finding on `path`, is a test the PR renamed into it.
     fn renamed_into(&self, path: &str, test: &str) -> bool {
         let named = format!("{path}: {test}");
@@ -183,15 +216,17 @@ pub fn build<'a>(
     // In a PR-style check, a file a commit couldn't read is noted only when the whole PR
     // can't read it either: code that never lands isn't worth a note.
     let mut step_notes = Vec::new();
-    let mut steps: Vec<(&Commit, Checked)> = Vec::new();
+    let mut steps: Vec<(&Commit, Checked, PrTests)> = Vec::new();
+    let pr_style = analysis.net.is_some();
     for step in &analysis.steps {
-        let notes = if analysis.net.is_some() {
+        let notes = if pr_style {
             &mut step_notes
         } else {
             &mut notes
         };
-        let (checked, _) = check(repo, &step.comparison, config, false, &mut carry, notes)?;
-        steps.push((&step.commit, checked));
+        let (checked, step_pr) =
+            check(repo, &step.comparison, config, pr_style, &mut carry, notes)?;
+        steps.push((&step.commit, checked, step_pr));
     }
     match &analysis.net {
         // What lands, traced back to the commits that made it.
@@ -203,24 +238,47 @@ pub fn build<'a>(
                 .map(|finding| {
                     steps
                         .iter()
-                        .filter(|(_, step)| step.findings.iter().any(|f| related(finding, f, &pr)))
-                        .map(|(commit, _)| *commit)
+                        .filter(|(_, step, _)| {
+                            step.findings.iter().any(|f| related(finding, f, &pr))
+                        })
+                        .map(|(commit, _, _)| *commit)
                         .collect()
                 })
                 .collect();
             findings.extend(decide(repo, &net, commits, config)?);
-            // What the whole PR doesn't have: undone, or about code the PR added.
-            for (commit, mut step) in steps {
+            // The files each commit's later ones change: what they don't, lands as it is.
+            let mut touched_later: Vec<Later> = vec![Later::default(); steps.len()];
+            for i in (1..steps.len()).rev() {
+                let mut later = touched_later[i].clone();
+                for file in &steps[i].1.comparison.files {
+                    later.paths.extend(file.path_before.as_deref());
+                    later.paths.extend(file.path_after.as_deref());
+                    later.tests |= matches!(file.kind, FileKind::Test | FileKind::TestSupport);
+                }
+                touched_later[i - 1] = later;
+            }
+            // What the whole PR doesn't have: undone, or about code the PR added and still
+            // weaker at its head.
+            for ((commit, mut step, step_pr), touched) in steps.into_iter().zip(touched_later) {
                 step.findings
                     .retain(|finding| !net.findings.iter().any(|f| related(f, finding, &pr)));
                 let added = added_in(repo, &net, &pr, &step.findings)?;
+                let kept = still_weaker(
+                    repo,
+                    (commit, &step, &step_pr),
+                    &net,
+                    config,
+                    &added,
+                    &touched,
+                    &mut notes,
+                );
                 let commits = vec![vec![commit]; step.findings.len()];
-                for (mut reported, added) in
-                    decide(repo, &step, commits, config)?.into_iter().zip(added)
+                for (mut reported, kept) in
+                    decide(repo, &step, commits, config)?.into_iter().zip(kept)
                 {
                     reported.status = match reported.status {
-                        Status::Shown if added => Status::BeforeLanding,
-                        Status::Allowed { .. } | Status::Hidden if added => reported.status,
+                        Status::Shown if kept => Status::PrAdded,
+                        Status::Allowed { .. } | Status::Hidden if kept => reported.status,
                         _ => Status::Transient,
                     };
                     findings.push(reported);
@@ -229,7 +287,7 @@ pub fn build<'a>(
         }
         // Each commit on its own.
         None => {
-            for (commit, step) in steps {
+            for (commit, step, _) in steps {
                 let commits = vec![vec![commit]; step.findings.len()];
                 findings.extend(decide(repo, &step, commits, config)?);
             }
@@ -247,13 +305,13 @@ pub fn build<'a>(
     Ok(Report { findings, notes })
 }
 
-/// Runs the rules on one comparison, leaving out the rules that are off. For a whole PR
-/// (`whole_pr`), also says what it did to its test files.
+/// Runs the rules on one comparison, leaving out the rules that are off. With `trace` (a
+/// PR-style check), also says what it did to its test files.
 fn check<'a>(
     repo: &'a Repo,
     comparison: &'a Comparison,
     config: &'a Config,
-    whole_pr: bool,
+    trace: bool,
     carry: &mut Option<Modules<'a>>,
     notes: &mut Vec<String>,
 ) -> Result<(Checked<'a>, PrTests), String> {
@@ -268,7 +326,7 @@ fn check<'a>(
             notes.push(note);
         }
     }
-    let pr = if whole_pr {
+    let pr = if trace {
         PrTests::new(&loaded)
     } else {
         PrTests::default()
@@ -279,6 +337,143 @@ fn check<'a>(
         blocks: loaded.blocks,
     };
     Ok((checked, pr))
+}
+
+/// What the commits after one in a PR change.
+#[derive(Clone, Default)]
+struct Later<'a> {
+    /// Every path they change.
+    paths: HashSet<&'a str>,
+    /// Whether any of those is a test or test-support file.
+    tests: bool,
+}
+
+/// For each of a commit's findings about code the PR added (`added`), whether the PR's head
+/// is still weaker than the code before that commit. When no later commit touches its file
+/// (and its tests weren't deleted, to maybe come back in another one), it is. Otherwise the rules run again from before that commit to the head, across every
+/// file between them, and must find the same test (followed through renames and moves) with
+/// the same code lost, or deleted or skipped; or its file gone with its tests. A test the PR
+/// added, deleted and put back, or moved elsewhere whole, was undone. If that comparison
+/// can't be made, the finding counts as added by the PR, with a note.
+fn still_weaker(
+    repo: &Repo,
+    (commit, step, step_pr): (&Commit, &Checked, &PrTests),
+    net: &Checked,
+    config: &Config,
+    added: &[bool],
+    later: &Later,
+    notes: &mut Vec<String>,
+) -> Vec<bool> {
+    // Still open: its file changes later, or its tests are gone from the file (deleted with
+    // it, or alone) and a later commit changes test files, where they may come back.
+    let open: Vec<bool> = step
+        .findings
+        .iter()
+        .zip(added)
+        .map(|(finding, &added)| {
+            let deleted = finding.rule == RuleId::TestDisabled && finding.line.is_none();
+            added && (later.paths.contains(finding.path.as_str()) || (deleted && later.tests))
+        })
+        .collect();
+    if !open.contains(&true) {
+        return added.to_vec();
+    }
+    match at_head(repo, step, step_pr, net, config) {
+        Ok(kept) => added
+            .iter()
+            .zip(open)
+            .zip(kept)
+            .map(|((&added, open), kept)| added && (!open || kept))
+            .collect(),
+        Err(err) => {
+            notes.push(format!(
+                "couldn't tell whether what {} weakened was undone later ({err}), so it counts as added by the PR",
+                commit.short_sha()
+            ));
+            added.to_vec()
+        }
+    }
+}
+
+/// For each of a commit's findings, whether the PR's head is still weaker in the same way
+/// than the code before that commit (see `still_weaker`).
+fn at_head(
+    repo: &Repo,
+    step: &Checked,
+    step_pr: &PrTests,
+    net: &Checked,
+    config: &Config,
+) -> Result<Vec<bool>, String> {
+    let (Rev::Commit(before), Rev::Commit(head)) = (&step.comparison.before, &net.comparison.after)
+    else {
+        return Ok(vec![true; step.findings.len()]);
+    };
+    let comparison = repo
+        .compare(before, head, &config.classifier)
+        .map_err(|err| err.to_string())?;
+    // Notes about it were already given for the commit or the whole PR.
+    let (now, head_pr) = check(repo, &comparison, config, true, &mut None, &mut Vec::new())?;
+    // Files gone at the head whose tests no longer run (they didn't move): whatever was
+    // weakened in them is gone too.
+    let gone: HashSet<&str> = comparison
+        .files
+        .iter()
+        .filter(|file| file.path_after.is_none())
+        .filter_map(|file| file.path_before.as_deref())
+        .filter(|path| {
+            now.findings
+                .iter()
+                .any(|f| f.rule == RuleId::TestDisabled && f.path == *path)
+        })
+        .collect();
+    Ok(step
+        .findings
+        .iter()
+        .map(|finding| {
+            // Where it was before the commit, which may have renamed its file.
+            let file = step
+                .comparison
+                .files
+                .iter()
+                .find(|file| file.path_after.as_deref() == Some(finding.path.as_str()))
+                .and_then(|file| file.path_before.as_deref())
+                .unwrap_or(&finding.path);
+            gone.contains(file)
+                || now
+                    .findings
+                    .iter()
+                    .any(|f| persists(f, finding, file, step_pr, &head_pr))
+        })
+        .collect())
+}
+
+/// Whether `now`, a finding from before a commit to the PR's head, is the weakening `step`
+/// found in that commit, still there. `file` is where `step` was before the commit; `step_pr`
+/// says what the commit renamed or moved, `head_pr` what changed from there to the head.
+/// Findings about tests need the same test, followed through renames and moves, with code
+/// both lost, or the test deleted or skipped at the head. Other findings (CI config) need
+/// the same file and rule, and the same message or code lost.
+fn persists(
+    now: &Finding,
+    step: &Finding,
+    file: &str,
+    step_pr: &PrTests,
+    head_pr: &PrTests,
+) -> bool {
+    let lost = now.before.iter().any(|line| step.before.contains(line));
+    let origins: Vec<(String, String)> = step
+        .all_tests()
+        .map(|test| step_pr.origin(&step.path, test, file))
+        .collect();
+    if origins.is_empty() || now.all_tests().next().is_none() {
+        let same_file = now.path == file || head_pr.moved.get(file) == Some(&now.path);
+        return same_file && now.rule == step.rule && (now.message == step.message || lost);
+    }
+    let same_test = origins.iter().any(|(path, id)| {
+        now.all_tests()
+            .any(|new| head_pr.became((path, id), &now.path, new))
+    });
+    same_test && (lost || now.rule == RuleId::TestDisabled)
 }
 
 /// What a change to `assertrust.toml` itself loosened (`gate-loosened`).

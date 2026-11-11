@@ -32,6 +32,9 @@ Options:
       --show-transient
           Also show weakening that was undone later in the same PR
 
+      --show-pr-added
+          Also show weakening of tests the PR itself added (it can't fail the check)
+
       --fail-on <LEVEL>
           Exit with 1 when a finding is at least this sure (default: never, or `fail-on` in assertrust.toml)
 

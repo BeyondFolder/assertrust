@@ -14,6 +14,7 @@
 //! ```toml
 //! fail-on = "high"             # never | high | medium | low
 //! show-transient = false
+//! show-pr-added = false
 //!
 //! [files]
 //! test = ["**/*.test.ts"]
@@ -39,6 +40,8 @@ pub const FILE: &str = "assertrust.toml";
 pub struct Config {
     pub fail_on: FailOn,
     pub show_transient: bool,
+    /// Show weakening of code the PR itself added (it can't fail).
+    pub show_pr_added: bool,
     pub classifier: Classifier,
     /// The `[files]` patterns behind `classifier`, to tell when a change drops some.
     patterns: Patterns,
@@ -67,6 +70,7 @@ impl Default for Config {
         Self {
             fail_on: FailOn::Never,
             show_transient: false,
+            show_pr_added: false,
             classifier: Classifier::default(),
             patterns: Patterns::default(),
             rules: HashMap::new(),
@@ -169,6 +173,11 @@ impl Config {
                     config.show_transient = value
                         .as_bool()
                         .ok_or_else(|| "`show-transient` must be true or false".to_owned())?;
+                }
+                "show-pr-added" => {
+                    config.show_pr_added = value
+                        .as_bool()
+                        .ok_or_else(|| "`show-pr-added` must be true or false".to_owned())?;
                 }
                 "files" => (config.classifier, config.patterns) = files(value)?,
                 "rules" => config.rules = rules(value)?,
@@ -421,6 +430,7 @@ mod tests {
             r#"
 fail-on = "medium"
 show-transient = true
+show-pr-added = true
 
 [files]
 test = ["spec/**/*.ts"]
@@ -433,6 +443,7 @@ outcome-changed = "on"
         .unwrap();
         assert_eq!(config.fail_on, FailOn::Medium);
         assert!(config.show_transient);
+        assert!(config.show_pr_added);
         assert_eq!(config.setting(RuleId::MatcherSwapped), Setting::Off);
         assert_eq!(config.setting(RuleId::OutcomeChanged), Setting::On);
         assert_eq!(config.setting(RuleId::CheckRemoved), Setting::On);

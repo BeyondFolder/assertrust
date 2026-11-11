@@ -347,18 +347,6 @@ note = "Ctrl/cmd now opts out of labeling on purpose; renamed to \"should create
 [[finding]]
 unit = "c10499eebb62"
 pr = 12082
-rule = "check-removed"
-path = "packages/excalidraw/wysiwyg/textWysiwyg.test.tsx"
-test = "textWysiwyg > Test container-bound text > should drop a pending center click when the browser cancels the pointer"
-before = ["expect(h.elements.map((el) => el.type)).toEqual(['rectangle'])", "expect(h.state.editingTextElement).toBe(null)"]
-after = ["expect(h.state.activeTool.type).toBe('text')", "await expect(query()).not.toBe(null) (in if) via getTextEditor()", "expect((h.elements[1] as ExcalidrawTextElement).containerId).toBe(rectangle.id)"]
-message = "removed 2 checks, including expect(h.elements.map((el) => el.type)).toEqual(['rectangle…"
-label = "wrong"
-note = "The same two checks still run right after the cancel; only their repeat after a synthetic mouse-up (which the commit says hid the bug) went, and stronger checks were added."
-
-[[finding]]
-unit = "c10499eebb62"
-pr = 12082
 rule = "test-disabled"
 path = "packages/excalidraw/wysiwyg/textWysiwyg.test.tsx"
 test = "textWysiwyg > Test container-bound text > should hover arrow anchors as the text tool's target"
@@ -991,30 +979,6 @@ after = []
 message = "deleted: flow chart navigation > take the most obvious link when possible"
 label = "intended"
 note = "Commit rewrote Alt+arrow navigation from link-following to visual; this link-following scenario went, and the new tests use different layouts."
-
-[[finding]]
-unit = "2610ebae0cbd"
-pr = 12502
-rule = "check-removed"
-path = "packages/element/tests/flowchart.test.tsx"
-test = "flow chart navigation > breaks ties by links and reading order"
-before = ["expect(Object.keys(h.state.selectedElementIds)).toEqual([element.id]) via expectSelected(a)"]
-after = []
-message = "removed expectSelected(a), which ran 1 check"
-label = "wrong"
-note = "The way back was dropped on purpose; the same A, right, left input now expects X instead of A."
-
-[[finding]]
-unit = "2610ebae0cbd"
-pr = 12502
-rule = "check-removed"
-path = "packages/element/tests/flowchart.test.tsx"
-test = "flow chart navigation > prefers nodes in line, then linked, then in the cone, then any ahead"
-before = ["expect(Object.keys(h.state.selectedElementIds)).toEqual([element.id]) via expectSelected(s)"]
-after = []
-message = "removed expectSelected(s), which ran 1 check"
-label = "intended"
-note = "Commit drops the Alt+arrow way back; the check was removed and nothing checks where that move goes now."
 
 [[finding]]
 unit = "7ded689cad49"

@@ -32,18 +32,6 @@ label = "wrong"
 note = "Absolute targets are now never skipped (the commit says so); renamed to 'never skips an absolute URL target', which asserts the same config and request with the new redirect; cross-origin locations are checked elsewhere."
 
 [[finding]]
-unit = "f5b33e4e3170"
-pr = 1559
-rule = "check-removed"
-path = "test/rules/rules.test.ts"
-test = "redirect rule > never skips an encoded traversal out of the target"
-before = ["expect(res.status).toBe(400)"]
-after = ["expect(`${to} ${path} -> ${res.status}`).toBe(`${to} ${path} -> 400`) (in loop)"]
-message = "removed expect(res.status).toBe(400)"
-label = "wrong"
-note = "Same status-400 check, now in a loop over the original case plus two more, with a labelled string so a failure names the case."
-
-[[finding]]
 unit = "3cfd7491f91c"
 rule = "expectation-loosened"
 path = "test/bench/bundle.test.ts"

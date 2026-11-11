@@ -4,12 +4,14 @@
 //! it parses the command line and maps the outcome to an exit code.
 
 mod allow;
+mod backtest_command;
 mod changes;
 mod check_command;
 mod cli;
 mod config;
 mod github;
 mod json;
+mod labels;
 mod load;
 mod modules;
 mod output;
@@ -34,6 +36,7 @@ fn main() -> ExitCode {
 
     let result = match cli.command {
         Command::Check(args) => check_command::run(&args),
+        Command::Backtest(args) => backtest_command::run(&args),
         Command::Changes(args) => changes::run(&args).map(|()| ExitCode::SUCCESS),
         Command::Tests(args) => tests_command::run(&args).map(|()| ExitCode::SUCCESS),
         Command::Pairs(args) => pairs_command::run(&args).map(|()| ExitCode::SUCCESS),

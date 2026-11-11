@@ -1,0 +1,153 @@
+# Labels for `assertrust backtest --labels`: a verdict on each finding.
+#   wrong        nothing got weaker: assertrust misread the change
+#   intended     weaker on purpose: the code the test covered went too, or a commit says why
+#   unexplained  weaker, and nothing in the change says why
+# "" is a finding not labelled yet. `--update-labels` rewrites this file: it adds new
+# findings and drops false alarms no longer found. Keep remarks in `note`.
+
+repo = "https://github.com/nuxt/ui.git"
+range = "f9aa75632e8f1b4e5d6acd1452ab57e9eb1a83af..a11f0327cc374c2e5f8694db6aa0a7ddc6a028f8"
+
+[[finding]]
+unit = "f4322e7a3577"
+pr = 7055
+rule = "test-disabled"
+path = "test/composables/useFileUpload.spec.ts"
+test = "useFileUpload > dropzone option > does not target the drop zone when dropzone is false"
+before = ["expect(unref(vueuse.dropTarget)).toBeUndefined()"]
+after = []
+message = "deleted: useFileUpload > dropzone option > does not target the drop zone when dropzone is false"
+label = "wrong"
+note = "Renamed to 'does not register a drop zone when dropzone is false' with an equivalent check (dropOptions undefined) after the implementation stopped passing a computed target to useDropZone."
+
+[[finding]]
+unit = "f4322e7a3577"
+pr = 7055
+rule = "test-disabled"
+path = "test/composables/useFileUpload.spec.ts"
+test = "useFileUpload > dropzone option > keeps the drop zone target reactive to dropzone changes"
+before = ["expect(unref(vueuse.dropTarget)).toBe(el)", "expect(unref(vueuse.dropTarget)).toBeUndefined()", "expect(unref(vueuse.dropTarget)).toBe(el)"]
+after = []
+message = "deleted: useFileUpload > dropzone option > keeps the drop zone target reactive to dropzone changes"
+label = "wrong"
+note = "Replaced in the same commit by 'registers the drop zone once dropzone is enabled' and 'stops dragging when dropzone is disabled mid-drag' plus FileUpload component tests, which cover the same toggling for the new implementation."
+
+[[finding]]
+unit = "1d13ed46896c"
+pr = 7238
+rule = "test-disabled"
+path = "test/utils/icons.spec.ts"
+test = "getClientBundleIcons > skips overrides from collections Nuxt UI does not ship defaults in"
+before = ["expect(names).toEqual([])"]
+after = []
+message = "deleted: getClientBundleIcons > skips overrides from collections Nuxt UI does not ship defaults in"
+label = "wrong"
+note = "Renamed to 'splits overrides from any collection `@nuxt/icon` knows' with the same input and an exact updated list for the new behaviour, and a new test keeps the skip case for unknown collections."
+
+[[finding]]
+unit = "db4b7bc9f1b5"
+pr = 7141
+rule = "expectation-loosened"
+path = "test/components/Checkbox.spec.ts"
+test = "Checkbox > label element > is a <div> in the %s variant"
+before = ["'card'", "'table'"]
+after = ["'card'"]
+message = ".each no longer runs 1 row: 'table'"
+label = "intended"
+note = "Commit says the table row was dropped because Checkbox only ships the list and card variants, so passing table failed typecheck."
+
+[[finding]]
+unit = "8f180de34971"
+pr = 7240
+rule = "check-removed"
+path = "test/components/Table.spec.ts"
+test = "Table > sets aria-sort on merged headers but not footer th elements"
+before = ["expect(emailPlaceholderTh!.attributes('aria-sort')).toBeUndefined()"]
+after = ["expect(emailTh!.text()).toBe('Email')", "expect(emailTh!.attributes('rowspan')).toBe('2')", "expect(wrapper.findAll('thead tr')[1]!.findAll('th').map((th) => th.text())).toEqual(['Id'])"]
+message = "removed expect(emailPlaceholderTh!.attributes('aria-sort')).toBeUnd…; the test name dropped \"does set or placeholder\""
+label = "wrong"
+note = "Placeholder header cells no longer exist (headers are merged with rowspan); the test now asserts the merged Email th carries aria-sort and that row 2 holds only Id, which implies the old check."
+
+[[finding]]
+unit = "55f957b1cfdd"
+pr = 7278
+rule = "test-disabled"
+path = "test/components/color-mode/ColorModeImage.spec.ts"
+test = "ColorModeImage > passes the sources as written to NuxtImg"
+before = ["expect(wrapper.findAll('img[data-nuxt-img]').map((img) => img.attributes('src'))).toEqual(['/light.png', '/dark.png'])"]
+after = []
+message = "deleted: ColorModeImage > passes the sources as written to NuxtImg"
+label = "wrong"
+note = "Replaced by a stronger it.each that runs the real ipx, ipxStatic, none and netlifyImageCdn providers and checks app.baseURL is applied exactly once."
+
+[[finding]]
+unit = "55f957b1cfdd"
+pr = 7278
+rule = "test-disabled"
+path = "test/components/prose/Img.spec.ts"
+test = "ProseImg > passes the src as written to NuxtImg"
+before = ["expect(wrapper.find('img[data-nuxt-img]').attributes('src')).toBe('/image.png')"]
+after = []
+message = "deleted: ProseImg > passes the src as written to NuxtImg"
+label = "wrong"
+note = "Replaced by a stronger it.each that runs the real ipx, ipxStatic, none and netlifyImageCdn providers and checks app.baseURL is applied exactly once."
+
+[[finding]]
+unit = "8a34bc164872"
+pr = 7299
+rule = "check-removed"
+path = "test/components/ChatPrompt.spec.ts"
+test = "ChatPrompt > adds the accepted files on paste"
+before = ["expect(event.defaultPrevented).toBe(true)"]
+after = []
+message = "removed expect(event.defaultPrevented).toBe(true)"
+label = "intended"
+note = "The same commit stopped calling preventDefault on a paste with files so its text still gets inserted; the old expectation no longer applies."
+
+[[finding]]
+unit = "63737025651f"
+pr = 7225
+rule = "test-disabled"
+path = "test/components/Tooltip.spec.ts"
+tests = ["Tooltip > with $name > opens over the label with variant %s", "Tooltip > with $name > stays open between the box and label and closes when leaving the root", "Tooltip > with $name > cancels the opening delay when leaving the root", "Tooltip > with $name > ignores touch hover and refreshes listeners when disabled changes", "Tooltip > with $name > preserves keyboard focus, accessible description and control state"]
+before = ["Tooltip > with $name > opens over the label with variant %s", "Tooltip > with $name > stays open between the box and label and closes when leaving the root", "Tooltip > with $name > cancels the opening delay when leaving the root", "Tooltip > with $name > ignores touch hover and refreshes listeners when disabled changes", "Tooltip > with $name > preserves keyboard focus, accessible description and control state"]
+after = []
+message = "deleted 5 tests, including Tooltip > with $name > opens over the label with variant %s"
+label = "intended"
+note = "Tests the PR itself added were cut down to one label-hover test per control in a commit titled 'apply review suggestions'."
+
+[[finding]]
+unit = "63737025651f"
+pr = 7225
+rule = "expectation-loosened"
+path = "test/components/Tooltip.spec.ts"
+test = "Tooltip > with $name > opens over the label with variant %s"
+before = ["undefined", "'list'", "'card'"]
+after = ["{ component: Checkbox, name: 'Checkbox' }", "{ component: Switch, name: 'Switch' }"]
+message = ".each now runs 2 rows instead of 3"
+label = "wrong"
+note = "The it.each became name === 'Checkbox' ? [undefined, 'list', 'card'] : [undefined], so Checkbox still runs 3 rows and Switch adds one; assertrust took the outer describe.each rows as this test's rows."
+
+[[finding]]
+unit = "63737025651f"
+pr = 7225
+rule = "test-disabled"
+path = "test/components/Popover.spec.ts"
+tests = ["Popover > with $name > opens when entering the label boundary without duplicating pointer listeners", "Popover > with $name > stays open across the control, label and content and closes outside", "Popover > with $name > cancels delayed opening when leaving the label boundary", "Popover > with $name > ignores touch hover and preserves opt-in touch activation on the control", "Popover > with $name > preserves focus, control attributes and label-click toggling", "Popover > with $name > preserves click-mode popovers and control toggling"]
+before = ["Popover > with $name > opens when entering the label boundary without duplicating pointer listeners", "Popover > with $name > stays open across the control, label and content and closes outside", "Popover > with $name > cancels delayed opening when leaving the label boundary", "Popover > with $name > ignores touch hover and preserves opt-in touch activation on the control", "Popover > with $name > preserves focus, control attributes and label-click toggling", "Popover > with $name > preserves click-mode popovers and control toggling"]
+after = []
+message = "deleted 6 tests, including Popover > with $name > opens when entering the label bounda…"
+label = "intended"
+note = "Tests the PR itself added were cut down to one label-hover test per control in a commit titled 'apply review suggestions'."
+
+[[finding]]
+unit = "6f1cdd805a54"
+pr = 7304
+rule = "test-disabled"
+path = "test/utils/templates.spec.ts"
+test = "regeneration on file changes > leaves regeneration to Nuxt when a file changes"
+before = ["expect(requests).toEqual([])"]
+after = []
+message = "deleted: regeneration on file changes > leaves regeneration to Nuxt when a file changes"
+label = "wrong"
+note = "A later commit in the same PR (0e17053, 'restore `builder:watch` hook test') put the test back unchanged, and it is in the landed squash."

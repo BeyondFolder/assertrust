@@ -26,7 +26,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::io;
 
-use assertrust_git::{Classifier, Mode, Repo};
+use assertrust_git::{Classifier, Mode, Repo, Rev};
 use assertrust_rules::{Confidence, Finding, RuleId};
 use toml::{Table, Value};
 
@@ -107,6 +107,33 @@ impl Config {
             ));
         }
         Ok((config, notes))
+    }
+
+    /// The config CI ran a check of `mode` with, back then (`assertrust backtest`): the file
+    /// at its base, whatever is on disk now. When it doesn't parse there, CI used the one on
+    /// disk, which was the file at `head`, the commit the check ran on.
+    pub fn as_ci_ran(repo: &Repo, mode: &Mode, head: &str) -> Result<(Self, Vec<String>), String> {
+        let Some(base) = repo.base(mode).map_err(|err| err.to_string())? else {
+            return Ok((Self::default(), Vec::new()));
+        };
+        let at = |rev: &Rev| -> Result<Option<Result<Self, String>>, String> {
+            let source = repo.read_file(rev, FILE).map_err(|err| err.to_string())?;
+            Ok(source.as_deref().map(Self::parse))
+        };
+        match at(&base)? {
+            None => Ok((Self::default(), Vec::new())),
+            Some(Ok(config)) => Ok((config, Vec::new())),
+            Some(Err(err)) => {
+                let head = Rev::Commit(head.to_owned());
+                let note =
+                    format!("{FILE} at {base} doesn't parse ({err}), so the one at {head} applies");
+                match at(&head)? {
+                    None => Ok((Self::default(), vec![note])),
+                    Some(Ok(config)) => Ok((config, vec![note])),
+                    Some(Err(err)) => Err(format!("{FILE} at {head}: {err}")),
+                }
+            }
+        }
     }
 
     /// The repo's `assertrust.toml`, or the defaults when there's none.

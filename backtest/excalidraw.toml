@@ -1,0 +1,1053 @@
+# Labels for `assertrust backtest --labels`: a verdict on each finding.
+#   wrong        nothing got weaker: assertrust misread the change
+#   intended     weaker on purpose: the code the test covered went too, or a commit says why
+#   unexplained  weaker, and nothing in the change says why
+# "" is a finding not labelled yet. `--update-labels` rewrites this file: it adds new
+# findings and drops false alarms no longer found. Keep remarks in `note`.
+
+repo = "https://github.com/excalidraw/excalidraw.git"
+range = "f179f7ffd23cd47a8f013c3fd0051cb07a83d1d6..701b901a0f1ba3d0b390d9cdf63d112e25abac4b"
+
+[[finding]]
+unit = "786ab266ff3a"
+pr = 11782
+rule = "test-disabled"
+path = "packages/excalidraw/tests/colorInput.test.tsx"
+test = "ColorInput error handling > shows error for invalid hex characters"
+before = ["expect(errorMessage.textContent).toContain('Invalid characters in hex code')"]
+after = []
+message = "deleted: ColorInput error handling > shows error for invalid hex characters (only 3 of its 4 checks moved to other tests)"
+label = "wrong"
+note = "Test renamed to \"shows generic error for non-hex-shaped invalid input\"; its 4th check now expects the new error text \"Not a valid color\", nothing dropped."
+
+[[finding]]
+unit = "786ab266ff3a"
+pr = 11782
+rule = "test-disabled"
+path = "packages/excalidraw/tests/colorInput.test.tsx"
+test = "ColorInput error handling > shows error for non-hex text"
+before = ["expect(errorMessage.textContent).toContain('Invalid characters in hex code')"]
+after = []
+message = "deleted: ColorInput error handling > shows error for non-hex text (only 3 of its 4 checks moved to other tests)"
+label = "wrong"
+note = "Test renamed to \"shows generic error for unrecognized color names\"; its 4th check now expects the new error text \"Not a valid color\", nothing dropped."
+
+[[finding]]
+unit = "f1aa8f86a974"
+pr = 11822
+rule = "test-disabled"
+path = "packages/element/tests/linearElementEditor.test.tsx"
+tests = ["Test Linear Elements > Arrowhead toggle on endpoint dblclick > should toggle end arrowhead between default and none", "Test Linear Elements > Arrowhead toggle on endpoint dblclick > should toggle start arrowhead between default and none", "Test Linear Elements > Arrowhead toggle on endpoint dblclick > should restore the arrowhead removed by the previous toggle", "Test Linear Elements > Arrowhead toggle on endpoint dblclick > should not toggle arrowheads on dblclick outside endpoints"]
+before = ["Test Linear Elements > Arrowhead toggle on endpoint dblclick > should toggle end arrowhead between default and none", "Test Linear Elements > Arrowhead toggle on endpoint dblclick > should toggle start arrowhead between default and none", "Test Linear Elements > Arrowhead toggle on endpoint dblclick > should restore the arrowhead removed by the previous toggle", "Test Linear Elements > Arrowhead toggle on endpoint dblclick > should not toggle arrowheads on dblclick outside endpoints"]
+after = []
+message = "deleted 4 tests, including Test Linear Elements > Arrowhead toggle on endpoint dblclic…"
+label = "wrong"
+note = "The toggle was removed on purpose and the tests rewritten as \"should not toggle the %s arrowhead from %s on endpoint dblclick\": same dblclick inputs, new expected result."
+
+[[finding]]
+unit = "792ea3a06c60"
+pr = 11799
+rule = "check-removed"
+path = "packages/excalidraw/tests/bucketFill.test.tsx"
+test = "bucket fill tool > inserts the overlap fill below the lowest participating shape"
+before = ["expect(fill.customData?.bucketFill?.boundaryElementIds).toContain(below.id)"]
+after = []
+message = "removed expect(fill.customData?.bucketFill?.boundaryElementIds).toC…"
+label = "wrong"
+note = "The fill no longer stores boundaryElementIds in customData, but the same overlap scenario still checks boundaryElementIds toContain(below.id) in element/tests/bucketFill.test.ts."
+
+[[finding]]
+unit = "792ea3a06c60"
+pr = 11799
+rule = "test-disabled"
+path = "packages/excalidraw/tests/bucketFill.test.tsx"
+test = "bucket fill tool > no-ops with a transparent background color"
+before = ["expect(h.elements.filter((el) => el.type === 'line')).toHaveLength(0)", "expect(h.state.toast?.message).toMatch(/background color/i)"]
+after = []
+message = "deleted: bucket fill tool > no-ops with a transparent background color"
+label = "wrong"
+note = "Transparent now falls back to green instead of a toast; the new test \"falls back to green when the shared background color is transparent\" checks the same input against the new result."
+
+[[finding]]
+unit = "792ea3a06c60"
+pr = 11799
+rule = "test-disabled"
+path = "packages/element/tests/bucketFill.test.ts"
+test = "computeBucketFillPolygon > bridges wider endpoint gaps when gapTolerance is raised (zoomed out)"
+before = ["expect(zoomedOut.ok).toBe(true)"]
+after = []
+message = "deleted: computeBucketFillPolygon > bridges wider endpoint gaps when gapTolerance is raised (zoomed out) (only 1 of its 2 checks moved to other tests)"
+label = "wrong"
+note = "Test renamed to \"bridges endpoint gaps up to gapTolerance without distorting the shape\"; the default tolerance was raised, so the fillable check runs as result.ok with defaults, plus new fidelity checks."
+
+[[finding]]
+unit = "c5a50d223feb"
+pr = 11862
+rule = "check-removed"
+path = "packages/excalidraw/tests/lasso.test.tsx"
+test = "Box selection mode (through the lasso tool) > does not treat an element as contained when the lasso cuts through it"
+before = ["expect(getSelectedElements(h.elements, h.state).length).toBe(0)"]
+after = ["expect(h.state.boxSelectionMode).toBe('contain')", "expect(selectedIds()).toEqual([])"]
+message = "removed expect(getSelectedElements(h.elements, h.state).length).toB…"
+label = "wrong"
+note = "The check was rewritten as expect(selectedIds()).toEqual([]) on selectedElementIds, which is equivalent."
+
+[[finding]]
+unit = "214cd6e6e8ac"
+pr = 10947
+rule = "check-removed"
+path = "packages/element/tests/resize.test.tsx"
+test = "arrow element > resizes with a label"
+before = ["expect(labelPos.x + label.width / 2).toBeCloseTo(arrow.x + arrow.points[2][0])", "expect(labelPos.y + label.height / 2).toBeCloseTo(arrow.y + arrow.points[2][1])", "expect(labelPos.x + label.width / 2).toBeCloseTo(arrow.x + arrow.points[2][0])", "expect(labelPos.y + label.height / 2).toBeCloseTo(arrow.y + arrow.points[2][1])"]
+after = ["expect(label.labelPosition).toBe(0.5) (in callback)", "expect(centerX).toBeCloseTo(pathMidpoint[0], 0) (in callback)", "expect(centerY).toBeCloseTo(pathMidpoint[1], 0) (in callback)", "expect(distanceToElement(arrow, elementsMap, pointFrom(centerX, centerY))).toBeLessThan(0.5) (in callback)"]
+message = "removed 4 checks, including expect(labelPos.x + label.width / 2).toBeCloseTo(arrow.x + …"
+label = "wrong"
+note = "The position checks moved into a helper called after each resize, now comparing against the arc-length midpoint because this PR changed where the label sits."
+
+[[finding]]
+unit = "214cd6e6e8ac"
+pr = 10947
+rule = "test-disabled"
+path = "packages/excalidraw/tests/arrowLabelRendering.test.tsx"
+tests = ["arrow label rendering > composites cached arrowheads outside the label clip"]
+before = ["arrow label rendering > composites cached arrowheads outside the label clip"]
+after = []
+message = "file deleted: its test no longer runs"
+label = "intended"
+note = "Revert commit says this test file existed only for the reverted arrowhead non-clip rendering."
+
+[[finding]]
+unit = "214cd6e6e8ac"
+pr = 10947
+rule = "test-disabled"
+path = "packages/excalidraw/tests/scene/export.test.ts"
+test = "exportToSvg > does not include arrowheads in the bound-label mask"
+before = ["expect(maskedGroup).not.toBeNull()", "expect(maskedGroup?.children).toHaveLength(1)", "expect(maskedGroup?.parentElement?.children.length).toBeGreaterThan(1)"]
+after = []
+message = "deleted: exportToSvg > does not include arrowheads in the bound-label mask"
+label = "intended"
+note = "Revert commit restores export.test.ts to its pre-feature contents; this test covered the reverted arrowhead mask behavior."
+
+[[finding]]
+unit = "214cd6e6e8ac"
+pr = 10947
+rule = "check-removed"
+path = "packages/element/tests/linearElementEditor.test.tsx"
+test = "Test Linear Elements > Test bound text element > Test getPointAtPathParameter > should use the unrounded logical path of elbow arrows"
+before = ["expect(segments.length).toBeGreaterThan(1)", "expect(distanceToElement(arrow, elementsMap, point)).toBeLessThan(0.5) (in loop)", "expect(middle[0]).toBeGreaterThan(84)", "expect(middle[0]).toBeLessThan(100)", "expect(middle[1]).toBeGreaterThan(0)", "expect(middle[1]).toBeLessThan(16)"]
+after = ["expect(segments).toHaveLength(2)", "expect(point).toEqual(expectedPoints[index]) (in loop)"]
+message = "removed 6 checks, including expect(segments.length).toBeGreaterThan(1); the test name dropped \"reach corner curves\""
+label = "wrong"
+note = "Rewritten for the new straight-segment behavior: exact segment count and exact point equality at 5 parameters replace the looser range checks."
+
+[[finding]]
+unit = "afa3a653fc5d"
+pr = 12064
+rule = "check-removed"
+path = "packages/excalidraw/tests/actionStyles.test.tsx"
+test = "actionStyles > should hide transparent stroke color for sticky notes"
+before = ["expect(document.querySelector('.color-picker__button--hidden')).not.toBe(null)"]
+after = ["expect(document.querySelector('.color-picker-content--default [aria-hidden=\"true\"]')).not.toBeNull()", "expect(screen.queryByTestId('color-black')).not.toBeNull()"]
+message = "removed expect(document.querySelector('.color-picker__button--hidde…"
+label = "wrong"
+note = "The placeholder check was rewritten for the new excludedColors mechanism (aria-hidden placeholder), with an extra check that other swatches remain."
+
+[[finding]]
+unit = "4e758db17e10"
+pr = 12099
+rule = "test-disabled"
+path = "packages/excalidraw/tests/wheel.test.tsx"
+test = "wheel navigation > zoomWithScrollWheel preference > is off by default and toggled by its action"
+before = ["expect(h.state.zoomWithScrollWheel).toBe(false)", "expect(h.state.zoomWithScrollWheel).toBe(true)", "expect(h.state.zoomWithScrollWheel).toBe(false)"]
+after = []
+message = "deleted: wheel navigation > zoomWithScrollWheel preference > is off by default and toggled by its action"
+label = "intended"
+note = "The same commit replaced zoomWithScrollWheel with inputDevice and deleted its toggle action; the default is still checked but nothing replaces the toggle check."
+
+[[finding]]
+unit = "a9186480121a"
+pr = 12100
+rule = "test-disabled"
+path = "packages/excalidraw/tests/renderOverrides.test.tsx"
+test = "render override geometry > includes a container when only its translated bound label is visible"
+before = ["expect(renderer.getVisibleElementsForRendering(elementsMap, appState, new Map([[label.id, { offset: { x: -400, y: 0 } }]]))).toContain(rect)"]
+after = []
+message = "deleted: render override geometry > includes a container when only its translated bound label is visible"
+label = "wrong"
+note = "Bound labels now ignore their own offset and follow the container; the rewritten cull test checks a label-only offset bringing the label into view now yields nothing visible."
+
+[[finding]]
+unit = "a9186480121a"
+pr = 12100
+rule = "check-removed"
+path = "packages/excalidraw/tests/renderOverrides.test.tsx"
+test = "setElementRenderOverrides > copies and replaces the complete snapshot, including omitted fields"
+before = ["expect(Element.resolveRenderOpacity(element, { elementRenderOverrides: next })).toBe(70)"]
+after = ["expect(Element.resolveElementRenderState(element, h.app.scene.getNonDeletedElementsMap(), { elementRenderOverrides: next, elementsPendingErasure: new Set(), pendingFlowchartNodes: null }).opacity).toBe(0.7)"]
+message = "removed expect(Element.resolveRenderOpacity(element, { elementRende…"
+label = "wrong"
+note = "Same check through the renamed API: resolveElementRenderState(...).opacity toBe(0.7) is the old resolveRenderOpacity toBe(70) on a 0-1 scale."
+
+[[finding]]
+unit = "c0ad61c6743a"
+pr = 12110
+rule = "test-disabled"
+path = "packages/excalidraw/tests/wheel.test.tsx"
+test = "wheel navigation > inputDevice preference > mouse > zooms on plain wheel and pans vertically on ctrl/cmd+wheel"
+before = ["expect(getViewport()).toEqual({ ...zoomed, scrollY: zoomed.scrollY - 40 / zoomed.zoom })", "expect(getViewport()).toEqual({ ...panned, scrollY: panned.scrollY - 40 / panned.zoom })"]
+after = []
+message = "deleted: wheel navigation > inputDevice preference > mouse > zooms on plain wheel and pans vertically on ctrl/cmd+wheel (only 1 of its 3 checks moved to other tests)"
+label = "wrong"
+note = "Ctrl/cmd+wheel now zooms for mice on purpose; \"zooms around the pointer on $label\" checks the same ctrl/cmd+wheel input against the new result, and vertical pan moved to ctrl+shift+wheel tests."
+
+[[finding]]
+unit = "c0ad61c6743a"
+pr = 12110
+rule = "test-disabled"
+path = "packages/excalidraw/tests/wheel.test.tsx"
+test = "wheel navigation > inputDevice preference > mouse > keeps shift+wheel panning horizontally"
+before = ["expect(getViewport()).toEqual({ ...start, scrollX: start.scrollX - 40 / start.zoom })"]
+after = []
+message = "deleted: wheel navigation > inputDevice preference > mouse > keeps shift+wheel panning horizontally"
+label = "wrong"
+note = "Moved to the new parametrized \"shift+wheel with %s input > pans only scrollX on shift+wheel\", which covers mouse with the same exact viewport check."
+
+[[finding]]
+unit = "31df3e6ef245"
+pr = 12143
+rule = "check-removed"
+path = "packages/excalidraw/tests/convertElementType.binding.test.tsx"
+test = "convert element type keeps bound arrows attached > elbowed=${elbowed}: %s -> %s"
+before = ["expect(JSON.stringify(arrowAfter.points)).not.toBe(before)", "expect(l1).toBeGreaterThan(0.95)", "expect(l1).toBeLessThan(1.2)"]
+after = ["expect(distance).toBeLessThanOrEqual(getBindingGap(converted, arrowAfter) + 1)"]
+message = "removed 3 checks, including expect(JSON.stringify(arrowAfter.points)).not.toBe(before); the test name dropped \"elbowed=%s\""
+label = "wrong"
+note = "The distance-to-outline check is tighter than the old L1 window, covers more shape pairs, and for rectangle->diamond implies the points moved."
+
+[[finding]]
+unit = "c10499eebb62"
+pr = 12082
+rule = "check-removed"
+path = "packages/excalidraw/tests/arrowEndpointTextBinding.test.tsx"
+test = "binding text to an arrow endpoint > hover affordance > prefers the endpoint over the label midpoint"
+before = ["expect(h.state.hoveredArrowTextAnchor?.anchor).toBe('end')"]
+after = ["expect(h.state.textToolHover).toMatchObject({ anchor: 'end', type: 'arrow' })"]
+message = "removed expect(h.state.hoveredArrowTextAnchor?.anchor).toBe('end')"
+label = "wrong"
+note = "hoveredArrowTextAnchor was merged into the single textToolHover field; the check is now toMatchObject({ anchor: 'end', type: 'arrow' })."
+
+[[finding]]
+unit = "c10499eebb62"
+pr = 12082
+rule = "check-removed"
+path = "packages/excalidraw/tests/arrowEndpointTextBinding.test.tsx"
+test = "binding text to an arrow endpoint > hover affordance > does not offer a label midpoint on an arrow that already has one"
+before = ["expect(h.state.hoveredArrowTextAnchor).toBeNull()"]
+after = ["expect(h.state.textToolHover).toEqual({ elementId: label.id, type: 'text' })"]
+message = "removed expect(h.state.hoveredArrowTextAnchor).toBeNull()"
+label = "wrong"
+note = "The three hover fields were merged into textToolHover; asserting it is the label's text target rules out an arrow anchor, so this is equivalent or stronger."
+
+[[finding]]
+unit = "c10499eebb62"
+pr = 12082
+rule = "check-removed"
+path = "packages/excalidraw/tests/arrowEndpointTextBinding.test.tsx"
+test = "binding text to an arrow endpoint > occlusion > does not reach through an element stacked above the endpoint"
+before = ["expect(h.state.hoveredArrowTextAnchor).toBeNull()"]
+after = ["expect(h.state.textToolHover).toEqual({ elementId: 'rect', type: 'container' })"]
+message = "removed expect(h.state.hoveredArrowTextAnchor).toBeNull()"
+label = "wrong"
+note = "The three hover fields were merged into textToolHover; asserting it is the rect container rules out an arrow anchor, so this is equivalent or stronger."
+
+[[finding]]
+unit = "c10499eebb62"
+pr = 12082
+rule = "check-removed"
+path = "packages/excalidraw/tests/arrowEndpointTextBinding.test.tsx"
+test = "binding text to an arrow endpoint > interaction with existing text-tool behavior > yields to a container-bound label overlapping the endpoint from above"
+before = ["expect(h.state.hoveredArrowTextAnchor).toBeNull()"]
+after = ["expect(h.state.textToolHover).toEqual({ elementId: label.id, type: 'text' })"]
+message = "removed expect(h.state.hoveredArrowTextAnchor).toBeNull(); the test was renamed"
+label = "wrong"
+note = "The three hover fields were merged into textToolHover; asserting it is the label's text target rules out an arrow anchor, so this is equivalent or stronger."
+
+[[finding]]
+unit = "c10499eebb62"
+pr = 12082
+rule = "check-removed"
+path = "packages/excalidraw/tests/arrowEndpointTextBinding.test.tsx"
+test = "binding text to an arrow endpoint > interaction with existing text-tool behavior > yields to a free text stacked above the arrow"
+before = ["expect(h.state.hoveredArrowTextAnchor).toBeNull()"]
+after = []
+message = "removed expect(h.state.hoveredArrowTextAnchor).toBeNull()"
+label = "wrong"
+note = "The two checks (no arrow anchor, text highlighted) became one textToolHover toEqual({ type: 'text', elementId: 'overlap' }), which is equivalent."
+
+[[finding]]
+unit = "c10499eebb62"
+pr = 12082
+rule = "check-removed"
+path = "packages/excalidraw/tests/arrowEndpointTextBinding.test.tsx"
+test = "binding text to an arrow endpoint > interaction with existing text-tool behavior > wins over a free text stacked below the arrow"
+before = ["expect(h.state.elementsToHighlight).toBe(null)"]
+after = []
+message = "removed expect(h.state.elementsToHighlight).toBe(null)"
+label = "wrong"
+note = "The text tool no longer writes elementsToHighlight; textToolHover being the arrow endpoint already rules out highlighting the covered text."
+
+[[finding]]
+unit = "c10499eebb62"
+pr = 12082
+rule = "check-removed"
+path = "packages/excalidraw/wysiwyg/textWysiwyg.test.tsx"
+test = "textWysiwyg > Test container-bound text > should hover arrow anchors as the text tool's target"
+before = ["expect(h.state.elementsToHighlight).toBe(null)", "expect(h.state.suggestedBinding).toBe(null)", "expect(h.state.elementsToHighlight).toBe(null)", "expect(h.state.suggestedBinding).toBe(null)"]
+after = []
+message = "removed 4 checks, including expect(h.state.elementsToHighlight).toBe(null); the test name dropped \"leave to hoveredArrowTextAnchor instead of text-tool highlights\""
+label = "wrong"
+note = "The text tool no longer writes elementsToHighlight/suggestedBinding (merged into textToolHover), so these null checks were vacuous; the textToolHover checks remain."
+
+[[finding]]
+unit = "c10499eebb62"
+pr = 12082
+rule = "check-removed"
+path = "packages/excalidraw/wysiwyg/textWysiwyg.test.tsx"
+test = "textWysiwyg > Test container-bound text > should create free text on a ctrl/cmd click at an empty container's center"
+before = ["expect(h.state.textToolHover).toBe(null) (in callback)"]
+after = []
+message = "removed expect(h.state.textToolHover).toBe(null)"
+label = "wrong"
+note = "Commit says it removed a repeated Ctrl assertion; the same null-hover-under-ctrl check at (54, 57.5) runs in \"should highlight an empty container the text tool would bind to on hover\"."
+
+[[finding]]
+unit = "c10499eebb62"
+pr = 12082
+rule = "check-removed"
+path = "packages/excalidraw/wysiwyg/textWysiwyg.test.tsx"
+test = "textWysiwyg > start text editing > should clear binding highlights when a locked text tool starts a center drag"
+before = ["expect(h.state.suggestedBinding).toBe(null)", "expect(h.state.elementsToHighlight).toBe(null)", "expect(h.state.hoveredArrowTextAnchor).toBe(null)"]
+after = ["expect(h.state.textToolHover).toBe(null)"]
+message = "removed 3 checks, including expect(h.state.suggestedBinding).toBe(null)"
+label = "wrong"
+note = "The three hover fields were merged into one, so the three null checks became expect(h.state.textToolHover).toBe(null)."
+
+[[finding]]
+unit = "c10499eebb62"
+pr = 12082
+rule = "test-disabled"
+path = "packages/excalidraw/wysiwyg/textWysiwyg.test.tsx"
+test = "textWysiwyg > Test container-bound text > should keep the container hover under ctrl/cmd, which only concerns arrow binding"
+before = ["expect(h.state.isBindingEnabled).toBe(false) (in callback)", "expect(h.state.textToolHover).toEqual({ elementId: rectangle.id, type: 'container' }) (in callback)", "expect(text.containerId).toBe(rectangle.id)", "expect(rectangle.boundElements).toEqual([{ id: text.id, type: 'text' }])"]
+after = []
+message = "deleted: textWysiwyg > Test container-bound text > should keep the container hover under ctrl/cmd, which only concerns arrow binding (only 1 of its 5 checks moved to other tests)"
+label = "wrong"
+note = "Ctrl/cmd now opts out of labeling on purpose; renamed to \"should create free text on a ctrl/cmd click at an empty container's center\", same input checked against the new result."
+
+[[finding]]
+unit = "c10499eebb62"
+pr = 12082
+rule = "check-removed"
+path = "packages/excalidraw/wysiwyg/textWysiwyg.test.tsx"
+test = "textWysiwyg > Test container-bound text > should drop a pending center click when the browser cancels the pointer"
+before = ["expect(h.elements.map((el) => el.type)).toEqual(['rectangle'])", "expect(h.state.editingTextElement).toBe(null)"]
+after = ["expect(h.state.activeTool.type).toBe('text')", "await expect(query()).not.toBe(null) (in if) via getTextEditor()", "expect((h.elements[1] as ExcalidrawTextElement).containerId).toBe(rectangle.id)"]
+message = "removed 2 checks, including expect(h.elements.map((el) => el.type)).toEqual(['rectangle…"
+label = "wrong"
+note = "The same two checks still run right after the cancel; only their repeat after a synthetic mouse-up (which the commit says hid the bug) went, and stronger checks were added."
+
+[[finding]]
+unit = "c10499eebb62"
+pr = 12082
+rule = "test-disabled"
+path = "packages/excalidraw/wysiwyg/textWysiwyg.test.tsx"
+test = "textWysiwyg > Test container-bound text > should hover arrow anchors as the text tool's target"
+before = ["expect(h.state.textToolHover).toEqual({ anchor: 'label', elementId: arrow.id, type: 'arrow' })", "expect(h.state.textToolHover).toEqual({ anchor: 'end', elementId: arrow.id, type: 'arrow' })"]
+after = []
+message = "deleted: textWysiwyg > Test container-bound text > should hover arrow anchors as the text tool's target"
+label = "wrong"
+note = "Commit says this duplicated the endpoint suite; arrowEndpointTextBinding.test.tsx checks both the label and end anchors on textToolHover."
+
+[[finding]]
+unit = "f3d99c42e905"
+pr = 12175
+rule = "test-disabled"
+path = "packages/excalidraw/wysiwyg/textWysiwyg.test.tsx"
+test = "textWysiwyg > Test container-unbound text > text should never go beyond max width"
+before = ["expect(textarea.style.width).toBe('792px')", "expect(h.elements[0].width).toBe(1000)"]
+after = []
+message = "deleted: textWysiwyg > Test container-unbound text > text should never go beyond max width (only 2 of its 4 checks moved to other tests)"
+label = "wrong"
+note = "Renamed to \"should not cut the editor off at the viewport's edges\"; both checks still run (text.width 1000, textarea width now the text's width since the editor is no longer cut)."
+
+[[finding]]
+unit = "f3d99c42e905"
+pr = 12175
+rule = "check-removed"
+path = "packages/excalidraw/wysiwyg/textWysiwyg.test.tsx"
+test = "textWysiwyg > Test container-unbound text > should pan the canvas instead of letting the editor root scroll to reveal the caret"
+before = ["expect(h.state.scrollX).toBe(scrollX - 20)", "expect(h.state.scrollY).toBe(scrollY - 60)", "expect(h.state.scrollY).toBe(scrollY - 60)"]
+after = ["expect(h.state.scrollX).toBe(scrollX - (40 + CARET_FOLLOW_PADDING) / 2)", "expect(h.state.scrollY).toBe(scrollY - (120 + CARET_FOLLOW_PADDING) / 2)", "expect(h.state.scrollX).toBe(scrolledX)", "expect(h.state.scrollY).toBe(scrollY - (120 + CARET_FOLLOW_PADDING) / 2 - (30 + CARET_FOLLOW_PADDING) / 2)", "expect(h.state.scrollY).toBe(lastScrollY)"]
+message = "removed 3 checks, including expect(h.state.scrollX).toBe(scrollX - 20)"
+label = "wrong"
+note = "Same exact scroll checks with the new CARET_FOLLOW_PADDING added to the expected values, plus a new one-axis check."
+
+[[finding]]
+unit = "afed9e6e27dd"
+pr = 11922
+rule = "test-disabled"
+path = "packages/excalidraw/wysiwyg/textWysiwyg.test.tsx"
+test = "save shortcuts while editing text > commits the editor and saves on Cmd/Ctrl+Shift+S"
+before = ["expect(h.state.editingTextElement?.id).toBe(text.id) via startEditing()", "await expect(saveSpy).toHaveBeenCalledTimes(1)", "expect(h.state.editingTextElement).toBe(null)", "expect(editingWhenSaveRan).toBe(null)"]
+after = []
+message = "deleted: save shortcuts while editing text > commits the editor and saves on Cmd/Ctrl+Shift+S (only 1 of its 5 checks moved to other tests)"
+label = "wrong"
+note = "Folded into the it.each \"should commit text before saving via $label\", which keeps the saveAsJSON spy and the editing-is-null-when-saved check."
+
+[[finding]]
+unit = "afed9e6e27dd"
+pr = 11922
+rule = "test-disabled"
+path = "packages/excalidraw/wysiwyg/textWysiwyg.test.tsx"
+test = "save shortcuts while editing text > does not save on Cmd/Ctrl+Shift+S when the editor is closed by other means"
+before = ["await expect(query()).not.toBe(null) (in if) via startEditing() > getTextEditor()", "expect(h.state.editingTextElement?.id).toBe(text.id) via startEditing()", "expect(h.state.editingTextElement).toBe(null)", "expect(saveSpy).not.toHaveBeenCalled()"]
+after = []
+message = "deleted: save shortcuts while editing text > does not save on Cmd/Ctrl+Shift+S when the editor is closed by other means"
+label = "unexplained"
+note = "\"Trim tests\" folded the other two save tests into an it.each, but this Escape-does-not-save case was dropped, not folded."
+
+[[finding]]
+unit = "afed9e6e27dd"
+pr = 11922
+rule = "test-disabled"
+path = "packages/excalidraw/wysiwyg/textWysiwyg.test.tsx"
+test = "save shortcuts while editing text > still commits the editor on plain Cmd/Ctrl+S"
+before = ["await expect(query()).not.toBe(null) (in if) via startEditing() > getTextEditor()", "expect(h.state.editingTextElement?.id).toBe(text.id) via startEditing()", "expect(h.state.editingTextElement).toBe(null)"]
+after = []
+message = "deleted: save shortcuts while editing text > still commits the editor on plain Cmd/Ctrl+S"
+label = "wrong"
+note = "Folded into the it.each \"should commit text before saving via Cmd/Ctrl+S\", which checks more (save called, text committed first)."
+
+[[finding]]
+unit = "834e5af631ef"
+pr = 12188
+rule = "test-disabled"
+path = "packages/excalidraw/tests/tooltip.test.tsx"
+tests = ["Tooltip > shows right away without `delay`", "Tooltip > shows only after TOOLTIP_DELAY with `delay`", "Tooltip > goes back to delaying once the warm window has passed", "Tooltip > an unrelated Tooltip unmounting doesn't cancel a pending tooltip"]
+before = ["Tooltip > shows right away without `delay`", "Tooltip > shows only after TOOLTIP_DELAY with `delay`", "Tooltip > goes back to delaying once the warm window has passed", "Tooltip > an unrelated Tooltip unmounting doesn't cancel a pending tooltip"]
+after = []
+message = "deleted 4 tests, including Tooltip > shows right away without `delay`"
+label = "intended"
+note = "Commit says it drops tooltip tests that duplicated others, though the delay-before-show and pending-tooltip checks are not covered elsewhere."
+
+[[finding]]
+unit = "834e5af631ef"
+pr = 12188
+rule = "test-disabled"
+path = "packages/excalidraw/tests/zenMode.test.tsx"
+tests = ["zen mode > data-zen-mode-transition > flags the container while toggling, and unflags it once the transition is over", "zen mode > data-zen-mode-transition > keeps the flag set across rapid toggles instead of unflagging mid-transition", "zen mode > data-zen-mode-transition > is not flagged by state changes other than zen mode", "zen mode > openMenu on view mode toggle > stays open when entering view mode, since that's where it's toggled from", "zen mode > openMenu on view mode toggle > closes when interaction gets disabled"]
+before = ["zen mode > data-zen-mode-transition > flags the container while toggling, and unflags it once the transition is over", "zen mode > data-zen-mode-transition > keeps the flag set across rapid toggles instead of unflagging mid-transition", "zen mode > data-zen-mode-transition > is not flagged by state changes other than zen mode", "zen mode > openMenu on view mode toggle > stays open when entering view mode, since that's where it's toggled from", "zen mode > openMenu on view mode toggle > closes when interaction gets disabled"]
+after = []
+message = "file deleted: its 5 tests no longer run"
+label = "unexplained"
+note = "Commit just says \"drop zenMode.test.tsx\"; the zen-mode transition code these tests covered is still there."
+
+[[finding]]
+unit = "2d3707b81610"
+pr = 12187
+rule = "test-disabled"
+path = "packages/excalidraw/tests/showHints.test.tsx"
+tests = ["showHints preference > actionToggleShowHints > is registered under the `showHints` name", "showHints preference > actionToggleShowHints > checked() reflects the current showHints value", "showHints preference > actionToggleShowHints > toggles showHints off and back on", "showHints preference > HintViewer > renders the active tool's hint while showHints is on", "showHints preference > HintViewer > renders nothing once the preference is toggled off", "showHints preference > HintViewer > comes back when the preference is toggled on again"]
+before = ["showHints preference > actionToggleShowHints > is registered under the `showHints` name", "showHints preference > actionToggleShowHints > checked() reflects the current showHints value", "showHints preference > actionToggleShowHints > toggles showHints off and back on", "showHints preference > HintViewer > renders the active tool's hint while showHints is on", "showHints preference > HintViewer > renders nothing once the preference is toggled off", "showHints preference > HintViewer > comes back when the preference is toggled on again"]
+after = []
+message = "file deleted: its 6 tests no longer run"
+label = "intended"
+note = "Commit says the showHints tests will be rewritten in a follow-up PR."
+
+[[finding]]
+unit = "3d056dbc8a55"
+pr = 12192
+rule = "check-removed"
+path = "packages/excalidraw/tests/clipboard.test.tsx"
+test = "paste text as a single element > should not make a pasted text wider than the view"
+before = ["expect(maxWidth).toBeLessThan(200)"]
+after = []
+message = "removed expect(maxWidth).toBeLessThan(200)"
+label = "wrong"
+note = "The removed assertion only compared two test-local constants (setup arithmetic for the 200px paste minimum this commit removed); the product checks remain."
+
+[[finding]]
+unit = "ef53e5417b2d"
+pr = 12260
+rule = "expectation-loosened"
+path = "packages/element/tests/cropElement.test.tsx"
+test = "Crop an image > In the crop editor, dragging a handle crops the image, and dragging the image moves it within its crop (along one axis with shift)"
+before = ["expect(API.getElement(image).crop).toMatchObject({ width: 300, x: 100 })"]
+after = ["expect(API.getElement(image).crop).toMatchObject({ x: 100, y: 50 })"]
+message = "toMatchObject no longer checks width"
+label = "unexplained"
+note = "Switching the drag to the \"nw\" handle swapped crop.width out of the toMatchObject for y; crop.width is no longer checked and nothing says why."
+
+[[finding]]
+unit = "ef53e5417b2d"
+pr = 12260
+rule = "expectation-loosened"
+path = "packages/element/tests/cropElement.test.tsx"
+test = "Crop an image > In the crop editor, dragging a handle crops the image, and dragging the image moves it within its crop (along one axis with shift)"
+before = ["expect(API.getElement(image).crop).toMatchObject({ width: 300, x: 60 })"]
+after = ["expect(API.getElement(image).crop).toMatchObject({ x: 60, y: 50 })"]
+message = "toMatchObject no longer checks width"
+label = "unexplained"
+note = "crop.width was swapped for y in this toMatchObject, so dragging the image no longer verifies the crop width stays 300; nothing says why."
+
+[[finding]]
+unit = "ef53e5417b2d"
+pr = 12260
+rule = "check-removed"
+path = "packages/element/tests/cropElement.test.tsx"
+test = "Cropping and other features > Resizing should not affect crop"
+before = ["expect(cropBeforeResizing).toBe(image.crop)"]
+after = []
+message = "removed expect(cropBeforeResizing).toBe(image.crop)"
+label = "intended"
+note = "Commit says cropElement no longer mutates the crop in place, so the identity check after a crop can't hold; only the approximate value comparison remains."
+
+[[finding]]
+unit = "e1b7aacb356a"
+pr = 12347
+rule = "test-disabled"
+path = "packages/utils/tests/export.test.ts"
+tests = ["exportToBlob > mime type > should change image/jpg to image/jpeg", "exportToBlob > mime type > should default to image/png", "exportToBlob > mime type > should warn when using quality with image/png", "exportToSvg > with exportPadding", "exportToSvg > with exportEmbedScene", "elements lacking creation metadata > exportToSvg and exportToCanvas restore the elements"]
+before = ["exportToBlob > mime type > should change image/jpg to image/jpeg", "exportToBlob > mime type > should default to image/png", "exportToBlob > mime type > should warn when using quality with image/png", "exportToSvg > with exportPadding", "exportToSvg > with exportEmbedScene", "elements lacking creation metadata > exportToSvg and exportToCanvas restore the elements"]
+after = []
+message = "deleted 6 tests, including exportToBlob > mime type > should change image/jpg to image…"
+label = "intended"
+note = "The PR replaced exportToBlob/exportToSvg with exportScene; the jpg alias, default-png and png-quality-warning behaviors went with the old API, while the embed and legacy-restore tests were renamed."
+
+[[finding]]
+unit = "e1b7aacb356a"
+pr = 12347
+rule = "check-removed"
+path = "packages/utils/tests/export.test.ts"
+test = "exportScene: svg > with default arguments"
+before = ["expect(passedElements().length).toBe(3)", "expect(passedOptionsWhenDefault).toMatchSnapshot()"]
+after = ["expect(svg.querySelectorAll('[data-id]')).toHaveLength(3)"]
+message = "removed 2 checks, including expect(passedElements().length).toBe(3)"
+label = "intended"
+note = "exportToSvg was consolidated into exportScene; the element count is now checked on the rendered SVG, but the snapshot of default options passed to the old lower-level call is gone."
+
+[[finding]]
+unit = "e1b7aacb356a"
+pr = 12347
+rule = "check-removed"
+path = "packages/utils/tests/export.test.ts"
+test = "exportScene: svg > with deleted elements"
+before = ["expect(passedElements().length).toBe(0)"]
+after = ["expect(svg.querySelectorAll('[data-id]')).toHaveLength(0)"]
+message = "removed expect(passedElements().length).toBe(0)"
+label = "wrong"
+note = "Equivalent check on the rendered output: svg.querySelectorAll('[data-id]') toHaveLength(0) replaces counting elements passed to the old lower-level call."
+
+[[finding]]
+unit = "e1b7aacb356a"
+pr = 12347
+rule = "test-disabled"
+path = "packages/utils/tests/export.test.ts"
+test = "exportToCanvas > calls getDimensions once with fit: contain"
+before = ["expect(getDimensions).toHaveBeenCalledTimes(1)", "expect(canvas.width).toBe(200)", "expect(canvas.height).toBe(200)"]
+after = []
+message = "deleted: exportToCanvas > calls getDimensions once with fit: contain"
+label = "intended"
+note = "The same PR replaced getDimensions with a scale function; the new \"with a scale function\" test doesn't check the called-once behavior."
+
+[[finding]]
+unit = "e1b7aacb356a"
+pr = 12347
+rule = "test-disabled"
+path = "packages/utils/tests/export.test.ts"
+test = "exportToCanvas > ignores getDimensions when widthOrHeight is set"
+before = ["expect(getDimensions).not.toHaveBeenCalled()", "expect(warn).toHaveBeenCalledTimes(1)", "expect(Math.max(canvas.width, canvas.height)).toBe(50)"]
+after = []
+message = "deleted: exportToCanvas > ignores getDimensions when widthOrHeight is set"
+label = "intended"
+note = "getDimensions was removed in favor of a scale function; nothing replaces the \"ignored when widthOrHeight is set\" check."
+
+[[finding]]
+unit = "d3a9c2a19518"
+pr = 11997
+rule = "check-removed"
+path = "packages/excalidraw/tests/renderEnvironmentProp.test.tsx"
+test = "renderEnvironment prop > decodes scene images through the env's createImage"
+before = ["await expect(images.length).toBeGreaterThan(0)", "expect(images[0]._src).toBe('data:image/png;base64,iVBORw0KGgo=')"]
+after = []
+message = "removed 2 checks, including await expect(images.length).toBeGreaterThan(0); the test has no checks left"
+label = "unexplained"
+note = "\"fix: Remove caches\" deleted both image-decoding checks, leaving the test with no checks, and says nothing about it."
+
+[[finding]]
+unit = "d3a9c2a19518"
+pr = 11997
+rule = "test-disabled"
+path = "packages/element/tests/renderEnvironment.test.ts"
+tests = ["setRenderEnvironment() > keeps a stable identity across calls without a swap", "setRenderEnvironment() > partial overrides fall back to browser defaults", "setRenderEnvironment() > reset installs a fresh browser-default environment", "setRenderEnvironment() > invalidates identity-keyed caches on swap"]
+before = ["setRenderEnvironment() > keeps a stable identity across calls without a swap", "setRenderEnvironment() > partial overrides fall back to browser defaults", "setRenderEnvironment() > reset installs a fresh browser-default environment", "setRenderEnvironment() > invalidates identity-keyed caches on swap"]
+after = []
+message = "file deleted: its 4 tests no longer run"
+label = "intended"
+note = "Commit \"cut non-critical\" tests; these covered setRenderEnvironment, which the same PR later removed."
+
+[[finding]]
+unit = "d3a9c2a19518"
+pr = 11997
+rule = "test-disabled"
+path = "packages/element/tests/textMeasurements.test.ts"
+tests = ["text measurement env threading > getLineWidth measures on the supplied env's canvas", "text measurement env threading > measureText and getTextWidth thread env", "text measurement env threading > wrapText wraps using the supplied env's widths", "text measurement env threading > getMaxCharWidth reads the cache of the env it is asked about"]
+before = ["text measurement env threading > getLineWidth measures on the supplied env's canvas", "text measurement env threading > measureText and getTextWidth thread env", "text measurement env threading > wrapText wraps using the supplied env's widths", "text measurement env threading > getMaxCharWidth reads the cache of the env it is asked about"]
+after = []
+message = "file deleted: its 4 tests no longer run"
+label = "intended"
+note = "Commit \"cut non-critical\" tests; only the charWidth/getMaxCharWidth cases were merged into renderEnvironmentCaches.test.ts, the other env-threading checks were cut."
+
+[[finding]]
+unit = "d3a9c2a19518"
+pr = 11997
+rule = "test-disabled"
+path = "packages/excalidraw/renderer/staticScene.test.ts"
+tests = ["static scene throttle > schedules on the canvas' owner window", "static scene throttle > reschedules on the new window when the canvas is adopted", "static scene element render errors > keeps painting the rest of the editor canvas", "static scene element render errors > fails the render when exporting, rather than shipping a partial image"]
+before = ["static scene throttle > schedules on the canvas' owner window", "static scene throttle > reschedules on the new window when the canvas is adopted", "static scene element render errors > keeps painting the rest of the editor canvas", "static scene element render errors > fails the render when exporting, rather than shipping a partial image"]
+after = []
+message = "file deleted: its 4 tests no longer run"
+label = "intended"
+note = "Commit \"cut non-critical\" tests; owner-window throttle and render-error checks for the editor canvas were cut (export error handling is covered in hostAbstraction)."
+
+[[finding]]
+unit = "d3a9c2a19518"
+pr = 11997
+rule = "test-disabled"
+path = "packages/excalidraw/tests/crossDocument.test.tsx"
+test = "cross-document rendering > infers the render environment from the container document when the ownerDocument prop is missing"
+before = ["expect(createElement.mock.calls.filter(([tag]) => tag === 'canvas').length).toBeGreaterThan(0)"]
+after = []
+message = "deleted: cross-document rendering > infers the render environment from the container document when the ownerDocument prop is missing"
+label = "intended"
+note = "Commit \"cut non-critical\" tests; inferring the environment without the ownerDocument prop is no longer tested."
+
+[[finding]]
+unit = "d3a9c2a19518"
+pr = 11997
+rule = "test-disabled"
+path = "packages/excalidraw/tests/crossDocument.test.tsx"
+test = "cross-document rendering > renders tooltips in the trigger document"
+before = ["expect(ownerDocument.querySelector('.excalidraw-tooltip')?.textContent).toBe('Owner document tooltip')", "expect(document.querySelector('.excalidraw-tooltip')).toBeNull()"]
+after = []
+message = "deleted: cross-document rendering > renders tooltips in the trigger document"
+label = "wrong"
+note = "Moved into hostAbstraction's multi-window test, which checks the tooltip shows in the triggering realm's document and not in the main document."
+
+[[finding]]
+unit = "d3a9c2a19518"
+pr = 11997
+rule = "test-disabled"
+path = "packages/excalidraw/tests/elementCanvasScale.test.ts"
+tests = ["elementWithCanvasCache deviceScale > regenerates cached element canvases when renderConfig.scale changes"]
+before = ["elementWithCanvasCache deviceScale > regenerates cached element canvases when renderConfig.scale changes"]
+after = []
+message = "file deleted: its test no longer runs"
+label = "wrong"
+note = "Moved to renderCaches.test.ts as \"element canvas cache > regenerates when the backing-store scale changes\" with the same checks."
+
+[[finding]]
+unit = "d3a9c2a19518"
+pr = 11997
+rule = "test-disabled"
+path = "packages/excalidraw/tests/fitToContent.test.tsx"
+test = "concurrent editors (per-instance animation keys) > runs both editors' scroll-to-content animations independently"
+before = ["expect(appA).not.toBe(appB)", "expect(AnimationController.running(appA.viewport.scrollToContentAnimationKey)).toBe(true)", "expect(AnimationController.running(appB.viewport.scrollToContentAnimationKey)).toBe(true)", "expect(moved(aStart, appA)).toBe(true)", "expect(moved(bStart, appB)).toBe(true)", "expect(AnimationController.running(appA.viewport.scrollToContentAnimationKey)).toBe(false)", "expect(AnimationController.running(appB.viewport.scrollToContentAnimationKey)).toBe(true)"]
+after = []
+message = "deleted: concurrent editors (per-instance animation keys) > runs both editors' scroll-to-content animations independently"
+label = "intended"
+note = "Commit \"cut non-critical\" tests; the independent animation checks were merged into hostAbstraction, but the \"viewport actually moved\" checks were cut."
+
+[[finding]]
+unit = "d3a9c2a19518"
+pr = 11997
+rule = "test-disabled"
+path = "packages/excalidraw/tests/headlessExport.test.ts"
+tests = ["headless export environment > routes every canvas and image through the injected environment", "headless export environment > renders text on canvases without DOM methods (i.e. OffscreenCanvas)", "headless export environment > fills freedraw strokes through the environment's `createPath`", "headless export environment > fails the export when an element cannot be rendered", "headless export environment > falls back to browser defaults for keys that are not overridden"]
+before = ["headless export environment > routes every canvas and image through the injected environment", "headless export environment > renders text on canvases without DOM methods (i.e. OffscreenCanvas)", "headless export environment > fills freedraw strokes through the environment's `createPath`", "headless export environment > fails the export when an element cannot be rendered", "headless export environment > falls back to browser defaults for keys that are not overridden"]
+after = []
+message = "file deleted: its 5 tests no longer run"
+label = "intended"
+note = "Commit \"cut non-critical\" tests; mostly merged into hostAbstraction's headless export test, but the browser-default fallback and image routing checks were cut."
+
+[[finding]]
+unit = "d3a9c2a19518"
+pr = 11997
+rule = "test-disabled"
+path = "packages/excalidraw/tests/linkIcon.test.ts"
+tests = ["static scene link icons > bakes link icons into the cache only after the images decode"]
+before = ["static scene link icons > bakes link icons into the cache only after the images decode"]
+after = []
+message = "file deleted: its test no longer runs"
+label = "intended"
+note = "Commit \"cut non-critical\" tests; decode-before-bake is still checked in renderCaches.test.ts, but the element-link icon variant was cut."
+
+[[finding]]
+unit = "d3a9c2a19518"
+pr = 11997
+rule = "test-disabled"
+path = "packages/excalidraw/tests/node/headlessImport.test.ts"
+tests = ["headless import > runs without browser globals", "headless import > imports @excalidraw/common without a DOM", "headless import > imports @excalidraw/element without a DOM", "headless import > imports the export pipeline without a DOM", "headless import > imports the public @excalidraw/utils export entry without a DOM", "headless import > exposes the environment setters from the public @excalidraw/utils entry", "headless import > builds a default appState without a DOM"]
+before = ["headless import > runs without browser globals", "headless import > imports @excalidraw/common without a DOM", "headless import > imports @excalidraw/element without a DOM", "headless import > imports the export pipeline without a DOM", "headless import > imports the public @excalidraw/utils export entry without a DOM", "headless import > exposes the environment setters from the public @excalidraw/utils entry", "headless import > builds a default appState without a DOM"]
+after = []
+message = "file deleted: its 7 tests no longer run"
+label = "intended"
+note = "Commit \"cut non-critical\" tests; the no-DOM import tests (and their node vitest project) were dropped."
+
+[[finding]]
+unit = "d3a9c2a19518"
+pr = 11997
+rule = "test-disabled"
+path = "packages/excalidraw/tests/renderEnvironmentProp.test.tsx"
+tests = ["renderEnvironment prop > is forwarded to the editor, which renders through it", "renderEnvironment prop > decodes scene images through the env's createImage", "renderEnvironment prop stability > warns when the prop identity changes but the implementation doesn't", "renderEnvironment prop stability > doesn't warn for a stable env, nor for a genuine env swap"]
+before = ["renderEnvironment prop > is forwarded to the editor, which renders through it", "renderEnvironment prop > decodes scene images through the env's createImage", "renderEnvironment prop stability > warns when the prop identity changes but the implementation doesn't", "renderEnvironment prop stability > doesn't warn for a stable env, nor for a genuine env swap"]
+after = []
+message = "file deleted: its 4 tests no longer run"
+label = "intended"
+note = "Commit \"cut non-critical\" tests; the renderEnvironment prop forwarding and stability-warning tests were dropped."
+
+[[finding]]
+unit = "d3a9c2a19518"
+pr = 11997
+rule = "test-disabled"
+path = "packages/excalidraw/tests/scene/export.test.ts"
+test = "exportToCanvas > creates all canvases via the supplied renderEnvironment"
+before = ["expect(created).toContain(canvas)", "expect(createElementSpy.mock.calls.filter(([tag]) => tag === 'canvas').length).toBe(created.length)"]
+after = []
+message = "deleted: exportToCanvas > creates all canvases via the supplied renderEnvironment"
+label = "intended"
+note = "Commit \"cut non-critical\" tests; hostAbstraction still checks the export canvas comes from the env, but not that every canvas does."
+
+[[finding]]
+unit = "d3a9c2a19518"
+pr = 11997
+rule = "test-disabled"
+path = "packages/excalidraw/tests/scene/export.test.ts"
+test = "exportToCanvas > decodes images via the supplied renderEnvironment.createImage"
+before = ["expect(images).toHaveLength(1)", "expect(images[0]._src).toBe('data:image/png;base64,iVBORw0KGgo=')"]
+after = []
+message = "deleted: exportToCanvas > decodes images via the supplied renderEnvironment.createImage"
+label = "intended"
+note = "Commit \"cut non-critical\" tests; image decoding through the export env's createImage is no longer checked."
+
+[[finding]]
+unit = "d3a9c2a19518"
+pr = 11997
+rule = "test-disabled"
+path = "packages/excalidraw/tests/scene/export.test.ts"
+test = "embed placeholders > renders them in SVG without measuring text (no canvas needed)"
+before = ["expect(createElementSpy.mock.calls.filter(([tag]) => tag === 'canvas')).toHaveLength(0)", "expect(texts).toContain('IFrame element')", "expect(texts).toContain(getPlaceholderLinkText(link))", "expect(Array.from(svg.querySelectorAll('a[href]')).some((anchor) => anchor.getAttribute('href')?.includes('youtube.com/watch?v='))).toBe(true)"]
+after = []
+message = "deleted: embed placeholders > renders them in SVG without measuring text (no canvas needed)"
+label = "intended"
+note = "Revert commit drops measurement-free embed placeholders; this test covered the reverted behavior."
+
+[[finding]]
+unit = "d3a9c2a19518"
+pr = 11997
+rule = "test-disabled"
+path = "packages/excalidraw/tests/scene/export.test.ts"
+test = "exporting frames > exportToSvg > renders frame labels without measuring text (no canvas needed)"
+before = ["expect(createElementSpy.mock.calls.filter(([tag]) => tag === 'canvas')).toHaveLength(0)", "expect(label?.textContent).toBe(frame.name)", "expect(clipRect?.getAttribute('width')).toBe(`${frame.width}`)", "expect(label?.closest('g[clip-path]')?.getAttribute('clip-path')).toBe(`url(#${frame.id}-label)`)", "expect(svg.querySelector(`clipPath[id=\"${frame.id}-label\"]`)?.parentElement?.getAttribute('transform')).toBe('translate(0 0)')", "expect(svg.getAttribute('height')).toBe((frame.height + getFrameNameHeight('svg')).toString())"]
+after = []
+message = "deleted: exporting frames > exportToSvg > renders frame labels without measuring text (no canvas needed)"
+label = "intended"
+note = "Revert commit drops the measurement-free SVG frame label renderer; this test covered the reverted behavior."
+
+[[finding]]
+unit = "d3a9c2a19518"
+pr = 11997
+rule = "test-disabled"
+path = "packages/element/tests/renderEnvironmentCaches.test.ts"
+test = "render environment cache invalidation > installs a fresh identity per swap, dropping identity-keyed caches"
+before = ["expect(getRenderEnvironment()).toBe(before)", "expect(swapped).not.toBe(before)", "expect(cache.get(swapped)).toBeUndefined()", "expect(getRenderEnvironment()).not.toBe(swapped)", "expect(getRenderEnvironment()).not.toBe(swapped)"]
+after = []
+message = "deleted: render environment cache invalidation > installs a fresh identity per swap, dropping identity-keyed caches"
+label = "intended"
+note = "The commit removed setRenderEnvironment/resetRenderEnvironment, the API this test covered."
+
+[[finding]]
+unit = "d3a9c2a19518"
+pr = 11997
+rule = "check-removed"
+path = "packages/excalidraw/tests/linkIcon.test.ts"
+test = "static scene link icons > bakes an icon only for the environment whose image decoded"
+before = ["expect(getDrawImageSources(firstBBake)).toHaveLength(0)", "expect(iconBlits(sceneA, envA).length).toBeGreaterThan(1)", "expect(secondABake).not.toBe(firstABake)", "expect(iconBlits(sceneB, envB).length).toBe(2)", "expect(iconBlits(sceneB, envB).pop()).toBe(firstBBake)", "expect(getDrawImageSources(firstBBake)).not.toContain(envB.images[0])"]
+after = ["expect(iconBlits(sceneB, envB)).toHaveLength(0)", "expect(aBlits).toHaveLength(1)", "expect(iconBlits(sceneB, envB)).toHaveLength(0)"]
+message = "removed 6 checks, including expect(getDrawImageSources(firstBBake)).toHaveLength(0); the test name dropped \"repairs scene of settled\""
+label = "wrong"
+note = "\"Remove caches\" dropped the blank-bake-then-evict design; the test was rewritten for the same two-env input against the new result (nothing baked until decoded, then only for A)."
+
+[[finding]]
+unit = "d3a9c2a19518"
+pr = 11997
+rule = "check-removed"
+path = "packages/element/tests/renderEnvironmentCaches.test.ts"
+test = "render environment cache invalidation > installs a fresh identity per swap, dropping identity-keyed caches"
+before = ["expect(swapped.createCanvas()).toEqual({})"]
+after = ["expect(getRenderEnvironment()).toBe(before)", "expect(cache.get(swapped)).toBeUndefined()", "expect(getRenderEnvironment()).not.toBe(swapped)"]
+message = "removed expect(swapped.createCanvas()).toEqual({}); the test name dropped \"environment object\""
+label = "intended"
+note = "Commit \"cut non-critical\" tests; the check that the swapped env's createCanvas is used was dropped when the test moved files."
+
+[[finding]]
+unit = "d3a9c2a19518"
+pr = 11997
+rule = "check-removed"
+path = "packages/element/tests/renderEnvironmentCaches.test.ts"
+test = "render environment cache invalidation > never serves one environment's char widths to another"
+before = ["expect(charWidth.getCache(FONT)).toBeUndefined()", "expect(charWidth.calculate('A', FONT)).toBe(10)"]
+after = ["expect(getMaxCharWidth(FONT, env)).toBe(0)", "expect(getMaxCharWidth(FONT)).toBe(0)"]
+message = "removed 2 checks, including expect(charWidth.getCache(FONT)).toBeUndefined(); the test name dropped \"charWidth cache env's\""
+label = "intended"
+note = "Commit \"cut non-critical\" tests; the default-env checks after clearCache were dropped in the merge."
+
+[[finding]]
+unit = "d3a9c2a19518"
+pr = 11997
+rule = "test-disabled"
+path = "packages/excalidraw/tests/tooltip.test.tsx"
+tests = ["Tooltip > shows the tooltip again after re-enabling", "Tooltip > still hides the tooltip on unmount while hovered", "hyperlink tooltip > shows the tooltip only after the hover delay", "hyperlink tooltip > drops the tooltip when the owning window blurs", "hyperlink tooltip > drops the tooltip when the owning window is hidden", "hyperlink tooltip > drops a pending tooltip on blur before it renders", "hyperlink tooltip > drops the tooltip when the pointer leaves the owning window", "hyperlink tooltip > keeps the tooltip when the pointer moves within the window"]
+before = ["Tooltip > shows the tooltip again after re-enabling", "Tooltip > still hides the tooltip on unmount while hovered", "hyperlink tooltip > shows the tooltip only after the hover delay", "hyperlink tooltip > drops the tooltip when the owning window blurs", "hyperlink tooltip > drops the tooltip when the owning window is hidden", "hyperlink tooltip > drops a pending tooltip on blur before it renders", "hyperlink tooltip > drops the tooltip when the pointer leaves the owning window", "hyperlink tooltip > keeps the tooltip when the pointer moves within the window"]
+after = []
+message = "deleted 8 tests, including Tooltip > shows the tooltip again after re-enabling"
+label = "wrong"
+note = "The 8 tests were merged into two combined tests (\"clears the shared tooltip when the trigger goes away mid-hover\", \"drops the tooltip when its owning window goes away\"); the hover-delay checks run in \"lets a new owner take over\"."
+
+[[finding]]
+unit = "d3a9c2a19518"
+pr = 11997
+rule = "check-cant-fail"
+path = "packages/excalidraw/tests/tooltip.test.tsx"
+test = "Tooltip > clears the shared tooltip when the trigger goes away mid-hover"
+before = ["expect(wrapper).not.toBeNull()"]
+after = ["expect(wrapper).not.toBeNull() (in callback)"]
+message = "expect(wrapper).not.toBeNull() is now inside a callback: it may run after the test ends, or not at all"
+label = "wrong"
+note = "The callback is a synchronous local helper (hover) called directly in the test, so the check always runs."
+
+[[finding]]
+unit = "d3a9c2a19518"
+pr = 11997
+rule = "check-cant-fail"
+path = "packages/excalidraw/tests/tooltip.test.tsx"
+test = "Tooltip > clears the shared tooltip when the trigger goes away mid-hover"
+before = ["expect(tooltip).toHaveClass(TOOLTIP_VISIBLE_CLASS)"]
+after = ["expect(tooltip).toHaveClass(TOOLTIP_VISIBLE_CLASS) (in callback)"]
+message = "expect(tooltip).toHaveClass(TOOLTIP_VISIBLE_CLASS) is now inside a callback: it may run after the test ends, or not at all"
+label = "wrong"
+note = "The callback is a synchronous local helper (hover) called directly in the test, so the check always runs."
+
+[[finding]]
+unit = "d3a9c2a19518"
+pr = 11997
+rule = "test-disabled"
+path = "packages/excalidraw/tests/hostAbstraction.test.tsx"
+test = "headless (server-side) export > fails the export rather than shipping a partial image"
+before = ["await expect(exportScene({ type: 'canvas', data: { elements, appState }, config: { canvasBackgroundColor: '#ffffff', environment: { createCanvas: () => target, loadFonts: async () => {} } } })).rejects.toThrow(/Path2D/)", "expect(consoleError).not.toHaveBeenCalled()"]
+after = []
+message = "deleted: headless (server-side) export > fails the export rather than shipping a partial image"
+label = "wrong"
+note = "Export now logs and skips a failing element on purpose; \"exports the rest of the scene when an element fails to render\" checks the same input against the new result."
+
+[[finding]]
+unit = "d3a9c2a19518"
+pr = 11997
+rule = "check-removed"
+path = "packages/excalidraw/tests/hostAbstraction.test.tsx"
+test = "headless (server-side) export > exports the rest of the scene when an element fails to render"
+before = ["expect(fillText).toHaveBeenCalledWith('hello', 0, expect.any(Number))"]
+after = ["expect(rendered).toHaveLength(1)", "expect(consoleError).not.toHaveBeenCalled()", "expect(failed).toEqual(rendered)"]
+message = "removed expect(fillText).toHaveBeenCalledWith('hello', 0, expect.an…"
+label = "wrong"
+note = "Rewritten into a stronger check: one text line is painted, and at the same transform as in an export without the failure."
+
+[[finding]]
+unit = "d3a9c2a19518"
+pr = 11997
+rule = "check-cant-fail"
+path = "packages/excalidraw/tests/hostAbstraction.test.tsx"
+test = "headless (server-side) export > exports the rest of the scene when an element fails to render"
+before = ["expect(canvas).toBe(target)"]
+after = ["expect(canvas).toBe(target) (in callback)"]
+message = "expect(canvas).toBe(target) is now inside a callback: it may run after the test ends, or not at all"
+label = "wrong"
+note = "The callback is an async helper awaited directly in the test (twice), so the check always runs."
+
+[[finding]]
+unit = "d3a9c2a19518"
+pr = 11997
+rule = "matcher-swapped"
+path = "packages/excalidraw/tests/tooltip.test.tsx"
+test = "Tooltip > clears the shared tooltip when the trigger goes away mid-hover"
+before = ["expect(tooltip).not.toBeNull()"]
+after = ["expect(tooltip).not.toHaveClass(TOOLTIP_VISIBLE_CLASS)"]
+message = "swapped .not.toBe(null) for .not.toHaveClass(TOOLTIP_VISIBLE_CLASS)"
+label = "wrong"
+note = "Not a matcher swap: the not-null check is subsumed by toHaveClass(TOOLTIP_VISIBLE_CLASS) in the hover helper; the not.toHaveClass line is a different, later check."
+
+[[finding]]
+unit = "bee01e3a1281"
+pr = 12374
+rule = "check-cant-fail"
+path = "packages/excalidraw/tests/scene/export.test.ts"
+test = "export inputs > without a document font set (e.g. a DOM shim like linkedom) > exports without loading fonts, warning once"
+before = ["expect(svg.querySelector('text')?.textContent).toBe('hi')"]
+after = ["expect(svg.querySelector('text')?.textContent).toBe('hi') (in loop)"]
+message = "expect(svg.querySelector('text')?.textContent).toBe('hi') is now inside a loop: it doesn't run if the loop runs zero times"
+label = "wrong"
+note = "The loop has a constant bound (i < 2), so the check always runs, twice."
+
+[[finding]]
+unit = "6f0a4d19b577"
+pr = 11970
+rule = "test-disabled"
+path = "excalidraw-app/tests/LocalData.test.ts"
+tests = ["Test isQuotaExceededError > should return true for the Chromium spelling", "Test isQuotaExceededError > should return true for the Firefox spelling", "Test isQuotaExceededError > should return true for the legacy WebKit code 22", "Test isQuotaExceededError > should return true for the legacy WebKit code 1014", "Test isQuotaExceededError > should return false for a non-quota DOMException", "Test isQuotaExceededError > should return false for a non-DOMException error"]
+before = ["Test isQuotaExceededError > should return true for the Chromium spelling", "Test isQuotaExceededError > should return true for the Firefox spelling", "Test isQuotaExceededError > should return true for the legacy WebKit code 22", "Test isQuotaExceededError > should return true for the legacy WebKit code 1014", "Test isQuotaExceededError > should return false for a non-quota DOMException", "Test isQuotaExceededError > should return false for a non-DOMException error"]
+after = []
+message = "file deleted: its 6 tests no longer run"
+label = "unexplained"
+note = "\"chore: Remove test\" deleted all isQuotaExceededError tests while the fix stays; no reason given."
+
+[[finding]]
+unit = "808d068e1826"
+pr = 12425
+rule = "expectation-loosened"
+path = "packages/element/src/__tests__/transform.test.ts"
+test = "Test Transform > Test arrow bindings > should bind arrows to shapes when start / end provided without ids"
+before = ["expect(arrow).toMatchObject({ boundElements: [{ id: text.id, type: 'text' }], endBinding: { elementId: ellipse.id }, startBinding: { elementId: rectangle.id }, type: 'arrow', x: 255.5, y: 239 })"]
+after = ["expect(arrow).toMatchObject({ boundElements: [{ id: text.id, type: 'text' }], endBinding: { elementId: ellipse.id }, startBinding: { elementId: rectangle.id }, type: 'arrow', x: 261 })"]
+message = "toMatchObject no longer checks y"
+label = "wrong"
+note = "y is still checked, moved out of toMatchObject to expect(arrow.y).toBeCloseTo(239, 1) because placement is now computed."
+
+[[finding]]
+unit = "808d068e1826"
+pr = 12425
+rule = "expectation-loosened"
+path = "packages/element/src/__tests__/transform.test.ts"
+test = "Test Transform > Test arrow bindings > should bind arrows to shapes when start / end provided without ids"
+before = ["expect(text).toMatchObject({ containerId: arrow.id, text: 'HELLO WORLD!!', type: 'text', x: 240, y: 226.5 })"]
+after = ["expect(text).toMatchObject({ containerId: arrow.id, text: 'HELLO WORLD!!', type: 'text' })"]
+message = "toMatchObject no longer checks x, y"
+label = "wrong"
+note = "x and y are still checked, as expect(text.x).toBeCloseTo(240, 1) and expect(text.y).toBeCloseTo(226.5, 1) right above."
+
+[[finding]]
+unit = "808d068e1826"
+pr = 12425
+rule = "expectation-loosened"
+path = "packages/element/src/__tests__/transform.test.ts"
+test = "Test Transform > Test arrow bindings > should bind arrows to text when start / end provided without ids"
+before = ["expect(arrow).toMatchObject({ boundElements: [{ id: text1.id, type: 'text' }], endBinding: { elementId: text3.id }, startBinding: { elementId: text2.id }, type: 'arrow', x: 255.5, y: 239 })"]
+after = ["expect(arrow).toMatchObject({ boundElements: [{ id: text1.id, type: 'text' }], endBinding: { elementId: text3.id }, startBinding: { elementId: text2.id }, type: 'arrow', x: 261 })"]
+message = "toMatchObject no longer checks y"
+label = "wrong"
+note = "y is still checked, moved out of toMatchObject to expect(arrow.y).toBeCloseTo(239, 1) because placement is now computed."
+
+[[finding]]
+unit = "808d068e1826"
+pr = 12425
+rule = "expectation-loosened"
+path = "packages/element/src/__tests__/transform.test.ts"
+test = "Test Transform > Test arrow bindings > should bind arrows to text when start / end provided without ids"
+before = ["expect(text1).toMatchObject({ containerId: arrow.id, text: 'HELLO WORLD!!', type: 'text', x: 240, y: 226.5 })"]
+after = ["expect(text1).toMatchObject({ containerId: arrow.id, text: 'HELLO WORLD!!', type: 'text' })"]
+message = "toMatchObject no longer checks x, y"
+label = "wrong"
+note = "x and y are still checked, as expect(text1.x).toBeCloseTo(240, 1) and expect(text1.y).toBeCloseTo(226.5, 1) right above."
+
+[[finding]]
+unit = "2610ebae0cbd"
+pr = 12502
+rule = "test-disabled"
+path = "packages/element/tests/flowchart.test.tsx"
+test = "flow chart navigation > multiple nodes at each level"
+before = ["expect(h.state.selectedElementIds[secondNode.id]).toBe(true)", "expect(h.state.selectedElementIds[rightMostNode.id]).toBe(true)", "expect(h.state.selectedElementIds[rectangle.id]).toBe(true)"]
+after = []
+message = "deleted: flow chart navigation > multiple nodes at each level"
+label = "intended"
+note = "Commit rewrote Alt+arrow navigation to be visual and dropped sibling cycling; this cycling scenario went, and the new tests use different layouts."
+
+[[finding]]
+unit = "2610ebae0cbd"
+pr = 12502
+rule = "test-disabled"
+path = "packages/element/tests/flowchart.test.tsx"
+test = "flow chart navigation > take the most obvious link when possible"
+before = ["expect(rightMostNode.type).toBe('rectangle')", "expect(h.state.selectedElementIds[rightMostNode.id]).toBe(true)", "expect(h.state.selectedElementIds[rectangle.id]).toBe(true)", "expect(predecessorToRightMostNode.type).toBe('rectangle')", "expect(h.state.selectedElementIds[rightMostNode.id]).not.toBe(true)", "expect(h.state.selectedElementIds[predecessorToRightMostNode.id]).toBe(true)", "expect(h.state.selectedElementIds[rightMostNode.id]).not.toBe(true)", "expect(h.state.selectedElementIds[predecessorToRightMostNode.id]).toBe(true)", "expect(h.state.selectedElementIds[rightMostNode.id]).not.toBe(true)", "expect(h.state.selectedElementIds[predecessorToRightMostNode.id]).toBe(true)"]
+after = []
+message = "deleted: flow chart navigation > take the most obvious link when possible"
+label = "intended"
+note = "Commit rewrote Alt+arrow navigation from link-following to visual; this link-following scenario went, and the new tests use different layouts."
+
+[[finding]]
+unit = "2610ebae0cbd"
+pr = 12502
+rule = "check-removed"
+path = "packages/element/tests/flowchart.test.tsx"
+test = "flow chart navigation > breaks ties by links and reading order"
+before = ["expect(Object.keys(h.state.selectedElementIds)).toEqual([element.id]) via expectSelected(a)"]
+after = []
+message = "removed expectSelected(a), which ran 1 check"
+label = "wrong"
+note = "The way back was dropped on purpose; the same A, right, left input now expects X instead of A."
+
+[[finding]]
+unit = "2610ebae0cbd"
+pr = 12502
+rule = "check-removed"
+path = "packages/element/tests/flowchart.test.tsx"
+test = "flow chart navigation > prefers nodes in line, then linked, then in the cone, then any ahead"
+before = ["expect(Object.keys(h.state.selectedElementIds)).toEqual([element.id]) via expectSelected(s)"]
+after = []
+message = "removed expectSelected(s), which ran 1 check"
+label = "intended"
+note = "Commit drops the Alt+arrow way back; the check was removed and nothing checks where that move goes now."
+
+[[finding]]
+unit = "7ded689cad49"
+pr = 12535
+rule = "test-disabled"
+path = "packages/excalidraw/components/TTDDialog/utils/mermaidError.test.ts"
+test = "formatMermaidParseErrorMessage > reports the error on its source line, given the source"
+before = ["expect(formatMermaidParseErrorMessage(`Parse error on line 3: C --> D] ---------^ Expecting 'SEMI', got 'SQE'`, '%% a\\n%% b\\nflowchart TD\\n  A --> B\\n  C --> D]')).toBe('Parse error on line 5:\\n  C --> D]\\n---------^')"]
+after = []
+message = "deleted: formatMermaidParseErrorMessage > reports the error on its source line, given the source"
+label = "intended"
+note = "The same commit removed source-line mapping (Pele 1.13 reports source lines) and the sourceText parameter this test used."
+
+[[finding]]
+unit = "7ded689cad49"
+pr = 12535
+rule = "test-disabled"
+path = "packages/excalidraw/components/TTDDialog/utils/mermaidError.test.ts"
+test = "getMermaidErrorLineNumber > reports errors after the last line on the last line"
+before = ["expect(getMermaidErrorLineNumber('Parse error on line 4: ...', 'graph TD\\nsubgraph A\\n  A1[Start]\\n')).toBe(3)"]
+after = []
+message = "deleted: getMermaidErrorLineNumber > reports errors after the last line on the last line"
+label = "intended"
+note = "The same commit removed the source-line mapping, including the past-the-end handling this test covered."
+
+[[finding]]
+unit = "7ded689cad49"
+pr = 12535
+rule = "test-disabled"
+path = "packages/excalidraw/components/TTDDialog/utils/mermaidError.test.ts"
+test = "getMermaidErrorLineNumber > maps lines as Mermaid and Pele number them to the source's"
+before = ["expect(getMermaidErrorLineNumber(`Parse error on line ${reported}:`, source)).toBe(actual) (in loop)"]
+after = []
+message = "deleted: getMermaidErrorLineNumber > maps lines as Mermaid and Pele number them to the source's"
+label = "intended"
+note = "The same commit removed the source-line mapping these 10 cases covered; Pele now reports source lines itself."

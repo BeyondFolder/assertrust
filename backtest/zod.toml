@@ -1,0 +1,464 @@
+# Labels for `assertrust backtest --labels`: a verdict on each finding.
+#   wrong        nothing got weaker: assertrust misread the change
+#   intended     weaker on purpose: the code the test covered went too, or a commit says why
+#   unexplained  weaker, and nothing in the change says why
+# "" is a finding not labelled yet. `--update-labels` rewrites this file: it adds new
+# findings and drops false alarms no longer found. Keep remarks in `note`.
+
+repo = "https://github.com/colinhacks/zod.git"
+range = "51caf01038d3339d7b9db94b959482c549aba2e3..19c40d2072288b4cafec851e9d056a72a88e5973"
+
+[[finding]]
+unit = "eca968715366"
+pr = 6535
+rule = "check-cant-fail"
+path = "packages/zod/src/v4/classic/tests/from-json-schema.test.ts"
+test = "a carried subschema that references $defs is dropped rather than emitted dangling"
+before = ["expect(annotated.safeParse(['x']).success).toBe(false)"]
+after = ["expect(annotated.safeParse(['x']).success).toBe(false) (in loop)"]
+message = "expect(annotated.safeParse(['x']).success).toBe(false) is now inside a loop: it doesn't run if the loop runs zero times"
+label = "wrong"
+note = "The loop runs over a literal two-item array, so the checks always run (now twice)."
+
+[[finding]]
+unit = "eca968715366"
+pr = 6535
+rule = "check-cant-fail"
+path = "packages/zod/src/v4/classic/tests/from-json-schema.test.ts"
+test = "a carried subschema that references $defs is dropped rather than emitted dangling"
+before = ["expect(z.toJSONSchema(annotated)).toMatchObject({ contains: { type: 'integer' } })"]
+after = ["expect(z.toJSONSchema(annotated)).toMatchObject({ contains: { type: 'integer' } }) (in loop)"]
+message = "expect(z.toJSONSchema(annotated)).toMatchObject({ contains:… is now inside a loop: it doesn't run if the loop runs zero times"
+label = "wrong"
+note = "The loop runs over a literal two-item array, so the checks always run (now twice)."
+
+[[finding]]
+unit = "cafbee4772ef"
+pr = 6530
+rule = "check-removed"
+path = "packages/zod/src/v4/classic/tests/cyclic-data.test.ts"
+test = "a deferred edge stops being assumed a cycle once the graph resolves"
+before = ["expect(z.core.isRecursiveSchema(Deferred)).toBe(true)", "expect(z.core.isRecursiveSchema(Deferred)).toBe(false)"]
+after = []
+message = "removed 2 checks, including expect(z.core.isRecursiveSchema(Deferred)).toBe(true)"
+label = "intended"
+note = "The commit makes the walk follow a lazy edge one hop, so the object-with-lazy case is no longer assumed a cycle before a parse; the message explains."
+
+[[finding]]
+unit = "cafbee4772ef"
+pr = 6530
+rule = "test-disabled"
+path = "packages/zod/src/v4/classic/tests/cyclic-data.test.ts"
+test = "the depth cap keeps the walk exact below it and conservative past it"
+before = ["expect(z.core.isRecursiveSchema(nest(255))).toBe(false)", "expect(z.core.isRecursiveSchema(nest(256))).toBe(true)"]
+after = []
+message = "deleted: the depth cap keeps the walk exact below it and conservative past it (only 1 of its 3 checks moved to other tests)"
+label = "wrong"
+note = "Renamed when the commit dropped the depth cap: deep acyclic nesting is now checked against the new expected result (exact, false) at 300 levels, and the factory check stays."
+
+[[finding]]
+unit = "cafbee4772ef"
+pr = 6530
+rule = "test-disabled"
+path = "packages/zod/src/v4/classic/tests/cyclic-data.test.ts"
+test = "the walk flags a generative loop without resolving it to the bottom"
+before = ["expect(z.core.isRecursiveSchema(A())).toBe(true)", "expect(z.core.isRecursiveSchema(forward)).toBe(false)"]
+after = []
+message = "deleted: the walk flags a generative loop without resolving it to the bottom (only 1 of its 3 checks moved to other tests)"
+label = "intended"
+note = "Test renamed and rewritten when the walk switched to assuming a cycle for every deferred edge, so the forward-reference expectation flipped and the mutual-factory case became moot."
+
+[[finding]]
+unit = "e4d67f3ea42d"
+pr = 6562
+rule = "gate-loosened"
+path = ".github/workflows/release.yml"
+before = ["if: github.event_name == 'push'"]
+after = ["if: github.event_name == 'push' && needs.version_changed.outputs.changed == 'true'"]
+message = "job build_and_publish: now runs only if github.event_name == 'push' && needs.version_changed.output…"
+label = "wrong"
+note = "build_and_publish now skips only when no version changed, i.e. when there is nothing to publish; test-node and test.yml still run the same tests on those pushes."
+
+[[finding]]
+unit = "6f0483671e62"
+pr = 6554
+rule = "test-disabled"
+path = "packages/zod/src/v4/mini/tests/computed.test.ts"
+test = "int64 format"
+before = ["expect(c._zod.bag.format).toEqual('int64')", "expect(c._zod.bag.minimum).toEqual(zc.BIGINT_FORMAT_RANGES.int64[0])", "expect(c._zod.bag.maximum).toEqual(zc.BIGINT_FORMAT_RANGES.int64[1])"]
+after = []
+message = "deleted: int64 format"
+label = "intended"
+note = "The commit stopped checks writing metadata into the bag, and int64 cannot go through toJSONSchema (BigInt), so this bag-only test was dropped."
+
+[[finding]]
+unit = "6f0483671e62"
+pr = 6554
+rule = "check-removed"
+path = "packages/zod/src/v4/mini/tests/computed.test.ts"
+test = "min/max"
+before = ["expect(a._zod.bag.minimum).toEqual(7)", "expect(a._zod.bag.maximum).toEqual(10)"]
+after = ["expect(z.toJSONSchema(a)).toMatchObject({ maximum: 10, minimum: 7 })", "expect(a._zod.bag).toEqual({})"]
+message = "removed 2 checks, including expect(a._zod.bag.minimum).toEqual(7)"
+label = "wrong"
+note = "The bag no longer holds these values by design; the same folded minimum and maximum are now asserted through z.toJSONSchema, and the bag is asserted empty."
+
+[[finding]]
+unit = "6f0483671e62"
+pr = 6554
+rule = "check-removed"
+path = "packages/zod/src/v4/mini/tests/computed.test.ts"
+test = "multipleOf"
+before = ["expect(b._zod.bag.multipleOf).toEqual(5)"]
+after = ["expect(z.toJSONSchema(b)).toMatchObject({ multipleOf: 5 })"]
+message = "removed expect(b._zod.bag.multipleOf).toEqual(5)"
+label = "wrong"
+note = "The same multipleOf value is now asserted through z.toJSONSchema since the bag no longer holds it."
+
+[[finding]]
+unit = "6f0483671e62"
+pr = 6554
+rule = "check-removed"
+path = "packages/zod/src/v4/mini/tests/computed.test.ts"
+test = "int32 format"
+before = ["expect(d._zod.bag.format).toEqual('int32')", "expect(d._zod.bag.minimum).toEqual(zc.NUMBER_FORMAT_RANGES.int32[0])", "expect(d._zod.bag.maximum).toEqual(zc.NUMBER_FORMAT_RANGES.int32[1])"]
+after = ["expect(z.toJSONSchema(d)).toMatchObject({ maximum: zc.NUMBER_FORMAT_RANGES.int32[1], minimum: zc.NUMBER_FORMAT_RANGES.int32[0], type: 'integer' })"]
+message = "removed 3 checks, including expect(d._zod.bag.format).toEqual('int32')"
+label = "wrong"
+note = "The int32 range is now asserted through z.toJSONSchema (plus type integer); only bag.format has no counterpart, and the bag no longer carries it by design."
+
+[[finding]]
+unit = "6f0483671e62"
+pr = 6554
+rule = "check-removed"
+path = "packages/zod/src/v4/mini/tests/computed.test.ts"
+test = "array size"
+before = ["expect(e._zod.bag.length).toEqual(5)", "expect(e._zod.bag.minimum).toEqual(5)", "expect(e._zod.bag.maximum).toEqual(5)"]
+after = ["expect(z.toJSONSchema(e)).toMatchObject({ maxItems: 5, minItems: 5 })"]
+message = "removed 3 checks, including expect(e._zod.bag.length).toEqual(5)"
+label = "wrong"
+note = "The same length bounds are now asserted as minItems/maxItems through z.toJSONSchema."
+
+[[finding]]
+unit = "eb1c1089f7f9"
+pr = 6569
+rule = "gate-loosened"
+path = ".github/workflows/release.yml"
+before = ["if: github.event_name == 'push'"]
+after = ["if: inputs.mini_version == ''"]
+message = "job test-node: now runs only if inputs.mini_version == ''"
+label = "wrong"
+note = "The workflow moved from push to manual dispatch; test-node still runs before every main release, and test.yml still tests every push and PR."
+
+[[finding]]
+unit = "eb1c1089f7f9"
+pr = 6569
+rule = "gate-loosened"
+path = ".github/workflows/release.yml"
+before = ["if: github.event_name == 'push' && needs.version_changed.outputs.changed == 'true'"]
+after = ["if: inputs.mini_version == ''"]
+message = "job build_and_publish: now runs only if inputs.mini_version == ''"
+label = "wrong"
+note = "Same trigger move; build_and_publish still needs test-node, lint and check-circular before it publishes."
+
+[[finding]]
+unit = "b12aa523e7e2"
+pr = 6582
+rule = "check-removed"
+path = "packages/zod/src/v4/classic/tests/discriminated-unions.test.ts"
+test = "an omittable discriminator claims undefined"
+before = ["expect(() => z.discriminatedUnion('k', [z.object({ k }), z.object({ k: z.exactOptional(z.literal('c')) })]).parse({})).toThrow(/Duplicate discriminator value \"undefined\"/) (in loop)"]
+after = ["expect(schema.parse({ k: 'a' })).toEqual({ k: 'a' }) (in loop)", "expect(schema.parse({ k: 'c' })).toEqual({ k: 'c' }) (in loop)", "expect(schema.safeParse({}).success).toBe(false) (in loop)"]
+message = "removed expect(() => z.discriminatedUnion('k', [z.object({ k }), z.…"
+label = "wrong"
+note = "Deliberate behaviour change: the same union and the same {} input are still checked, now against the new result (a failed parse instead of a duplicate-tag throw), plus explicit-tag routing."
+
+[[finding]]
+unit = "413cce9a8c89"
+pr = 6594
+rule = "check-removed"
+path = "packages/zod/src/v4/classic/tests/cyclic-data.test.ts"
+test = "a non-enumerable key does not count for z.object"
+before = ["expect(z.core.isRecursiveSchema(props(true) as any)).toBe(true)", "expect(z.core.isRecursiveSchema(props(false) as any)).toBe(true)"]
+after = []
+message = "removed 2 checks, including expect(z.core.isRecursiveSchema(props(true) as any)).toBe(t…; the test name dropped \"counts z.properties and\""
+label = "intended"
+note = "The PR removed the standalone z.properties schema and the cycle tracking only it had, so these checks no longer apply."
+
+[[finding]]
+unit = "413cce9a8c89"
+pr = 6594
+rule = "test-disabled"
+path = "packages/zod/src/v4/classic/tests/properties.test.ts"
+tests = ["z.properties narrows through intersection", "z.properties JSON Schema", "z.properties infers the input side", "z.properties parses cyclic input", "z.properties asserts forward while encoding", "z.properties parses a cyclic callable", "z.properties JSON Schema describes the input side"]
+before = ["z.properties narrows through intersection", "z.properties JSON Schema", "z.properties infers the input side", "z.properties parses cyclic input", "z.properties asserts forward while encoding", "z.properties parses a cyclic callable", "z.properties JSON Schema describes the input side"]
+after = []
+message = "deleted 7 tests, including z.properties narrows through intersection"
+label = "intended"
+note = "The PR removed z.properties as a standalone schema (parse, infer, JSON Schema, encode, cycles), which is what these tests covered."
+
+[[finding]]
+unit = "413cce9a8c89"
+pr = 6594
+rule = "check-removed"
+path = "packages/zod/src/v4/classic/tests/properties.test.ts"
+test = "z.properties is a check"
+before = ["expect(p.parse(ok)).toBe(ok)", "expect(p.safeParse(input).error!.issues.map((i) => [i.code, i.path])).toEqual([['invalid_type', []]]) (in loop)"]
+after = []
+message = "removed 2 checks, including expect(p.parse(ok)).toBe(ok); the test name dropped \"schema\""
+label = "intended"
+note = "Standalone z.properties().parse was removed; the test now covers the check form."
+
+[[finding]]
+unit = "413cce9a8c89"
+pr = 6594
+rule = "check-removed"
+path = "packages/zod/src/v4/classic/tests/properties.test.ts"
+test = "z.properties compiles inside a container"
+before = ["expect(compiled.parse(ok)).toBe(ok)", "expect(compiled.safeParse({ a: '!', b: '!' }).error!.issues.map((i) => i.path)).toEqual([['a'], ['b']])", "expect(compiled.safeParse(null).error!.issues.map((i) => [i.code, i.path])).toEqual([['invalid_type', []]])"]
+after = []
+message = "removed 3 checks, including expect(compiled.parse(ok)).toBe(ok); the test was renamed"
+label = "intended"
+note = "Standalone z.compile of z.properties was removed; the in-container compile case is kept."
+
+[[finding]]
+unit = "413cce9a8c89"
+pr = 6594
+rule = "check-removed"
+path = "packages/zod/src/v4/classic/tests/properties.test.ts"
+test = "z.properties spreads into .check()"
+before = ["expect(spread).toEqual([p])"]
+after = ["expect([...p]).toEqual([p])"]
+message = "removed expect(spread).toEqual([p])"
+label = "wrong"
+note = "expect([...p]).toEqual([p]) is the same check with the spread inlined."
+
+[[finding]]
+unit = "ad32d7512ce4"
+pr = 6588
+rule = "test-disabled"
+path = "packages/zod/src/v4/classic/tests/to-json-schema.test.ts"
+test = "large registry converts in linear time"
+before = ["expect(Object.keys(plain.schemas)).toHaveLength(2000)", "expect(plain.schemas.Type0).toMatchObject({ $id: 'https://example.com/Type0.json', properties: { nested: { type: 'object' } }, type: 'object' })", "expect(plain.schemas[`Type${count - 1}`]!.$id).toBe(`https://example.com/Type${count - 1}.json`)", "expect(plain.elapsed).toBeLessThan(5000)", "expect(folded.schemas.Inter).toMatchObject({ properties: { a: {}, b: {} }, type: 'object' })", "expect(folded.elapsed).toBeLessThan(plain.elapsed * 4 + 100)"]
+after = []
+message = "deleted: large registry converts in linear time"
+label = "wrong"
+note = "Renamed and rewritten: the wall-clock bounds became deterministic map-scan work bounds, and all the shape checks remain (the PR description says so)."
+
+[[finding]]
+unit = "ad32d7512ce4"
+pr = 6588
+rule = "test-disabled"
+path = "packages/zod/src/v4/classic/tests/to-json-schema.test.ts"
+test = "a registry of records with numeric keys converts in linear time"
+before = ["expect(numeric.schemas.Type0).toMatchObject({ properties: { m: { propertyNames: { pattern: '^-?\\\\d+(?:\\\\.\\\\d+)?$', type: 'string' } } } })", "expect(numeric.elapsed).toBeLessThan(string.elapsed * 2 + 50)", "expect(extracted.schemas.Type0).toMatchObject({ properties: { m: { propertyNames: { pattern: '^-?\\\\d+(?:\\\\.\\\\d+)?$', type: 'string' } } } })"]
+after = []
+message = "deleted: a registry of records with numeric keys converts in linear time"
+label = "wrong"
+note = "Renamed and rewritten with deterministic map-scan work bounds; the extracted-key case now also gets a linearity check."
+
+[[finding]]
+unit = "ad32d7512ce4"
+pr = 6588
+rule = "test-disabled"
+path = "packages/zod/src/v4/core/tests/url-no-canparse.test.ts"
+test = "z.url() with URL.canParse absent > z.url() validates correctly without URL.canParse (runtime)"
+before = ["expect(URL.canParse).toBeUndefined()", "expect(z.url().safeParse('https://example.com').success).toBe(true)", "expect(z.url().safeParse('not a url').success).toBe(false)"]
+after = []
+message = "deleted: z.url() with URL.canParse absent > z.url() validates correctly without URL.canParse (runtime)"
+label = "wrong"
+note = "Merged into 'falls back when URL.canParse is absent', which checks z.url() on valid and invalid input both at runtime and compiled; only a precondition assert on URL.canParse is gone."
+
+[[finding]]
+unit = "ad32d7512ce4"
+pr = 6588
+rule = "test-disabled"
+path = "packages/zod/src/v4/core/tests/url-no-canparse.test.ts"
+test = "z.url() with URL.canParse absent > z.url() validates correctly without URL.canParse (compiled)"
+before = ["expect(URL.canParse).toBeUndefined()", "expect(compiled.safeParse('https://example.com').success).toBe(true)", "expect(compiled.safeParse('not a url').success).toBe(false)"]
+after = []
+message = "deleted: z.url() with URL.canParse absent > z.url() validates correctly without URL.canParse (compiled)"
+label = "wrong"
+note = "Merged into 'falls back when URL.canParse is absent', which also runs the compiled z.url() on valid and invalid input."
+
+[[finding]]
+unit = "ad32d7512ce4"
+pr = 6588
+rule = "check-removed"
+path = "packages/zod/src/v4/core/tests/compile.test.ts"
+test = "validate honors standalone format checks"
+before = ["expect(hasBooleanPattern(schema)).toBe(true) (in loop)", "expect(hasBooleanPattern(refined)).toBe(false)", "expect(hasBooleanPattern(asyncRefined)).toBe(false)", "expect(hasBooleanPattern(coerced)).toBe(false)", "expect(hasBooleanPattern(inheritedChecked)).toBe(false)"]
+after = []
+message = "removed 5 checks, including expect(hasBooleanPattern(schema)).toBe(true); the test name dropped \"uses boolean patterns only for pure formats\""
+label = "intended"
+note = "The same commit removed the standalone boolean-pattern shortcut, so there is no booleanPattern to check; the validate checks remain."
+
+[[finding]]
+unit = "ad32d7512ce4"
+pr = 6588
+rule = "check-removed"
+path = "packages/zod/src/v4/core/tests/compile.test.ts"
+test = "runtime validate preserves contexts, getters, errors, and regex state"
+before = ["expect(hasBooleanPattern(gated)).toBe(false)", "expect(hasBooleanPattern(customError)).toBe(true)", "expect(hasBooleanPattern(cloned)).toBe(true)"]
+after = []
+message = "removed 3 checks, including expect(hasBooleanPattern(gated)).toBe(false); the test name dropped \"boolean patterns preserve\""
+label = "intended"
+note = "The same commit removed the standalone boolean-pattern shortcut, so there is no booleanPattern to check; the validate checks remain."
+
+[[finding]]
+unit = "ad32d7512ce4"
+pr = 6588
+rule = "check-removed"
+path = "packages/zod/src/v4/core/tests/compile.test.ts"
+test = "validate uses compiled validators and runtime fallbacks"
+before = ["expect(hasBooleanPattern(compiled)).toBe(true)", "expect(hasBooleanPattern(installed)).toBe(true)"]
+after = []
+message = "removed 2 checks, including expect(hasBooleanPattern(compiled)).toBe(true); the test name dropped \"take precedence over boolean patterns\""
+label = "intended"
+note = "The same commit removed the standalone boolean-pattern shortcut, so there is no booleanPattern to check; the validate checks remain."
+
+[[finding]]
+unit = "ad32d7512ce4"
+pr = 6588
+rule = "test-disabled"
+path = "packages/zod/src/v4/classic/tests/instance-footprint.test.ts"
+test = "unchecked schemas retain deferred initializer ordering"
+before = ["expect(events).toEqual([true, true])", "expect(Object.prototype.hasOwnProperty.call(schema._zod, 'deferred')).toBe(true)", "expect(schema._zod.deferred).toBeUndefined()"]
+after = []
+message = "deleted: unchecked schemas retain deferred initializer ordering"
+label = "intended"
+note = "The same commit reverted the $ZodType checks/deferred change this test was added alongside, back to main's code."
+
+[[finding]]
+unit = "ca0229a40481"
+rule = "gate-loosened"
+path = ".github/workflows/iso-4217.yml"
+before = ["nub exec --node vitest run packages/zod/src/v4/classic/tests/string.test.ts packages/zod/src/v4/mini/tests/string.test.ts packages/zod/src/v4/classic/tests/to-json-schema.test.ts"]
+after = []
+message = "job refresh removed: its tests (nub exec --node vitest run packages/zod/src/v4/classic/test…) no longer run"
+label = "intended"
+note = "Revert of the z.currencyCode feature; the weekly ISO 4217 refresh job and its test step existed only for it."
+
+[[finding]]
+unit = "ca0229a40481"
+rule = "test-disabled"
+path = "packages/treeshake/bundle-size.test.ts"
+test = "a hostname bundle carries no other format's regex"
+before = ["expect(code).not.toContain('[0-9a-vA-V]{20}')"]
+after = []
+message = "deleted: a hostname bundle carries no other format's regex"
+label = "intended"
+note = "Revert of #6595, which added this test together with the regex import change it guarded."
+
+[[finding]]
+unit = "ca0229a40481"
+rule = "test-disabled"
+path = "packages/zod/src/v4/classic/tests/string.test.ts"
+test = "currency code"
+before = ["expect(currency.parse(code)).toBe(code) (in loop)", "expect(currency.safeParse(input).success).toBe(false) (in loop)", "expect(currency.safeParse('usd').error!.issues[0]).toMatchObject({ code: 'invalid_format', format: 'currency_code', message: 'Invalid currency code' })"]
+after = []
+message = "deleted: currency code"
+label = "intended"
+note = "Revert of the z.currencyCode feature these tests covered."
+
+[[finding]]
+unit = "ca0229a40481"
+rule = "test-disabled"
+path = "packages/zod/src/v4/classic/tests/to-json-schema.test.ts"
+test = "currency code"
+before = ["expect(z.toJSONSchema(z.currencyCode())).toEqual({ $schema: 'https://json-schema.org/draft/2020-12/schema', format: 'currency_code', pattern: z.regexes.currencyCode.source, type: 'string' })"]
+after = []
+message = "deleted: currency code"
+label = "intended"
+note = "Revert of the z.currencyCode feature these tests covered."
+
+[[finding]]
+unit = "ca0229a40481"
+rule = "test-disabled"
+path = "packages/zod/src/v4/mini/tests/string.test.ts"
+test = "z.currencyCode"
+before = ["expect(z.parse(a, 'EUR')).toBe('EUR')", "expect(z.safeParse(a, 'eur')).toMatchObject({ success: false })"]
+after = []
+message = "deleted: z.currencyCode"
+label = "intended"
+note = "Revert of the z.currencyCode feature these tests covered."
+
+[[finding]]
+unit = "74304ce5b579"
+pr = 6622
+rule = "gate-loosened"
+path = ".github/workflows/publish.yml"
+before = ["nub run test"]
+after = []
+message = "job publish removed: its tests (nub run test) no longer run"
+label = "intended"
+note = "The commit reverts 'ci: publish to npm with NPM_TOKEN', which added this workflow; both are stray commits inherited from a since-rewritten main, which never had the file."
+
+[[finding]]
+unit = "c42596bd1c87"
+pr = 6638
+rule = "gate-loosened"
+path = ".github/workflows/publish.yml"
+before = ["nub run test"]
+after = []
+message = "job publish removed: its tests (nub run test) no longer run"
+label = "intended"
+note = "The commit reverts 'ci: publish to npm with NPM_TOKEN', which added this workflow; both are stray commits inherited from a since-rewritten main, which never had the file."
+
+[[finding]]
+unit = "a2ba4a67986a"
+pr = 6645
+rule = "gate-loosened"
+path = ".github/workflows/publish.yml"
+before = ["nub run test"]
+after = []
+message = "job publish removed: its tests (nub run test) no longer run"
+label = "intended"
+note = "The commit reverts 'ci: publish to npm with NPM_TOKEN', which added this workflow; both are stray commits inherited from a since-rewritten main, which never had the file."
+
+[[finding]]
+unit = "a0ebf970f2d7"
+pr = 6652
+rule = "gate-loosened"
+path = ".github/workflows/publish.yml"
+before = ["nub run test"]
+after = []
+message = "job publish removed: its tests (nub run test) no longer run"
+label = "intended"
+note = "The commit reverts 'ci: publish to npm with NPM_TOKEN', which added this workflow; both are stray commits inherited from a since-rewritten main, which never had the file."
+
+[[finding]]
+unit = "311cd74b2765"
+pr = 6660
+rule = "check-cant-fail"
+path = "packages/zod/src/v4/core/tests/compile.test.ts"
+test = "record key schemas compile: formats, checks, numbers, transforms"
+before = ["expect(fast.success).toBe(original.success) via expectMatch(z.record(z.email(), z.number()), JSON.parse('{\"__proto__\":{\"p\":1},\"a@b.com\":1}'))", "expect(fast.data).toEqual(original.data) (in if) via expectMatch(z.record(z.email(), z.number()), JSON.parse('{\"__proto__\":{\"p\":1},\"a@b.com\":1}'))", "expect(fast.error.issues).toEqual(original.error.issues) (in if) via expectMatch(z.record(z.email(), z.number()), JSON.parse('{\"__proto__\":{\"p\":1},\"a@b.com\":1}'))"]
+after = ["expect(fast.success).toBe(original.success) (in loop) via expectMatch(z.looseRecord(z.email(), z.number()), input)", "expect(fast.data).toEqual(original.data) (in if, in loop) via expectMatch(z.looseRecord(z.email(), z.number()), input)", "expect(fast.error.issues).toEqual(original.error.issues) (in if, in loop) via expectMatch(z.looseRecord(z.email(), z.number()), input)"]
+message = "expectMatch(z.looseRecord(z.email(), z.number()), input) is now inside a loop, with its 3 checks: it doesn't run if the loop runs zero times"
+label = "wrong"
+note = "The loop runs over a literal three-schema array, so the original record case still runs, plus two more."
+
+[[finding]]
+unit = "33494f3a1ee9"
+pr = 6704
+rule = "test-disabled"
+path = "packages/zod/src/v4/classic/tests/intersection.test.ts"
+test = "key reconciliation is linear in the input's key count"
+before = ["expect(records.parse(input)).toEqual(input)", "expect(stricts.safeParse(input).error!.issues).toMatchObject([{ code: 'unrecognized_keys', keys: { length: 50000 } }])", "expect(mixed.safeParse(input).error!.issues).toMatchObject([{ code: 'unrecognized_keys', keys: { length: 50001 } }])", "expect(best(schema)).toBeLessThan(25 * best(record)) (in loop)"]
+after = []
+message = "deleted: key reconciliation is linear in the input's key count"
+label = "wrong"
+note = "Renamed and rewritten: the timing ratio became a deterministic scan count and the parse checks remain at 2000 keys; the commit explains the flakiness."
+
+[[finding]]
+unit = "2ec830fd27f5"
+pr = 6738
+rule = "check-removed"
+path = "packages/zod/src/v4/classic/tests/cyclic-data.test.ts"
+test = "a finished %s pins nothing on the schema"
+before = ["expect(ref.deref()).toBeUndefined()"]
+after = ["expect(refs.map((ref) => ref.deref())).toEqual([undefined, undefined])"]
+message = "removed expect(ref.deref()).toBeUndefined(); the test name dropped \"parse\""
+label = "wrong"
+note = "Rewritten into a stronger form: it now checks both the input and the output are collected, for parse and parseAsync."

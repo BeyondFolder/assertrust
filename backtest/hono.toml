@@ -1,0 +1,158 @@
+# Labels for `assertrust backtest --labels`: a verdict on each finding.
+#   wrong        nothing got weaker: assertrust misread the change
+#   intended     weaker on purpose: the code the test covered went too, or a commit says why
+#   unexplained  weaker, and nothing in the change says why
+# "" is a finding not labelled yet. `--update-labels` rewrites this file: it adds new
+# findings and drops false alarms no longer found. Keep remarks in `note`.
+
+repo = "https://github.com/honojs/hono.git"
+range = "00ee875728e2369b98a9ab7dda0690b77afedcff..61f7c59e50244ab4d2dd83c151928cf7ea448510"
+
+[[finding]]
+unit = "52febbcc30bc"
+pr = 5379
+rule = "check-removed"
+path = "src/utils/jwt/jwt.test.ts"
+test = "JWT > JwtTokenInvalid for a signature that is not valid base64url"
+before = ["expect(err).toEqual(new JwtTokenInvalid(tok))", "expect(authorized).toBeUndefined()"]
+after = ["expect(err).toBeInstanceOf(JwtTokenInvalid)", "expect(err).toHaveProperty('message', `invalid JWT token: ${tok}`)"]
+message = "removed 2 checks, including expect(err).toEqual(new JwtTokenInvalid(tok))"
+label = "wrong"
+note = "Rewritten as .catch(e => e) plus toBeInstanceOf(JwtTokenInvalid) and the exact message: as strong as toEqual, and a resolved verify would fail the instanceOf check."
+
+[[finding]]
+unit = "de310ac063fe"
+pr = 5426
+rule = "test-disabled"
+path = "src/adapter/lambda-edge/handler.test.ts"
+test = "isContentTypeBinary > Should determine whether it is binary"
+before = ["expect(isContentTypeBinary('image/png')).toBe(true)", "expect(isContentTypeBinary('font/woff2')).toBe(true)", "expect(isContentTypeBinary('image/svg+xml')).toBe(false)", "expect(isContentTypeBinary('image/svg+xml; charset=UTF-8')).toBe(false)", "expect(isContentTypeBinary('text/plain')).toBe(false)", "expect(isContentTypeBinary('text/plain; charset=UTF-8')).toBe(false)", "expect(isContentTypeBinary('text/css')).toBe(false)", "expect(isContentTypeBinary('text/javascript')).toBe(false)", "expect(isContentTypeBinary('application/json')).toBe(false)", "expect(isContentTypeBinary('application/ld+json')).toBe(false)", "expect(isContentTypeBinary('application/json')).toBe(false)"]
+after = []
+message = "deleted: isContentTypeBinary > Should determine whether it is binary"
+label = "wrong"
+note = "Converted to it.each under a new name, with all the same cases plus more."
+
+[[finding]]
+unit = "ee0622e14487"
+pr = 5448
+rule = "test-disabled"
+path = "build/remove-private-fields.test.ts"
+tests = ["removePrivateFields > should remove private fields from declarations"]
+before = ["removePrivateFields > should remove private fields from declarations"]
+after = []
+message = "file deleted: its test no longer runs"
+label = "unexplained"
+note = "The helper was reimplemented as a plugin inline in vite.config.ts and its unit test was dropped, not ported; the commit doesn't mention tests."
+
+[[finding]]
+unit = "ee0622e14487"
+pr = 5448
+rule = "test-disabled"
+path = "build/validate-exports.test.ts"
+tests = ["validateExports > Works"]
+before = ["validateExports > Works"]
+after = []
+message = "file deleted: its test no longer runs"
+label = "unexplained"
+note = "The same logic moved inline into a vite.config.ts plugin and its unit test (including the throwing case) was dropped; the commit doesn't mention tests."
+
+[[finding]]
+unit = "b877827fccde"
+pr = 5463
+rule = "test-disabled"
+path = "adapters/cloudflare-pages/src/conninfo.test.ts"
+tests = ["getConnInfo > Should return the client IP from cf-connecting-ip header", "getConnInfo > Should return undefined when cf-connecting-ip header is not present"]
+before = ["getConnInfo > Should return the client IP from cf-connecting-ip header", "getConnInfo > Should return undefined when cf-connecting-ip header is not present"]
+after = []
+message = "file deleted: its 2 tests no longer run"
+label = "intended"
+note = "The PR's new @hono/cloudflare-pages package was dropped with its code ('it is obsolete'); main's src/adapter/cloudflare-pages tests still run."
+
+[[finding]]
+unit = "b877827fccde"
+pr = 5463
+rule = "test-disabled"
+path = "adapters/cloudflare-pages/src/handler.test.ts"
+tests = ["Adapter for Cloudflare Pages > Should return 200 response", "Adapter for Cloudflare Pages > Should not use `basePath()` if path argument is not passed", "Middleware adapter for Cloudflare Pages > Should return the middleware response", "Middleware adapter for Cloudflare Pages > Should return the middleware response when exceptions are handled", "Middleware adapter for Cloudflare Pages > Should return the middleware response if next() is not called", "Middleware adapter for Cloudflare Pages > Should return the Pages response if the middleware does not return a response", "Middleware adapter for Cloudflare Pages > Should handle a HTTPException by returning error.getResponse()", "Middleware adapter for Cloudflare Pages > Should handle an HTTPException thrown by next()", "Middleware adapter for Cloudflare Pages > Should handle an Error thrown by next()", "Middleware adapter for Cloudflare Pages > Should handle a non-Error thrown by next()", "Middleware adapter for Cloudflare Pages > Should rethrow an Error", "Middleware adapter for Cloudflare Pages > Should rethrow non-Error exceptions", "Middleware adapter for Cloudflare Pages > Should set the data in eventContext.data", "serveStatic() > Should pass the raw request to ASSETS.fetch", "serveStatic() > Should respond with 404 if ASSETS.fetch returns a 404 response"]
+before = ["Adapter for Cloudflare Pages > Should return 200 response", "Adapter for Cloudflare Pages > Should not use `basePath()` if path argument is not passed", "Middleware adapter for Cloudflare Pages > Should return the middleware response", "Middleware adapter for Cloudflare Pages > Should return the middleware response when exceptions are handled", "Middleware adapter for Cloudflare Pages > Should return the middleware response if next() is not called", "Middleware adapter for Cloudflare Pages > Should return the Pages response if the middleware does not return a response", "Middleware adapter for Cloudflare Pages > Should handle a HTTPException by returning error.getResponse()", "Middleware adapter for Cloudflare Pages > Should handle an HTTPException thrown by next()", "Middleware adapter for Cloudflare Pages > Should handle an Error thrown by next()", "Middleware adapter for Cloudflare Pages > Should handle a non-Error thrown by next()", "Middleware adapter for Cloudflare Pages > Should rethrow an Error", "Middleware adapter for Cloudflare Pages > Should rethrow non-Error exceptions", "Middleware adapter for Cloudflare Pages > Should set the data in eventContext.data", "serveStatic() > Should pass the raw request to ASSETS.fetch", "serveStatic() > Should respond with 404 if ASSETS.fetch returns a 404 response"]
+after = []
+message = "file deleted: its 15 tests no longer run"
+label = "intended"
+note = "The PR's new @hono/cloudflare-pages package was dropped with its code ('it is obsolete'); main's src/adapter/cloudflare-pages tests still run."
+
+[[finding]]
+unit = "b877827fccde"
+pr = 5463
+rule = "gate-loosened"
+path = "adapters/cloudflare-pages/package.json"
+before = ["tsc -p tsconfig.json && vp test --run"]
+after = []
+message = "script test removed: its tests (tsc -p tsconfig.json && vp test --run) no longer run from it"
+label = "intended"
+note = "The PR's new @hono/cloudflare-pages package was dropped with its code ('it is obsolete'); main's src/adapter/cloudflare-pages tests still run."
+
+[[finding]]
+unit = "645ddd6e6ceb"
+pr = 5466
+rule = "gate-loosened"
+path = ".github/workflows/ci.yml"
+before = ["pnpm run test:lambda"]
+after = []
+message = "job lambda removed: its tests (pnpm run test:lambda) no longer run"
+label = "wrong"
+note = "The lambda tests moved to adapters/aws-lambda/test and still run in CI via test:adapters in ci-adapters.yml."
+
+[[finding]]
+unit = "645ddd6e6ceb"
+pr = 5466
+rule = "gate-loosened"
+path = ".github/workflows/ci.yml"
+before = ["pnpm run test:lambda-edge"]
+after = []
+message = "job lambda-edge removed: its tests (pnpm run test:lambda-edge) no longer run"
+label = "wrong"
+note = "The lambda-edge tests moved to adapters/lambda-edge/test and still run in CI via test:adapters in ci-adapters.yml."
+
+[[finding]]
+unit = "645ddd6e6ceb"
+pr = 5466
+rule = "gate-loosened"
+path = "package.json"
+before = ["vp test --run --project lambda"]
+after = []
+message = "script test:lambda removed: its tests (vp test --run --project lambda) no longer run from it"
+label = "wrong"
+note = "The tests moved into the adapters/aws-lambda workspace package, whose test script runs them via test:adapters."
+
+[[finding]]
+unit = "645ddd6e6ceb"
+pr = 5466
+rule = "gate-loosened"
+path = "package.json"
+before = ["vp test --run --project lambda-edge"]
+after = []
+message = "script test:lambda-edge removed: its tests (vp test --run --project lambda-edge) no longer run from it"
+label = "wrong"
+note = "The tests moved into the adapters/lambda-edge workspace package, whose test script runs them via test:adapters."
+
+[[finding]]
+unit = "8b05c774ef15"
+rule = "check-removed"
+path = "src/middleware/serve-static/index.test.ts"
+test = "Serve Static Middleware > Changing root path > Should not allow bypass via path mismatch between middleware and serveStatic"
+before = ["expect(await res2.text()).toBe('Hello in admin%2Fsecret.txt')"]
+after = ["expect(res2.status).toBe(404)"]
+message = "removed expect(await res2.text()).toBe('Hello in admin%2Fsecret.txt…"
+label = "wrong"
+note = "Same request still asserted: percent paths now 404 by default (the security fix), so the body check became a status-404 check; nothing got weaker."
+
+[[finding]]
+unit = "8a103aa59bcf"
+rule = "test-disabled"
+path = "src/router/reg-exp-router/router.test.ts"
+test = "RegExpRouter > Wildcard after label > Should prioritize the only wildcard over the tail wildcard regardless of the order"
+before = ["expect(res[0][0]).toBe('/a*') (in loop)"]
+after = []
+message = "deleted: RegExpRouter > Wildcard after label > Should prioritize the only wildcard over the tail wildcard regardless of the order"
+label = "wrong"
+note = "Wildcard order deliberately became registration order; the same a* vs a/* both-orders scenario is pinned more fully in common.case.test.ts, which runs for RegExpRouter."

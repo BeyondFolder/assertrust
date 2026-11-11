@@ -19,6 +19,22 @@ fn check_help_lists_its_flags() {
 }
 
 #[test]
+fn backtest_help_lists_its_flags() {
+    let run = assertrust(&["backtest", "--help"]);
+    assert_eq!(run.code, 0);
+    insta::assert_snapshot!(run.stdout);
+}
+
+#[test]
+fn updating_labels_needs_a_labels_file() {
+    let run = assertrust(&["backtest", "--update-labels"]);
+    assert_eq!(run.code, 2, "{}", run.stderr);
+    assert!(run.stderr.contains("--labels <FILE>"), "{}", run.stderr);
+    let run = assertrust(&["backtest", "--last", "0"]);
+    assert_eq!(run.code, 2, "{}", run.stderr);
+}
+
+#[test]
 fn version_prints_the_crate_version() {
     let run = assertrust(&["--version"]);
     assert_eq!(run.code, 0);

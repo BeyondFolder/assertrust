@@ -2,8 +2,8 @@
 //!
 //! The flags follow `docs/architecture.md`: the mode flags pick what to compare (step 1),
 //! `check` runs the rules (step 5), `--format` and `--verbose` control its output (step 6),
-//! `tests` shows what parsing finds in one file (steps 2–3), and `pairs` shows what matching
-//! pairs up (step 4).
+//! `backtest` replays a branch's history with `check` (step 6), `tests` shows what parsing
+//! finds in one file (steps 2–3), and `pairs` shows what matching pairs up (step 4).
 
 use std::path::PathBuf;
 
@@ -21,6 +21,8 @@ pub struct Cli {
 pub enum Command {
     /// Check a change for weakened tests
     Check(CheckArgs),
+    /// Replay a branch's history as CI would have checked it: each merged PR, each push
+    Backtest(BacktestArgs),
     /// Show which commits and files a check would look at (for debugging)
     Changes(ChangesArgs),
     /// Show the tests and checks assertrust finds in a file, or a CI or test config's gate facts (for debugging)
@@ -62,6 +64,48 @@ pub struct CheckArgs {
     /// Show the test name, before/after snippets, the full commit message, and changed outcomes
     #[arg(short, long)]
     pub verbose: bool,
+}
+
+#[derive(Debug, Args)]
+pub struct BacktestArgs {
+    /// The commits to replay: BASE..HEAD, those on HEAD's first-parent line after BASE
+    #[arg(long, value_name = "RANGE", conflicts_with = "last")]
+    pub range: Option<String>,
+
+    /// Replay the last N commits on the current branch's first-parent line (default: 100, or
+    /// the labels file's range)
+    #[arg(long, value_name = "N", value_parser = clap::value_parser!(u64).range(1..))]
+    pub last: Option<u64>,
+
+    /// A file with a verdict on each finding, to measure assertrust: prints how often it's
+    /// right, and exits with 1 on findings not labelled yet or no longer found
+    #[arg(long, value_name = "FILE")]
+    pub labels: Option<PathBuf>,
+
+    /// Add new findings to the labels file, not labelled yet, and drop false alarms no longer
+    /// found
+    #[arg(long, requires = "labels")]
+    pub update_labels: bool,
+
+    /// Output format
+    #[arg(long, value_enum, default_value_t = BacktestFormat::Terminal)]
+    pub format: BacktestFormat,
+
+    /// Also show weakening that was undone later in the same PR
+    #[arg(long)]
+    pub show_transient: bool,
+
+    /// Show the test name, before/after snippets, the full commit message, and changed outcomes
+    #[arg(short, long)]
+    pub verbose: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum BacktestFormat {
+    /// Short, human-readable findings, by PR and push
+    Terminal,
+    /// Machine-readable findings, for scripts and other tools
+    Json,
 }
 
 /// What to compare. At most one of these can be given. With none, the current branch is

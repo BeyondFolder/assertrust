@@ -1,0 +1,165 @@
+# Labels for `assertrust backtest --labels`: a verdict on each finding.
+#   wrong        nothing got weaker: assertrust misread the change
+#   intended     weaker on purpose: the code the test covered went too, or a commit says why
+#   unexplained  weaker, and nothing in the change says why
+# "" is a finding not labelled yet. `--update-labels` rewrites this file: it adds new
+# findings and drops false alarms no longer found. Keep remarks in `note`.
+
+repo = "https://github.com/calcom/cal.com.git"
+range = "57586ba5075bcf768ddd0922c424473cd85b9636..3030d88a1fd9a9b9acc986aac37879a6ba51cb8a"
+
+[[finding]]
+unit = "c2c95b371a69"
+pr = 29019
+rule = "test-disabled"
+path = "packages/features/booking-audit/lib/service/__tests__/accepted-action.integration-test.ts"
+tests = ["Accepted Action Integration > when single booking is accepted > should create audit record and retrieve it with correct data formatting", "Accepted Action Integration > when single booking is accepted > should enrich actor information with user details from database", "Accepted Action Integration > when multiple bookings are accepted in bulk > should create audit records for all bookings with same operation ID"]
+before = ["Accepted Action Integration > when single booking is accepted > should create audit record and retrieve it with correct data formatting", "Accepted Action Integration > when single booking is accepted > should enrich actor information with user details from database", "Accepted Action Integration > when multiple bookings are accepted in bulk > should create audit records for all bookings with same operation ID"]
+after = []
+message = "file deleted: its 3 tests no longer run"
+label = "intended"
+note = "PR title says it deliberately removes this org-based integration coverage, part of a series stripping team/org support; the audit code itself stays."
+
+[[finding]]
+unit = "c2c95b371a69"
+pr = 29019
+rule = "test-disabled"
+path = "packages/features/booking-audit/lib/service/__tests__/attendee-added-action.integration-test.ts"
+tests = ["Attendee Added Action Integration > when guests are added to a booking > should create audit record with correct added attendees data"]
+before = ["Attendee Added Action Integration > when guests are added to a booking > should create audit record with correct added attendees data"]
+after = []
+message = "file deleted: its test no longer runs"
+label = "intended"
+note = "PR title says it deliberately removes this org-based integration coverage, part of a series stripping team/org support; the audit code itself stays."
+
+[[finding]]
+unit = "c2c95b371a69"
+pr = 29019
+rule = "test-disabled"
+path = "packages/features/booking-audit/lib/service/__tests__/cancelled-action.integration-test.ts"
+tests = ["Cancelled Action Integration > when booking is cancelled > should create audit record with cancellation details and retrieve it correctly"]
+before = ["Cancelled Action Integration > when booking is cancelled > should create audit record with cancellation details and retrieve it correctly"]
+after = []
+message = "file deleted: its test no longer runs"
+label = "intended"
+note = "PR title says it deliberately removes this org-based integration coverage, part of a series stripping team/org support; the audit code itself stays."
+
+[[finding]]
+unit = "c2c95b371a69"
+pr = 29019
+rule = "test-disabled"
+path = "packages/features/booking-audit/lib/service/__tests__/created-action.integration-test.ts"
+tests = ["Created Action Integration > when single booking is created > should create audit record and retrieve it with correct data formatting", "Created Action Integration > when single booking is created > should enrich actor information with user details from database", "Created Action Integration > when single booking is created > should include impersonator details when context has impersonatedBy", "Created Action Integration > when multiple bookings are created in bulk > should create audit records for all bookings with same operation ID"]
+before = ["Created Action Integration > when single booking is created > should create audit record and retrieve it with correct data formatting", "Created Action Integration > when single booking is created > should enrich actor information with user details from database", "Created Action Integration > when single booking is created > should include impersonator details when context has impersonatedBy", "Created Action Integration > when multiple bookings are created in bulk > should create audit records for all bookings with same operation ID"]
+after = []
+message = "file deleted: its 4 tests no longer run"
+label = "intended"
+note = "PR title says it deliberately removes this org-based integration coverage, part of a series stripping team/org support; the audit code itself stays."
+
+[[finding]]
+unit = "c2c95b371a69"
+pr = 29019
+rule = "test-disabled"
+path = "packages/features/booking-audit/lib/service/__tests__/location-changed-action.integration-test.ts"
+tests = ["Location Changed Action Integration > when location is changed > should create audit record and retrieve it with correct location data", "Location Changed Action Integration > when location is changed > should handle location change where old value was null"]
+before = ["Location Changed Action Integration > when location is changed > should create audit record and retrieve it with correct location data", "Location Changed Action Integration > when location is changed > should handle location change where old value was null"]
+after = []
+message = "file deleted: its 2 tests no longer run"
+label = "intended"
+note = "PR title says it deliberately removes this org-based integration coverage, part of a series stripping team/org support; the audit code itself stays."
+
+[[finding]]
+unit = "c2c95b371a69"
+pr = 29019
+rule = "test-disabled"
+path = "packages/features/booking-audit/lib/service/__tests__/no-show-updated-action.integration-test.ts"
+tests = ["No-Show Updated Action Integration > when host is marked as no-show > should create audit record with host field containing userUuid and noShow", "No-Show Updated Action Integration > when attendees are marked as no-show > should create audit record with attendeesNoShow array", "No-Show Updated Action Integration > when attendees are marked as no-show > should handle multiple attendees marked as no-show", "No-Show Updated Action Integration > when both host and attendees are marked as no-show > should create single audit record with both host and attendeesNoShow fields", "No-Show Updated Action Integration > schema validation with array format > should accept attendeesNoShow data with array format"]
+before = ["No-Show Updated Action Integration > when host is marked as no-show > should create audit record with host field containing userUuid and noShow", "No-Show Updated Action Integration > when attendees are marked as no-show > should create audit record with attendeesNoShow array", "No-Show Updated Action Integration > when attendees are marked as no-show > should handle multiple attendees marked as no-show", "No-Show Updated Action Integration > when both host and attendees are marked as no-show > should create single audit record with both host and attendeesNoShow fields", "No-Show Updated Action Integration > schema validation with array format > should accept attendeesNoShow data with array format"]
+after = []
+message = "file deleted: its 5 tests no longer run"
+label = "intended"
+note = "PR title says it deliberately removes this org-based integration coverage, part of a series stripping team/org support; the audit code itself stays."
+
+[[finding]]
+unit = "91341cbba403"
+pr = 29022
+rule = "test-disabled"
+path = "packages/features/webhooks/lib/factory/base/BaseInstantMeetingBuilder.test.ts"
+tests = ["InstantMeetingBuilder (v2021-10-20) > INSTANT_MEETING > should build payload with all instant meeting fields"]
+before = ["InstantMeetingBuilder (v2021-10-20) > INSTANT_MEETING > should build payload with all instant meeting fields"]
+after = []
+message = "file deleted: its test no longer runs"
+label = "intended"
+note = "The instant meeting webhook trigger was removed in the same PR, along with the builder this file tested."
+
+[[finding]]
+unit = "91341cbba403"
+pr = 29022
+rule = "test-disabled"
+path = "packages/features/webhooks/lib/factory/versioned/PayloadBuilderFactory.test.ts"
+test = "PayloadBuilderFactory > Builder Routing > should route instant meeting events to instant meeting builder"
+before = ["expect(builder).toBe(defaultBuilders.instantMeeting)"]
+after = []
+message = "deleted: PayloadBuilderFactory > Builder Routing > should route instant meeting events to instant meeting builder"
+label = "intended"
+note = "The instant meeting webhook trigger and its builder were removed in the same PR, so this case no longer exists."
+
+[[finding]]
+unit = "91341cbba403"
+pr = 29022
+rule = "check-removed"
+path = "packages/features/webhooks/lib/factory/versioned/PayloadBuilderFactory.test.ts"
+test = "PayloadBuilderFactory > Type Safety > should return correctly typed builder for each trigger"
+before = ["expect(instantBuilder).toBeDefined()"]
+after = []
+message = "removed expect(instantBuilder).toBeDefined()"
+label = "intended"
+note = "The instant meeting webhook trigger and its builder were removed in the same PR, so this case no longer exists."
+
+[[finding]]
+unit = "91341cbba403"
+pr = 29022
+rule = "check-removed"
+path = "packages/features/webhooks/lib/factory/versioned/registry.test.ts"
+test = "Payload Builder Registry > createPayloadBuilderFactory > should register all required builders for default version"
+before = ["expect(instantBuilder).toBeDefined()"]
+after = []
+message = "removed expect(instantBuilder).toBeDefined()"
+label = "intended"
+note = "The instant meeting webhook trigger and its builder were removed in the same PR, so this case no longer exists."
+
+[[finding]]
+unit = "0d164da8ddc6"
+pr = 27634
+rule = "test-disabled"
+path = "packages/trpc/server/routers/viewer/me/deleteMe.handler.test.ts"
+test = "deleteMeHandler > Password validation > should validate password with strict mode for non-USER roles"
+before = ["await expect(deleteMeHandler({ ctx: adminCtx, input: { password: 'weak' } })).rejects.toThrow(new HttpError({ statusCode: 400, message: ErrorCode.PasswordPolicyViolation }))", "expect(mockIsPasswordValid).toHaveBeenCalledWith('weak', false, true)"]
+after = []
+message = "deleted: deleteMeHandler > Password validation > should validate password with strict mode for non-USER roles"
+label = "unexplained"
+note = "Rewritten without the mock and with a password that fails both modes, so the role-based strict flag (still in the handler) is no longer checked; 'simplify' gives no reason."
+
+[[finding]]
+unit = "0d164da8ddc6"
+pr = 27634
+rule = "test-disabled"
+path = "packages/trpc/server/routers/viewer/me/deleteMe.handler.test.ts"
+test = "deleteMeHandler > Password validation > should validate password with non-strict mode for USER role"
+before = ["await expect(deleteMeHandler({ ctx: mockCtx, input: { password: 'weak' } })).rejects.toThrow(new HttpError({ statusCode: 400, message: ErrorCode.PasswordPolicyViolation }))", "expect(mockIsPasswordValid).toHaveBeenCalledWith('weak', false, false)"]
+after = []
+message = "deleted: deleteMeHandler > Password validation > should validate password with non-strict mode for USER role"
+label = "unexplained"
+note = "Rewritten without the mock and with a password that fails both modes, so the role-based strict flag (still in the handler) is no longer checked; 'simplify' gives no reason."
+
+[[finding]]
+unit = "c910911772d8"
+pr = 30084
+rule = "test-disabled"
+path = "packages/ui/components/TokenHandler/token-handler.test.tsx"
+tests = ["Tests for TokenHandler component > Should render the correct number of input elements", "Tests for TokenHandler component > Should handle digit input correctly"]
+before = ["Tests for TokenHandler component > Should render the correct number of input elements", "Tests for TokenHandler component > Should handle digit input correctly"]
+after = []
+message = "file deleted: its 2 tests no longer run"
+label = "intended"
+note = "The unused TokenHandler component was deleted together with its tests."

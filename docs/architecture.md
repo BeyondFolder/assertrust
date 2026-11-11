@@ -52,7 +52,7 @@ So:
 | `push` with no PR | per commit | each pushed commit's first parent → the commit |
 | pre-commit hook | staged | `HEAD` → git index |
 | Claude Code hook | worktree | `HEAD` → files on disk |
-| backtest | both | PR mode for each merge commit, per-commit for direct pushes to `main` |
+| backtest | both | each merged PR PR-style (a squash-merged one against its own commits, when fetched), each direct push on its own; see "Backtest" in step 6 |
 
 On the command line, these map to:
 
@@ -192,7 +192,7 @@ test/refund.test.ts: it('refunds', async () => { expectOk(await refund()) })
 ### Tests
 
 - Small fixture `.ts` files, one per pattern (`crates/assertrust/tests/fixtures/parsing/`). The `assertrust tests` output for each is stored as a reviewable snapshot file, using the `insta` crate.
-- All of Mailyond's test files, including `test/utils.ts` and `test/setup.ts`, must parse cleanly. They do: all 35 files, all 390 tests and all 939 checks are found, in about 0.1s. (Checked by hand for now; the backtest harness will run it automatically.)
+- All of Mailyond's test files, including `test/utils.ts` and `test/setup.ts`, must parse cleanly. They do: all 35 files, all 390 tests and all 939 checks are found, in about 0.1s. The backtest (step 6) notes every file it can't parse, in every PR and push it replays, so a parsing regression shows up there.
 
 ## 3. Test IR
 
@@ -333,7 +333,7 @@ For a CI or test config file, `assertrust tests` prints its gate facts instead:
 
 ### Mailyond is private
 
-Mailyond is a private codebase, so its code is never committed here. This doc quotes only a few short snippets as examples. The backtest runs against a local clone (path set by an env var) and publishes only counts and findings. Test fixtures are written from scratch.
+Mailyond is a private codebase, so its code is never committed here. This doc quotes only a few short snippets as examples. Its backtest labels quote its code, so they live in a local file outside this repo, and this doc publishes only counts and findings. Test fixtures are written from scratch.
 
 ## 4. Matching
 
@@ -673,7 +673,7 @@ There's at least one fixture that must be flagged and one that must not, per rul
 
 **In one sentence:** show each finding where the person or agent will see it, in the terminal, on the PR, or as JSON for tools, and never block anything unless the repo opts in.
 
-**Built so far:** all of it except SARIF and the PR comment, which the GitHub Action posts. The terminal, JSON and GitHub formats; each finding named after the commits that made it, also in a PR-style check; weakening undone later in the PR hidden; allow comments and trailers; `fail-on` and its exit codes; `assertrust.toml`, which a PR can't loosen for its own check. Changed outcomes are hidden without `-v`, and the summary line says how many: `no findings · 2 changed outcomes hidden (-v shows them)`. Files that couldn't be checked are listed as notes before the summary, e.g. `note: test/a.test.ts (1a2b3c4): skipped, doesn't parse (…)`, and so are merge commits a per-commit check skipped. In a PR-style check, a file one commit couldn't parse is noted only when the whole PR can't parse it either: a work-in-progress commit that a later one fixed never lands.
+**Built so far:** all of it except SARIF and the PR comment, which the GitHub Action posts. The terminal, JSON and GitHub formats; each finding named after the commits that made it, also in a PR-style check; weakening undone later in the PR hidden; allow comments and trailers; `fail-on` and its exit codes; `assertrust.toml`, which a PR can't loosen for its own check; and `assertrust backtest`, which replays a branch's history PR by PR and, with labels, measures how often findings are right. Changed outcomes are hidden without `-v`, and the summary line says how many: `no findings · 2 changed outcomes hidden (-v shows them)`. Files that couldn't be checked are listed as notes before the summary, e.g. `note: test/a.test.ts (1a2b3c4): skipped, doesn't parse (…)`, and so are merge commits a per-commit check skipped. In a PR-style check, a file one commit couldn't parse is noted only when the whole PR can't parse it either: a work-in-progress commit that a later one fixed never lands.
 
 ### Which commit, and weakening undone later
 
@@ -731,7 +731,7 @@ Messages are short by design: one line that says what got weaker. Detail goes be
 - `1`: at least one finding at or above `fail-on`, or, with the judge on, a verdict listed in `[judge] fail-on` (step 7). Hidden, allowed, undone-later and before-landing findings never count. The summary line says it: `2 findings · 1 finding at high or above (exit 1)`.
 - `2`: assertrust itself failed (no git, bad config, bad range). This is never confused with "found something".
 
-**Blocking.** Deterministic findings warn by default. Set `fail-on` to block. This default may change once the backtests have proven precision.
+**Blocking.** Deterministic findings warn by default. Set `fail-on` to block. This default may change once the backtests prove precision: they don't yet (42% right, 61% at high; see "Backtest" below).
 
 ### Acknowledging a deliberate change
 
@@ -778,6 +778,74 @@ assertrust.toml:4  HIGH  gate-loosened
 
 Like a loosened CI config, a deliberate change says why with `# assertrust-allow: gate-loosened <reason>` above the setting. When the file on disk differs from the one at the base, a note says the check uses the base's. Staged and worktree checks read the file on disk, and so does `assertrust tests`; `changes` and `pairs` read it the way `check` does. An unknown key, rule or value is an error (exit 2), so a typo (`fail_on`) doesn't silently do nothing. `off` drops a rule's findings; `judge` leaves them to the judge (step 7), which for now means they're shown only with `-v`, as `outcome-changed` is by default.
 
+### Backtest: what it would have flagged, and how often it's right
+
+`assertrust backtest` replays a branch's history the way CI would have checked it, PR by PR. On Mailyond:
+
+```
+PR #44  8fd84d8  Free tool: /tools/dmarc-checker (DMARC, SPF and MX for up to 10 domains) · 11 commits
+test/unit/rate-limit.test.ts  HIGH  test-disabled  (before landing)
+  file deleted: its 4 tests no longer run · 11c140f
+
+push  71110c0  Pipeline fix.
+test/unit/mx-checker.test.ts:290  HIGH  expectation-loosened
+  .not.toMatch no longer rules out resend · 71110c0
+
+181 commits: 100 PRs, 81 pushes · 1 finding · 40 changed outcomes hidden (-v shows them) · 23 before landing (can't fail) · …
+```
+
+Each commit on the branch's first-parent line got there one way, and is checked the way CI would have checked it then, with the `assertrust.toml` it had (at the PR's base):
+- **A merge commit** merged a PR with its commits: checked PR-style, `C^1...C^2`. Findings name the PR's commits, and weakening undone within the PR is hidden.
+- **A squash merge** (`Fix refunds (#12)`, how most GitHub repos merge) leaves one commit on the branch. When the PR's own commits are there (`git fetch origin refs/pull/12/head:refs/pull/12/head`), it's checked PR-style against them, as the GitHub Action will see it. Otherwise it's checked as one commit, and a note says how many were.
+- **Any other commit** was pushed straight to the branch: checked on its own.
+
+The repo's first commit isn't checked: there's nothing before it. A commit that can't be checked (say, a PR whose commits share no history with a shallow clone) is listed with the reason. assertrust never touches the network: fetching is up to whoever runs it, and `backtest/run.sh` does it for the repos below (`docs/development.md`, "Backtests").
+
+**Labels** (`--labels FILE`) are a person's verdict on each finding a PR check would report (shown, before landing, or allowed):
+- `wrong`: nothing got weaker; assertrust misread the change (the check moved, the new matcher accepts no more, …). A test rewritten for a deliberate behaviour change, still checking the same input against the new result, is `wrong` too: that's a changed outcome, not a weaker test.
+- `intended`: weaker on purpose: the change also removed or rewrote the code the test covered (and the test now checks less of what's left), or a commit message or the PR's title says why.
+- `unexplained`: weaker, and nothing in the change says why. These are the findings a reviewer should look at.
+
+**Precision** is the share labelled `intended` or `unexplained`: the findings that are right. A run prints it overall, per confidence level and per rule. Telling `intended` from `unexplained` is what the judge (step 7) will be scored on, from the same labels.
+
+With labels, a run exits with 1 when a finding isn't labelled yet, a finding labelled right is no longer found, or a commit couldn't be checked. So after a change to the rules, it says exactly which findings appeared or went. `--update-labels` adds new findings to the file, unlabelled, and drops false alarms no longer found. A finding is the same one when its commit, rule, file, test and code are the same; the message isn't part of it, so rewording one keeps its label. If its code is printed differently, it keeps the label of the one left-over entry about the same commit, rule, file and test, marked `carried over`.
+
+**First results (2026-11-11).** The last 100 PRs and pushes of each of the 10 public repos below, plus Mailyond's whole history (181), replayed and every finding labelled: 427 findings, **42% right** (181). At high confidence 61% (136 of 222), at medium 22% (45 of 196), at low none of 9. That's well short of the 70% that blocking by default would need, so `fail-on` stays `never`.
+
+| Repo | Findings | Right | High: right |
+|---|---|---|---|
+| cal.com | 13 | 13 (100%) | 11 of 11 |
+| Mailyond | 24 | 17 (70%) | 11 of 12 |
+| zod | 39 | 20 (51%) | 18 of 18 |
+| h3 | 22 | 11 (50%) | 0 of 2 |
+| Excalidraw | 87 | 38 (43%) | 25 of 38 |
+| vueuse | 12 | 5 (41%) | 5 of 9 |
+| hono | 13 | 5 (38%) | 4 of 7 |
+| immich | 84 | 32 (38%) | 31 of 73 |
+| nuxt/ui | 12 | 4 (33%) | 3 of 4 |
+| TanStack Query | 25 | 8 (32%) | 5 of 8 |
+| tRPC | 96 | 28 (29%) | 23 of 40 |
+
+By rule: `test-disabled` 117 of 198 (59%), `expectation-loosened` 17 of 29, `check-removed` 40 of 164 (24%), `gate-loosened` 6 of 22, `check-cant-fail` 0 of 11, `matcher-swapped` 0 of 2, `matcher-loosened` 1 of 1. Almost half the findings (205) are about tests the PR itself added and weakened before landing, and they're right about as often as the rest (42%, against 41% for findings about what the main branch had).
+
+Most right findings are `intended` (139): tests deleted or cut down along with the code they covered. 42 are `unexplained`, most of them in one immich PR ("refactor: web tests") that dropped tests for components that still exist, and Mailyond's `71110c0`.
+
+The 246 wrong ones, most common first:
+- **A test rewritten for a deliberate behaviour change**, still checking the same input against the new result, reported as a removed check or a deleted test instead of a changed outcome. Often the test was renamed too, or split into new tests (hono's percent-encoded paths now giving 404, a tRPC formula changed from square root to linear).
+- **A check rewritten into an equivalent or stronger form that matching doesn't pair:** an `it.each` table replacing a list of tests, a new API or state field asserting the same value, a check moved into a helper the test calls through an object (immich's `ctx.assertSyncResponse`, 20 findings) or into a fixture (`app.dialog`).
+- **Tests or checks moved to another file**, which matching doesn't look for: immich moved component tests into page specs and Playwright specs, hono moved adapter tests into their own packages and CI workflow.
+- **Smaller mistakes, each with a clear fix:**
+  - `await expect.element(…)` (vitest browser mode) isn't read as a check (7 in immich).
+  - `check-cant-fail` fires on a loop over a literal non-empty array, a loop with a constant bound, and a local helper the test always calls: all 11 of its findings.
+  - "Before landing" is decided without looking at the PR's head: a test the PR added, deleted and put back, or moved to another file, is still reported.
+  - `.each` rows are counted from the outer `describe.each` when the table is an expression (`name === 'Checkbox' ? […] : […]`).
+  - A field taken out of `toMatchObject` but asserted on its own line (`toBeCloseTo(239, 1)`) is reported as no longer checked.
+  - An added `--project` in a vitest command is read as replacing the others.
+  - Stacked PRs: after the PR below is squash-merged, the PR above still holds its commits, so their findings are reported again (8 in tRPC). GitHub's own diff shows those commits too until a rebase, so the Action would as well.
+  - A few removals are reported twice, once against the main branch and once before landing under the file's old name.
+
+The next PRs fix these, one group at a time, each measured with the backtest.
+
 ### Tests
 
 In `crates/assertrust/tests/output.rs`, on temporary repos:
@@ -787,6 +855,8 @@ In `crates/assertrust/tests/output.rs`, on temporary repos:
 - grouped deletions, exit codes for each `fail-on` level, and `assertrust.toml` (`fail-on`, `[rules]`, `[files]`, a typo, a PR loosening it, an allow comment in it)
 - an allow comment copied into another test, and changed outcomes needing `-v` even when allowed or undone later
 - a snapshot of the JSON output, the GitHub annotations and job summary, and both counting findings as the terminal does
+
+In `crates/assertrust/tests/backtest.rs`: a history with a PR merged with a merge commit, a squash-merged PR with its commits fetched and one without, and a push, each checked the way CI would have; a range and the labels file picking the commits; each commit checked with the `assertrust.toml` it had; a PR that can't be checked; labels giving precision, carried over to a finding printed differently, and what's new or gone, then rewritten by `--update-labels`; and the JSON output. `labels.rs` has unit tests for reading back what it writes, typos, and pairing.
 
 ## 7. LLM judge (planned after v0.1)
 

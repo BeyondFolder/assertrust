@@ -71,6 +71,23 @@ impl Repo {
         })
     }
 
+    /// The commits that landed on `head`'s branch, oldest first: its first-parent line after
+    /// `base`, or the last `limit` commits on it. On a main branch that's one commit per
+    /// merge or push, which is what `assertrust backtest` replays.
+    pub fn first_parent(
+        &self,
+        base: Option<&str>,
+        head: &str,
+        limit: Option<usize>,
+    ) -> Result<Vec<Commit>, Error> {
+        self.git.first_parent(base, head, limit)
+    }
+
+    /// The URL of the `origin` remote, if there is one.
+    pub fn origin_url(&self) -> Option<String> {
+        self.git.origin_url()
+    }
+
     /// The repo's top-level directory (where `assertrust.toml` lives).
     pub fn root(&self) -> &Path {
         self.git.root()

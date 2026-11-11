@@ -1,0 +1,150 @@
+# Labels for `assertrust backtest --labels`: a verdict on each finding.
+#   wrong        nothing got weaker: assertrust misread the change
+#   intended     weaker on purpose: the code the test covered went too, or a commit says why
+#   unexplained  weaker, and nothing in the change says why
+# "" is a finding not labelled yet. `--update-labels` rewrites this file: it adds new
+# findings and drops false alarms no longer found. Keep remarks in `note`.
+
+repo = "https://github.com/vueuse/vueuse.git"
+range = "9d0804f1c877fb1344c4f55e892000a063f384b9..043da374d683e5193fc684b0b2bcae7dd9340314"
+
+[[finding]]
+unit = "6d9138293232"
+pr = 5473
+rule = "check-removed"
+path = "packages/core/useStyleTag/index.test.ts"
+test = "useStyleTag > should keep style element when two instances share the same id and only one unmounts"
+before = ["expect(() => scope2.stop()).not.toThrow()"]
+after = ["expect(document.getElementById('shared-test')).not.toBeNull()"]
+message = "removed expect(() => scope2.stop()).not.toThrow(); the test name dropped \"not error both unmount\""
+label = "wrong"
+note = "The not.toThrow wrapper became a bare scope2.stop() call, which still fails the test if it throws, and DOM checks for the new ref counting were added."
+
+[[finding]]
+unit = "5b2721ff083b"
+pr = 5509
+rule = "gate-loosened"
+path = ".github/workflows/ci.yml"
+before = ["pnpm run test:browser"]
+after = []
+message = "job test: test step \"pnpm run test:browser\" removed"
+label = "wrong"
+note = "Chromium browser tests already ran in test:cov and webkit moved to the new test:other-browser step, so every browser project still runs in CI."
+
+[[finding]]
+unit = "5b2721ff083b"
+pr = 5509
+rule = "gate-loosened"
+path = ".github/workflows/ci.yml"
+before = ["pnpm run test:server"]
+after = []
+message = "job test: test step \"pnpm run test:server\" removed"
+label = "wrong"
+note = "The server project was added to test:cov, so server tests still run in CI."
+
+[[finding]]
+unit = "5b2721ff083b"
+pr = 5509
+rule = "gate-loosened"
+path = "package.json"
+before = ["nr test:unit"]
+after = ["nr test:unit --project=server"]
+message = "script test: now runs only --project server"
+label = "wrong"
+note = "--project=server is appended to 'vitest --project unit', so the script now runs unit plus server, not only server (and CI does not use it)."
+
+[[finding]]
+unit = "653283c07d8c"
+pr = 5523
+rule = "check-removed"
+path = "packages/core/useGamepad/index.browser.test.ts"
+test = "useGamepad > skips null slots returned by getGamepads"
+before = ["expect(() => triggerRaf()).not.toThrow()"]
+after = []
+message = "removed expect(() => triggerRaf()).not.toThrow()"
+label = "wrong"
+note = "If the null slot threw, pad 1 would never update and the waitFor assertions would time out (an uncaught rAF error also fails vitest), so the check is still enforced."
+
+[[finding]]
+unit = "5cc1800524fb"
+pr = 4883
+rule = "test-disabled"
+path = "packages/core/templateRef/index.test.ts"
+tests = ["templateRef > should be defined", "templateRef > string ref mount", "templateRef > string ref update", "templateRef > string ref unmount", "templateRef > support vue component as ref"]
+before = ["templateRef > should be defined", "templateRef > string ref mount", "templateRef > string ref update", "templateRef > string ref unmount", "templateRef > support vue component as ref"]
+after = []
+message = "file deleted: its 5 tests no longer run"
+label = "intended"
+note = "The PR removed templateRef (Vue now ships useTemplateRef), so its tests went with it."
+
+[[finding]]
+unit = "e1066adb92a7"
+pr = 4793
+rule = "test-disabled"
+path = "packages/core/useTemporal/index.test.ts"
+tests = ["createTemporal > should create from current time", "createTemporal > should create with custom timezone and calendar", "createTemporal > should create from string input", "createTemporal > should create from ZonedDateTime input", "createTemporal > should convert to timezone", "createTemporal > should convert to calendar", "createTemporal > should convert to plain date", "createTemporal > should convert to plain time", "createTemporal > should convert to plain datetime", "createTemporal > should format datetime"]
+before = ["createTemporal > should create from current time", "createTemporal > should create with custom timezone and calendar", "createTemporal > should create from string input", "createTemporal > should create from ZonedDateTime input", "createTemporal > should convert to timezone", "createTemporal > should convert to calendar", "createTemporal > should convert to plain date", "createTemporal > should convert to plain time", "createTemporal > should convert to plain datetime", "createTemporal > should format datetime"]
+after = []
+message = "deleted 10 tests, including createTemporal > should create from current time"
+label = "intended"
+note = "The same commit removed the createTemporal export these tests covered, and its message says so."
+
+[[finding]]
+unit = "819a8c5d45ec"
+pr = 5603
+rule = "test-disabled"
+path = "packages/core/useBluetooth/index.test.ts"
+tests = ["useBluetooth > should be defined", "useBluetooth > should not accumulate gattserverdisconnected listeners across device changes", "useBluetooth > should update server and connection state after connecting"]
+before = ["useBluetooth > should be defined", "useBluetooth > should not accumulate gattserverdisconnected listeners across device changes", "useBluetooth > should update server and connection state after connecting"]
+after = []
+message = "file deleted: its 3 tests no longer run"
+label = "wrong"
+note = "The three node tests were moved unchanged into index.browser.test.ts in the same PR."
+
+[[finding]]
+unit = "172c5079a574"
+pr = 5580
+rule = "test-disabled"
+path = "packages/core/useWebMCP/index.test.ts"
+test = "useWebMCP > array of tools > registers every tool and cleans them all up"
+before = ["expect(registerTool).toHaveBeenCalledTimes(2)", "expect(tools.map((t) => t.descriptor.name)).toEqual(['a', 'b'])", "expect(result.isRegistered.value).toBe(true)", "expect(tools.every((t) => t.aborted())).toBe(true)", "expect(result.isRegistered.value).toBe(false)"]
+after = []
+message = "deleted: useWebMCP > array of tools > registers every tool and cleans them all up"
+label = "intended"
+note = "The commit reverts array-of-tools support, so the array tests no longer apply; its message says why."
+
+[[finding]]
+unit = "172c5079a574"
+pr = 5580
+rule = "test-disabled"
+path = "packages/core/useWebMCP/index.test.ts"
+test = "useWebMCP > array of tools > isRegistered is false while any tool is not registered"
+before = ["expect(result.isRegistered.value).toBe(false)", "expect(result.isRegistered.value).toBe(true)"]
+after = []
+message = "deleted: useWebMCP > array of tools > isRegistered is false while any tool is not registered"
+label = "intended"
+note = "The commit reverts array-of-tools support, so the array tests no longer apply; its message says why."
+
+[[finding]]
+unit = "172c5079a574"
+pr = 5580
+rule = "test-disabled"
+path = "packages/core/useWebMCP/index.test.ts"
+test = "useWebMCP > array of tools > surfaces the first tool error"
+before = ["expect(result.isRegistered.value).toBe(false)", "expect(result.error.value?.message).toBe('b failed')"]
+after = []
+message = "deleted: useWebMCP > array of tools > surfaces the first tool error"
+label = "intended"
+note = "The commit reverts array-of-tools support, so the array tests no longer apply; its message says why."
+
+[[finding]]
+unit = "84ac025bde2a"
+pr = 5658
+rule = "check-removed"
+path = "packages/core/useIdle/index.browser.test.ts"
+test = "useIdle > should update lastActive only when reset is called with resetLastActive"
+before = ["expect(lastActive.value).toBe(initialLastActive + timeout)"]
+after = ["expect(lastActive.value).toBe(initialLastActive)", "expect(idle.value).toBe(false)", "expect(lastActive.value).toBe(initialLastActive + 2 * timeout)", "expect(idle.value).toBe(true)"]
+message = "removed expect(lastActive.value).toBe(initialLastActive + timeout); the test was renamed"
+label = "wrong"
+note = "reset() was made to leave lastActive alone on purpose; the test now asserts that exactly and asserts reset(true) moves it, so this is a changed expected value, not a removed check."

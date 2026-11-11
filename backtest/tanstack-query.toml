@@ -1,0 +1,309 @@
+# Labels for `assertrust backtest --labels`: a verdict on each finding.
+#   wrong        nothing got weaker: assertrust misread the change
+#   intended     weaker on purpose: the code the test covered went too, or a commit says why
+#   unexplained  weaker, and nothing in the change says why
+# "" is a finding not labelled yet. `--update-labels` rewrites this file: it adds new
+# findings and drops false alarms no longer found. Keep remarks in `note`.
+
+repo = "https://github.com/TanStack/query.git"
+range = "5aa553880a01d618b2b50c2626d85dce55b9f653..8f6da1e2a1b5e9afd774cd12bd3865df5c432984"
+
+[[finding]]
+unit = "8be136b02214"
+pr = 11919
+rule = "test-disabled"
+path = "packages/query-persist-client-core/src/__tests__/createPersister.test.ts"
+test = "createPersister > restoreQueries > should preserve valid data %j during retrieval, restoration, and garbage collection"
+before = ["expect(await persister.retrieveQuery(queryHash)).toEqual(data)", "expect(client.getQueryCache().getAll()).toHaveLength(1)", "expect(client.getQueryData(queryKey)).toEqual(data)", "expect(await storage.getItem(storageKey)).toBe(storedData)"]
+after = []
+message = "deleted: createPersister > restoreQueries > should preserve valid data %j during retrieval, restoration, and garbage collection"
+label = "intended"
+note = "The same commit dropped the state.data validation this test guarded, so falsy data can no longer be rejected; null data stays covered by the GC and restore tests."
+
+[[finding]]
+unit = "1e1caa5a3284"
+pr = 12230
+rule = "check-removed"
+path = "packages/react-query-persist-client/src/__tests__/PersistQueryClientProvider.test.tsx"
+test = "PersistQueryClientProvider > should restore cache from persister"
+before = ["expect(states[3]).toMatchObject({ data: 'fetched', fetchStatus: 'idle', status: 'success' })"]
+after = []
+message = "removed expect(states[3]).toMatchObject({ data: 'fetched', fetchSta…"
+label = "wrong"
+note = "Not removed: the fix drops the intermediate 'hydrated, fetching' render, so the final-state check moved from states[3] to states[2] and toHaveLength still pins the whole sequence."
+
+[[finding]]
+unit = "1e1caa5a3284"
+pr = 12230
+rule = "check-removed"
+path = "packages/react-query-persist-client/src/__tests__/PersistQueryClientProvider.test.tsx"
+test = "PersistQueryClientProvider > should show initialData while restoring"
+before = ["expect(states[3]).toMatchObject({ data: 'fetched', fetchStatus: 'idle', status: 'success' })"]
+after = []
+message = "removed expect(states[3]).toMatchObject({ data: 'fetched', fetchSta…"
+label = "wrong"
+note = "Not removed: the fix drops the intermediate 'hydrated, fetching' render, so the final-state check moved from states[3] to states[2] and toHaveLength still pins the whole sequence."
+
+[[finding]]
+unit = "1e1caa5a3284"
+pr = 12230
+rule = "check-removed"
+path = "packages/react-query-persist-client/src/__tests__/PersistQueryClientProvider.test.tsx"
+test = "PersistQueryClientProvider > should be able to persist into multiple clients"
+before = ["expect(states[4]).toMatchObject({ data: 'queryFn2', fetchStatus: 'idle', status: 'success' })"]
+after = []
+message = "removed expect(states[4]).toMatchObject({ data: 'queryFn2', fetchSt…"
+label = "wrong"
+note = "Not removed: the fix drops the intermediate 'hydrated, fetching' render, so the final-state check moved from states[4] to states[3] and toHaveLength still pins the whole sequence."
+
+[[finding]]
+unit = "af0e0ef5fc04"
+pr = 12481
+rule = "expectation-loosened"
+path = "packages/angular-query-experimental/src/__tests__/inject-query.test.ts"
+test = "injectQuery > should update query on options contained signal change"
+before = ["expect(queryFn).toHaveBeenNthCalledWith(2, { client: queryClient, meta: undefined, queryKey: key2, signal: expect.anything() })"]
+after = ["expect(queryFn).toHaveBeenNthCalledWith(2, expect.objectContaining({ client: queryClient, meta: undefined, queryKey: key2, signal: expect.anything() }))"]
+message = "toHaveBeenNthCalledWith now allows extra fields"
+label = "intended"
+note = "The same PR put an enumerable internal fetchSignal symbol on the query function context, so the exact-object match no longer holds and objectContaining allows that extra key."
+
+[[finding]]
+unit = "af0e0ef5fc04"
+pr = 12481
+rule = "check-removed"
+path = "packages/query-core/src/__tests__/infiniteQueryBehavior.test.tsx"
+test = "InfiniteQueryBehavior > should apply the maxPages option to limit the number of pages"
+before = ["expect(queryFnSpy).toHaveBeenNthCalledWith(1, { client: queryClient, direction: 'forward', meta: undefined, pageParam: 1, queryKey: key, signal: abortSignal })", "expect(queryFnSpy).toHaveBeenNthCalledWith(1, { client: queryClient, direction: 'forward', meta: undefined, pageParam: 2, queryKey: key, signal: abortSignal })", "expect(queryFnSpy).toHaveBeenNthCalledWith(1, { client: queryClient, direction: 'backward', meta: undefined, pageParam: 0, queryKey: key, signal: abortSignal })", "expect(queryFnSpy).toHaveBeenNthCalledWith(1, { client: queryClient, direction: 'backward', meta: undefined, pageParam: -1, queryKey: key, signal: abortSignal })", "expect(queryFnSpy).toHaveBeenNthCalledWith(1, { client: queryClient, direction: 'forward', meta: undefined, pageParam: 1, queryKey: key, signal: abortSignal })", "expect(queryFnSpy).toHaveBeenNthCalledWith(1, { client: queryClient, direction: 'forward', meta: undefined, pageParam: 0, queryKey: key, signal: abortSignal })", "expect(queryFnSpy).toHaveBeenNthCalledWith(2, { client: queryClient, direction: 'forward', meta: undefined, pageParam: 1, queryKey: key, signal: abortSignal })"]
+after = ["expect(queryFnSpy.mock.calls[0]?.[0]).toMatchObject({ client: queryClient, direction: 'forward', meta: undefined, pageParam: 1, queryKey: key, signal: abortSignal })", "expect(queryFnSpy.mock.calls[0]?.[0]).toMatchObject({ client: queryClient, direction: 'forward', meta: undefined, pageParam: 2, queryKey: key, signal: abortSignal })", "expect(queryFnSpy.mock.calls[0]?.[0]).toMatchObject({ client: queryClient, direction: 'backward', meta: undefined, pageParam: 0, queryKey: key, signal: abortSignal })", "expect(queryFnSpy.mock.calls[0]?.[0]).toMatchObject({ client: queryClient, direction: 'backward', meta: undefined, pageParam: -1, queryKey: key, signal: abortSignal })", "expect(queryFnSpy.mock.calls[0]?.[0]).toMatchObject({ client: queryClient, direction: 'forward', meta: undefined, pageParam: 1, queryKey: key, signal: abortSignal })", "expect(queryFnSpy.mock.calls[0]?.[0]).toMatchObject({ client: queryClient, direction: 'forward', meta: undefined, pageParam: 0, queryKey: key, signal: abortSignal })", "expect(queryFnSpy.mock.calls[1]?.[0]).toMatchObject({ client: queryClient, direction: 'forward', meta: undefined, pageParam: 1, queryKey: key, signal: abortSignal })"]
+message = "removed 7 checks, including expect(queryFnSpy).toHaveBeenNthCalledWith(1, { client: que…"
+label = "intended"
+note = "Commit c9b71e9 made the internal fetchSignal symbol enumerable on the query function context so it survives copies, so exact toHaveBeenNthCalledWith matches became toMatchObject."
+
+[[finding]]
+unit = "af0e0ef5fc04"
+pr = 12481
+rule = "check-removed"
+path = "packages/query-core/src/__tests__/infiniteQueryBehavior.test.tsx"
+test = "InfiniteQueryBehavior > should support query cancellation"
+before = ["expect(queryFnSpy).toHaveBeenNthCalledWith(1, { client: queryClient, direction: 'forward', meta: undefined, pageParam: 1, queryKey: key, signal: abortSignal })"]
+after = ["expect(queryFnSpy.mock.calls[0]?.[0]).toMatchObject({ client: queryClient, direction: 'forward', meta: undefined, pageParam: 1, queryKey: key, signal: abortSignal })"]
+message = "removed expect(queryFnSpy).toHaveBeenNthCalledWith(1, { client: que…"
+label = "intended"
+note = "Commit c9b71e9 made the internal fetchSignal symbol enumerable on the query function context so it survives copies, so exact toHaveBeenNthCalledWith matches became toMatchObject."
+
+[[finding]]
+unit = "af0e0ef5fc04"
+pr = 12481
+rule = "check-removed"
+path = "packages/query-core/src/__tests__/infiniteQueryBehavior.test.tsx"
+test = "InfiniteQueryBehavior > should not refetch pages if the query is cancelled"
+before = ["expect(queryFnSpy).toHaveBeenNthCalledWith(1, { client: queryClient, direction: 'forward', meta: undefined, pageParam: 2, queryKey: key, signal: abortSignal })"]
+after = ["expect(queryFnSpy.mock.calls[0]?.[0]).toMatchObject({ client: queryClient, direction: 'forward', meta: undefined, pageParam: 2, queryKey: key, signal: abortSignal })"]
+message = "removed expect(queryFnSpy).toHaveBeenNthCalledWith(1, { client: que…"
+label = "intended"
+note = "Commit c9b71e9 made the internal fetchSignal symbol enumerable on the query function context so it survives copies, so exact toHaveBeenNthCalledWith matches became toMatchObject."
+
+[[finding]]
+unit = "af0e0ef5fc04"
+pr = 12481
+rule = "test-disabled"
+path = "packages/query-core/src/__tests__/streamedQuery.test.tsx"
+test = "streamedQuery > should honor an overridden signal on a copied context"
+before = ["expect(queryClient.getQueryData(key)).toStrictEqual([0])", "expect(queryClient.getQueryData(key)).toStrictEqual([0])"]
+after = []
+message = "deleted: streamedQuery > should honor an overridden signal on a copied context"
+label = "intended"
+note = "The same commit removed the copied-context signal fallback in streamedQuery that this test covered."
+
+[[finding]]
+unit = "f69b28a1dd2a"
+pr = 12522
+rule = "test-disabled"
+path = "packages/query-devtools/src/__tests__/Explorer.test.tsx"
+test = "Explorer > nested search > uses markup when the native highlight constructor is unavailable"
+before = ["expect(rendered.getByText('needle').tagName).toBe('MARK')"]
+after = []
+message = "deleted: Explorer > nested search > uses markup when the native highlight constructor is unavailable"
+label = "intended"
+note = "The commit removed the <mark> fallback used when the native Highlight API is missing; this test only covered that fallback."
+
+[[finding]]
+unit = "f69b28a1dd2a"
+pr = 12522
+rule = "check-removed"
+path = "packages/query-devtools/src/__tests__/Explorer.test.tsx"
+test = "Explorer > nested search > uses native ranges and replaces them when the search or data changes"
+before = ["expect(rendered.container.querySelector('mark')).toBeNull()"]
+after = []
+message = "removed expect(rendered.container.querySelector('mark')).toBeNull()"
+label = "intended"
+note = "The check guarded that no <mark> fallback markup appeared; the same commit removed that fallback, so nothing can produce it any more."
+
+[[finding]]
+unit = "f69b28a1dd2a"
+pr = 12522
+rule = "check-removed"
+path = "packages/query-devtools/src/__tests__/Devtools.test.tsx"
+test = "Devtools > Data Explorer search > searches read-only mutation Data and resets search when the selection changes"
+before = ["expect(data.getByText('needle').tagName).toBe('MARK')", "expect(dataContainer.querySelector('mark')).toBeNull()"]
+after = ["expect([...CSS.highlights.values()].flatMap((highlight) => [...highlight].map((range) => range.toString()))).toContain('needle')", "expect([...CSS.highlights.values()].every((highlight) => highlight.size === 0)).toBe(true)"]
+message = "removed 2 checks, including expect(data.getByText('needle').tagName).toBe('MARK')"
+label = "wrong"
+note = "Rewritten for the CSS Custom Highlight API: it checks that needle is among the highlighted ranges and that every highlight is empty after the selection changes."
+
+[[finding]]
+unit = "f69b28a1dd2a"
+pr = 12522
+rule = "check-removed"
+path = "packages/query-devtools/src/__tests__/Explorer.test.tsx"
+test = "Explorer > nested search > debounces nested label matches and leaves ordinary siblings visible"
+before = ["expect(rendered.getByText('firstName').tagName).toBe('MARK')"]
+after = ["expect(highlightedText()).toContain('firstName')"]
+message = "removed expect(rendered.getByText('firstName').tagName).toBe('MARK')"
+label = "wrong"
+note = "Rewritten for the CSS Custom Highlight API: the <mark> tagName check became the equivalent check on the highlighted range texts (highlightedText())."
+
+[[finding]]
+unit = "f69b28a1dd2a"
+pr = 12522
+rule = "check-removed"
+path = "packages/query-devtools/src/__tests__/Explorer.test.tsx"
+test = "Explorer > nested search > matches nested primitive values with case-insensitive literal substrings"
+before = ["expect(rendered.getByText('A.*[B]').tagName).toBe('MARK')", "expect(rendered.getByText('234').tagName).toBe('MARK')", "expect(rendered.getByText('false').tagName).toBe('MARK')", "expect(rendered.getByText('null').tagName).toBe('MARK')"]
+after = ["expect(highlightedText()).toContain('A.*[B]')", "expect(highlightedText()).toContain('234')", "expect(highlightedText()).toContain('false')", "expect(highlightedText()).toContain('null')"]
+message = "removed 4 checks, including expect(rendered.getByText('A.*[B]').tagName).toBe('MARK')"
+label = "wrong"
+note = "Rewritten for the CSS Custom Highlight API: the <mark> tagName checks became equivalent checks on the highlighted range texts (highlightedText())."
+
+[[finding]]
+unit = "f69b28a1dd2a"
+pr = 12522
+rule = "check-removed"
+path = "packages/query-devtools/src/__tests__/Explorer.test.tsx"
+test = "Explorer > nested search > highlights literal backslashes and quotes in string values"
+before = ["expect(rendered.getByText('a\\\\b\"c').tagName).toBe('MARK')"]
+after = ["expect(highlightedText()).toContain('a\\\\b\"c')"]
+message = "removed expect(rendered.getByText('a\\\\b\"c').tagName).toBe('MARK')"
+label = "wrong"
+note = "Rewritten for the CSS Custom Highlight API: the <mark> tagName check became the equivalent check on the highlighted range texts (highlightedText())."
+
+[[finding]]
+unit = "f69b28a1dd2a"
+pr = 12522
+rule = "check-removed"
+path = "packages/query-devtools/src/__tests__/Explorer.test.tsx"
+test = "Explorer > nested search > highlights original text when Unicode lowercasing changes its length"
+before = ["expect(rendered.getByText('bul').tagName).toBe('MARK')", "expect(rendered.getByText('İ').tagName).toBe('MARK')"]
+after = ["expect(highlightedText()).toContain('bul')", "expect(highlightedText()).toContain('İ')"]
+message = "removed 2 checks, including expect(rendered.getByText('bul').tagName).toBe('MARK')"
+label = "wrong"
+note = "Rewritten for the CSS Custom Highlight API: the <mark> tagName checks became equivalent checks on the highlighted range texts (highlightedText())."
+
+[[finding]]
+unit = "f69b28a1dd2a"
+pr = 12522
+rule = "check-removed"
+path = "packages/query-devtools/src/__tests__/Explorer.test.tsx"
+test = "Explorer > nested search > restores manual expansion immediately on clear and Escape"
+before = ["expect(rendered.container.querySelector('mark')).toBeNull()"]
+after = ["expect(highlightedText()).toHaveLength(0)"]
+message = "removed expect(rendered.container.querySelector('mark')).toBeNull()"
+label = "wrong"
+note = "Rewritten for the CSS Custom Highlight API: no <mark> elements became no highlighted ranges (highlightedText() has length 0)."
+
+[[finding]]
+unit = "f69b28a1dd2a"
+pr = 12522
+rule = "check-removed"
+path = "packages/query-devtools/src/__tests__/Explorer.test.tsx"
+test = "Explorer > nested search > updates search results when root data changes"
+before = ["expect(rendered.getByText('needle').tagName).toBe('MARK')", "expect(rendered.container.querySelector('mark')).toBeNull()"]
+after = ["expect(highlightedText()).toContain('needle')", "expect(highlightedText()).toHaveLength(0)"]
+message = "removed 2 checks, including expect(rendered.getByText('needle').tagName).toBe('MARK')"
+label = "wrong"
+note = "Rewritten for the CSS Custom Highlight API: <mark> checks became equivalent checks on the highlighted range texts, including that none remain."
+
+[[finding]]
+unit = "f69b28a1dd2a"
+pr = 12522
+rule = "check-removed"
+path = "packages/query-devtools/src/__tests__/Explorer.test.tsx"
+test = "Explorer > nested search > clears the term when the selected root changes"
+before = ["expect(rendered.container.querySelector('mark')).toBeNull()"]
+after = ["expect(highlightedText()).toHaveLength(0)"]
+message = "removed expect(rendered.container.querySelector('mark')).toBeNull()"
+label = "wrong"
+note = "Rewritten for the CSS Custom Highlight API: no <mark> elements became no highlighted ranges (highlightedText() has length 0)."
+
+[[finding]]
+unit = "f69b28a1dd2a"
+pr = 12522
+rule = "check-removed"
+path = "packages/query-devtools/src/__tests__/Explorer.test.tsx"
+test = "Explorer > nested search > searches Map and Set entries and keeps distinct object keys"
+before = ["expect(rendered.getByText('named').tagName).toBe('MARK')"]
+after = ["expect(highlightedText()).toContain('named')"]
+message = "removed expect(rendered.getByText('named').tagName).toBe('MARK')"
+label = "wrong"
+note = "Rewritten for the CSS Custom Highlight API: the <mark> tagName check became the equivalent check on the highlighted range texts (highlightedText())."
+
+[[finding]]
+unit = "f69b28a1dd2a"
+pr = 12522
+rule = "check-removed"
+path = "packages/query-devtools/src/__tests__/Explorer.test.tsx"
+test = "Explorer > nested search > does not read accessors, consume generators, or serialize opaque objects during search"
+before = ["expect(rendered.getByText('needle').tagName).toBe('MARK')"]
+after = ["expect(highlightedText()).toContain('needle')"]
+message = "removed expect(rendered.getByText('needle').tagName).toBe('MARK')"
+label = "wrong"
+note = "Rewritten for the CSS Custom Highlight API: the <mark> tagName check became the equivalent check on the highlighted range texts (highlightedText())."
+
+[[finding]]
+unit = "a4d72f75c1c7"
+pr = 12538
+rule = "test-disabled"
+path = "packages/query-devtools/src/__tests__/Devtools.test.tsx"
+test = "Devtools > query list > should not show the filter scope toggle in the mutations view"
+before = ["expect(rendered.queryByRole('button', { name: /^Filter scope: / })).not.toBeInTheDocument()"]
+after = []
+message = "deleted: Devtools > query list > should not show the filter scope toggle in the mutations view"
+label = "wrong"
+note = "The toggle became shared by both views on purpose; new tests check filtering mutations with it, so this is a changed outcome."
+
+[[finding]]
+unit = "a4d72f75c1c7"
+pr = 12538
+rule = "test-disabled"
+path = "packages/query-devtools/src/__tests__/Devtools.test.tsx"
+test = "Devtools > Data Explorer search > should start the mutation Data search with the filter when the filter scope is data"
+before = ["expect(rendered.getByLabelText('Search data')).toHaveValue('needle')"]
+after = []
+message = "deleted: Devtools > Data Explorer search > should start the mutation Data search with the filter when the filter scope is data"
+label = "wrong"
+note = "Replaced in the same commit by the stronger it.each 'should initialize matching mutation explorers from the %s scope', which checks the Search data value for each scope and source."
+
+[[finding]]
+unit = "a4d72f75c1c7"
+pr = 12538
+rule = "check-removed"
+path = "packages/query-devtools/src/__tests__/Devtools.test.tsx"
+test = "Devtools > Data Explorer search > should initialize the query Data search from the %s scope"
+before = ["expect(rendered.getByLabelText('name:')).toHaveAttribute('data-search-match', 'true')", "expect(rendered.getByLabelText('Search data')).toHaveValue('')"]
+after = ["expect(rendered.container.querySelectorAll('[data-search-match=\"true\"]')).toHaveLength(scope === 'key' ? 0 : 1)"]
+message = "removed 2 checks, including expect(rendered.getByLabelText('name:')).toHaveAttribute('d…; the test name dropped \"start with filter only when filter is\""
+label = "wrong"
+note = "Rewritten as an it.each over key, data and all: the key scope covers the empty-search case and the match is checked by counting data-search-match elements."
+
+[[finding]]
+unit = "f4199ab51f4e"
+pr = 12541
+rule = "check-removed"
+path = "packages/vue-query/src/__tests__/useQuery.test.ts"
+test = "useQuery > should expose data, status, and isPending on state without ref unwrapping"
+before = ["expect(query.state).not.toHaveProperty('refetch')"]
+after = ["expect(query.state.refetch).toBeTypeOf('function')"]
+message = "removed expect(query.state).not.toHaveProperty('refetch')"
+label = "wrong"
+note = "Not removed: the commit makes state keep functions, and the assertion was flipped in place to expect state.refetch to be a function."

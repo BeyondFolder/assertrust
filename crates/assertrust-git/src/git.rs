@@ -263,6 +263,60 @@ impl Git {
         Ok(output.split(RECORD).filter_map(parse_commit).collect())
     }
 
+    /// The commits on `head`'s first-parent line, oldest first: those after `base`, or the
+    /// last `limit` of them. On a main branch that's one commit per merge or push.
+    pub(crate) fn first_parent(
+        &self,
+        base: Option<&str>,
+        head: &str,
+        limit: Option<usize>,
+    ) -> Result<Vec<Commit>, Error> {
+        let range = match base {
+            Some(base) => format!("{base}..{head}"),
+            None => head.to_owned(),
+        };
+        let format = format!("--format=%H{FIELD}%P{FIELD}%an{FIELD}%B{RECORD}");
+        let max = limit.map(|limit| format!("--max-count={limit}"));
+        let mut args = vec![
+            "log",
+            "--no-show-signature",
+            "--no-color",
+            "--first-parent",
+            // Applied after --max-count, so the newest commits are the ones kept.
+            "--reverse",
+            &format,
+        ];
+        args.extend(max.as_deref());
+        args.extend(["--end-of-options", &range]);
+        let output = self.run(&args)?;
+        Ok(output.split(RECORD).filter_map(parse_commit).collect())
+    }
+
+    /// The tree of merging `theirs` into `ours`, as `git merge` would make it, without
+    /// touching the work tree: `None` when it conflicts. Needs git 2.38 or newer.
+    pub(crate) fn merge_tree(&self, ours: &str, theirs: &str) -> Result<Option<String>, Error> {
+        let args = ["merge-tree", "--write-tree", "--no-messages", ours, theirs];
+        let output = self.output(&args)?;
+        match output.status.code() {
+            Some(0) => Ok(Some(
+                stdout(&output)
+                    .lines()
+                    .next()
+                    .unwrap_or_default()
+                    .to_owned(),
+            )),
+            Some(1) => Ok(None),
+            _ => Err(failed(&args, &output)),
+        }
+    }
+
+    /// The URL of the `origin` remote, if there is one.
+    pub(crate) fn origin_url(&self) -> Option<String> {
+        let output = self.output(&["remote", "get-url", "origin"]).ok()?;
+        let url = stdout(&output).trim().to_owned();
+        (output.status.success() && !url.is_empty()).then_some(url)
+    }
+
     /// What one commit changed compared with its first parent (everything, for a root commit).
     pub(crate) fn diff_commit(&self, sha: &str) -> Result<Vec<RawChange>, Error> {
         self.name_status(&[

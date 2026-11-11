@@ -26,7 +26,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::io;
 
-use assertrust_git::{Classifier, Mode, Repo};
+use assertrust_git::{Classifier, Mode, Repo, Rev};
 use assertrust_rules::{Confidence, Finding, RuleId};
 use toml::{Table, Value};
 
@@ -89,12 +89,11 @@ impl Config {
         let Some(base) = repo.base(mode).map_err(|err| err.to_string())? else {
             return Ok((Self::load(repo)?, Vec::new()));
         };
-        let at_base = repo.read_file(&base, FILE).map_err(|err| err.to_string())?;
-        let config = match at_base.as_deref().map(Self::parse) {
-            None => Self::default(),
-            Some(Ok(config)) => config,
+        let (at_base, config) = Self::at(repo, &base)?;
+        let config = match config {
+            Ok(config) => config,
             // A broken file on the main branch mustn't block the change that fixes it.
-            Some(Err(err)) => {
+            Err(err) => {
                 let note =
                     format!("{FILE} at {base} doesn't parse ({err}), so the one on disk applies");
                 return Ok((Self::load(repo)?, vec![note]));
@@ -107,6 +106,36 @@ impl Config {
             ));
         }
         Ok((config, notes))
+    }
+
+    /// The config CI ran a check of `mode` with, back then (`assertrust backtest`): the file
+    /// at its base, whatever is on disk now. When it doesn't parse there, CI used the one on
+    /// disk, which was the file at `head`, the commit the check ran on.
+    pub fn as_ci_ran(repo: &Repo, mode: &Mode, head: &str) -> Result<(Self, Vec<String>), String> {
+        let Some(base) = repo.base(mode).map_err(|err| err.to_string())? else {
+            return Ok((Self::default(), Vec::new()));
+        };
+        match Self::at(repo, &base)?.1 {
+            Ok(config) => Ok((config, Vec::new())),
+            Err(err) => {
+                let head = Rev::Commit(head.to_owned());
+                let note =
+                    format!("{FILE} at {base} doesn't parse ({err}), so the one at {head} applies");
+                match Self::at(repo, &head)?.1 {
+                    Ok(config) => Ok((config, vec![note])),
+                    Err(err) => Err(format!("{FILE} at {head}: {err}")),
+                }
+            }
+        }
+    }
+
+    /// The file at `rev`, if any, and the config it gives: the defaults when there's none.
+    fn at(repo: &Repo, rev: &Rev) -> Result<(Option<String>, Result<Self, String>), String> {
+        let source = repo.read_file(rev, FILE).map_err(|err| err.to_string())?;
+        let config = source
+            .as_deref()
+            .map_or_else(|| Ok(Self::default()), Self::parse);
+        Ok((source, config))
     }
 
     /// The repo's `assertrust.toml`, or the defaults when there's none.
@@ -321,7 +350,7 @@ impl FailOn {
     }
 }
 
-fn string<'v>(key: &str, value: &'v Value) -> Result<&'v str, String> {
+pub(crate) fn string<'v>(key: &str, value: &'v Value) -> Result<&'v str, String> {
     value
         .as_str()
         .ok_or_else(|| format!("`{key}` must be a string"))

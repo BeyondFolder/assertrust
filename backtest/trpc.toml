@@ -1,0 +1,1143 @@
+# Labels for `assertrust backtest --labels`: a verdict on each finding.
+#   wrong        nothing got weaker: assertrust misread the change
+#   intended     weaker on purpose: the code the test covered went too, or a commit says why
+#   unexplained  weaker, and nothing in the change says why
+# "" is a finding not labelled yet. `--update-labels` rewrites this file: it adds new
+# findings and drops false alarms no longer found. Keep remarks in `note`.
+
+repo = "https://github.com/trpc/trpc.git"
+range = "af290163458abfe9892bd8c91fac4292fd09b2b3..8eff9ff0ddf4be4a682bf205fb66b00a26901075"
+
+[[finding]]
+unit = "d194022e32a4"
+pr = 7851
+rule = "test-disabled"
+path = "www/src/demos/demos.test.ts"
+test = "backend > lists the author's other posts"
+before = ["expect(morePosts.map((post) => post.id)).toEqual([4, 7])"]
+after = []
+message = "deleted: backend > lists the author's other posts"
+label = "wrong"
+note = "Renamed to 'lists the other posts by a post's author, from the post's id' with the same [4, 7] check (plus the author) on the new moreByAuthor procedure."
+
+[[finding]]
+unit = "d194022e32a4"
+pr = 7851
+rule = "test-disabled"
+path = "www/src/demos/demos.test.ts"
+test = "backend > counts each post's comments for one page"
+before = ["expect(await client().post.commentCounts.query({ page: 1 })).toEqual({ '1': 2, '2': 2, '3': 1 })", "expect(await client().post.commentCounts.query({ page: 3 })).toEqual({ '7': 0, '8': 0, '9': 0 })"]
+after = []
+message = "deleted: backend > counts each post's comments for one page"
+label = "wrong"
+note = "Renamed to 'gives each listed post's comment count in the same response': the same counts (2,2,1 and 0,0,0) are checked on post.list, which replaced commentCounts."
+
+[[finding]]
+unit = "e2536bfcbde0"
+pr = 7862
+rule = "test-disabled"
+path = "packages/tests/server/maxBatchSize.test.ts"
+tests = ["batches over 100 calls are rejected by default", "maxBatchSize raises the default limit", "maxBatchSize: Infinity turns the limit off"]
+before = ["batches over 100 calls are rejected by default", "maxBatchSize raises the default limit", "maxBatchSize: Infinity turns the limit off"]
+after = []
+message = "file deleted: its 3 tests no longer run"
+label = "intended"
+note = "The PR reverts the default-maxBatchSize feature (v11 keeps it opt-in), and the test file for that default goes with it."
+
+[[finding]]
+unit = "9f058097e45f"
+pr = 7866
+rule = "expectation-loosened"
+path = "www/build/sponsors-list.test.ts"
+test = "sponsorsList > adds who backs on Open Collective now as Open Collective sponsors, weighed against GitHub sponsors by what they paid and tiered by what they give a month"
+before = ["expect(sponsors).toEqual([expect.objectContaining({ login: 'gh', weight: 100 }), expect.objectContaining({ login: 'LinkedOnGithub', name: 'LINKED' }), expect.objectContaining({ link: 'https://opencollective.com/big', login: 'big', rank: 1, tier: 'silver', weight: 60 }), expect.objectContaining({ link: 'https://opencollective.com/plain', login: 'plain', weight: 1 }), { createdAt: Date.parse('2026-05-27'), imgSrc: 'https://images.opencollective.com/venue-ink/49dbae6/logo.png', link: 'https://www.venue.ink/?ref=trpc&utm_source=github&utm_medium=referral&utm_campaign=trpc', login: 'venue-ink', name: 'Venue.ink', weight: 15 }])"]
+after = ["expect(sponsors).toEqual([expect.objectContaining({ login: 'gh', source: 'github', weight: 100 }), expect.objectContaining({ link: 'https://opencollective.com/big', profileUrl: 'https://opencollective.com/big', rank: 1, slug: 'big', source: 'opencollective', tier: 'silver', weight: 60 }), { createdAt: Date.parse('2026-01-01'), imgSrc: 'https://images.opencollective.com/linked/avatar.png', link: 'https://opencollective.com/linked', name: 'LINKED', profileUrl: 'https://opencollective.com/linked', slug: 'linked', source: 'opencollective', weight: 1 }, expect.objectContaining({ link: 'https://opencollective.com/plain', slug: 'plain', source: 'opencollective', weight: 1 }), { createdAt: Date.parse('2026-05-27'), imgSrc: 'https://images.opencollective.com/venue-ink/49dbae6/logo.png', link: 'https://www.venue.ink/?ref=trpc&utm_source=github&utm_medium=referral&utm_campaign=trpc', name: 'Venue.ink', profileUrl: 'https://opencollective.com/venue-ink', slug: 'venue-ink', source: 'opencollective', weight: 15 }])"]
+message = "toEqual no longer checks 1.login, 1.name, 3.login"
+label = "wrong"
+note = "Open Collective sponsors now carry slug instead of a fake login by design, checked with the same values plus source and profileUrl; the order changed, and LINKED's name is still checked, now as an exact object at index 2."
+
+[[finding]]
+unit = "9f058097e45f"
+pr = 7866
+rule = "expectation-loosened"
+path = "www/build/sponsors-list.test.ts"
+test = "sponsorsList > merges an Open Collective backer who sponsors on GitHub too, by GitHub login or website"
+before = ["expect(sponsors).toEqual([expect.objectContaining({ createdAt: Date.parse('2024-01-01'), imgSrc: 'https://avatars.githubusercontent.com/byLogin?v=4', login: 'byLogin', tier: 'silver', weight: 100 }), expect.objectContaining({ login: 'bySite', tier: 'bronze', weight: 60 }), expect.objectContaining({ login: 'opencollective/bySite', weight: 5 })])"]
+after = ["expect(sponsors).toEqual([expect.objectContaining({ createdAt: Date.parse('2024-01-01'), imgSrc: 'https://avatars.githubusercontent.com/byLogin?v=4', login: 'byLogin', source: 'github', tier: 'silver', weight: 100 }), expect.objectContaining({ login: 'bySite', source: 'github', tier: 'bronze', weight: 60 }), expect.objectContaining({ slug: 'bySite', source: 'opencollective', weight: 5 })])"]
+message = "toEqual no longer checks 2.login"
+label = "wrong"
+note = "login 'opencollective/bySite' became slug 'bySite' with source 'opencollective' in the data model; the same entry is still checked."
+
+[[finding]]
+unit = "c7a2144c5703"
+pr = 7872
+rule = "check-removed"
+path = "www/build/sponsors-readme.test.ts"
+test = "sponsorsMarkdown > puts the cloud first, then each tier, by rank, then everyone else by who gave the most"
+before = ["expect(sponsorsMarkdown([ sponsor('b1', 3), sponsor('s2', 100, 0, { rank: 3, tier: 'silver' }), sponsor('g', 50, 0, { rank: 1, tier: 'gold' }), sponsor('b2', 9), sponsor('s1', 20, 0, { rank: 2, tier: 'silver' }) ])).toBe([ '### Gold partners', '', '<table>', '  <tr>', '   <td align=\"center\"><a href=\"https://g.dev/?ref=trpc&amp;utm_source=github\"><img src=\"https://avatars.githubusercontent.com/u/g?v=4&amp;s=360\" width=\"180\" alt=\"g\"/><br />g</a></td>', '  </tr>', '</table>', '', '### Silver partners', '', '<table>', '  <tr>', '   <td align=\"center\"><a href=\"https://s1.dev/?ref=trpc&amp;utm_source=github\"><img src=\"https://avatars.githubusercontent.com/u/s1?v=4&amp;s=300\" width=\"150\" alt=\"s1\"/><br />s1</a></td>', '   <td align=\"center\"><a href=\"https://s2.dev/?ref=trpc&amp;utm_source=github\"><img src=\"https://avatars.githubusercontent.com/u/s2?v=4&amp;s=300\" width=\"150\" alt=\"s2\"/><br />s2</a></td>', '  </tr>', '</table>', '', '### Backers', '', '<table>', '  <tr>', '   <td align=\"center\"><a href=\"https://b2.dev/?ref=trpc&amp;utm_source=github\"><img src=\"https://avatars.githubusercontent.com/u/b2?v=4&amp;s=200\" width=\"100\" alt=\"b2\"/><br />b2</a></td>', '   <td align=\"center\"><a href=\"https://b1.dev/?ref=trpc&amp;utm_source=github\"><img src=\"https://avatars.githubusercontent.com/u/b1?v=4&amp;s=200\" width=\"100\" alt=\"b1\"/><br />b1</a></td>', '  </tr>', '</table>' ].join('\\n'))"]
+after = ["expect(sponsorsMarkdown(sponsors)).toBe([ '<p align=\"center\">', `  <a href=\"https://trpc.io/sponsor#sponsors\"><img src=\"https://trpc.io/og/sponsor-cloud.png?v=${version}\" width=\"600\" alt=\"tRPC's sponsors, each drawn bigger the more they've given\"/></a>`, '</p>', '', '### Gold partners', '', '<table>', '  <tr>', '   <td align=\"center\"><a href=\"https://g.dev/?ref=trpc&amp;utm_source=github\"><img src=\"https://avatars.githubusercontent.com/u/g?v=4&amp;s=360\" width=\"180\" alt=\"g\"/><br />g</a></td>', '  </tr>', '</table>', '', '### Silver partners', '', '<table>', '  <tr>', '   <td align=\"center\"><a href=\"https://s1.dev/?ref=trpc&amp;utm_source=github\"><img src=\"https://avatars.githubusercontent.com/u/s1?v=4&amp;s=300\" width=\"150\" alt=\"s1\"/><br />s1</a></td>', '   <td align=\"center\"><a href=\"https://s2.dev/?ref=trpc&amp;utm_source=github\"><img src=\"https://avatars.githubusercontent.com/u/s2?v=4&amp;s=300\" width=\"150\" alt=\"s2\"/><br />s2</a></td>', '  </tr>', '</table>', '', '### Backers', '', '<table>', '  <tr>', '   <td align=\"center\"><a href=\"https://b2.dev/?ref=trpc&amp;utm_source=github\"><img src=\"https://avatars.githubusercontent.com/u/b2?v=4&amp;s=200\" width=\"100\" alt=\"b2\"/><br />b2</a></td>', '   <td align=\"center\"><a href=\"https://b1.dev/?ref=trpc&amp;utm_source=github\"><img src=\"https://avatars.githubusercontent.com/u/b1?v=4&amp;s=200\" width=\"100\" alt=\"b1\"/><br />b1</a></td>', '  </tr>', '</table>' ].join('\\n'))"]
+message = "removed expect(sponsorsMarkdown([ sponsor('b1', 3), sponsor('s2', 1…; the test was renamed"
+label = "wrong"
+note = "Same inputs, moved into a local variable; the expected markdown only gained the new cloud paragraph."
+
+[[finding]]
+unit = "0277f21cd21b"
+pr = 7871
+rule = "check-removed"
+path = "www/build/sponsors-list.test.ts"
+test = "weightFor > never goes down as a share grows, and grows in proportion to it above the floor"
+before = ["expect(weightFor(.25)).toBe(55)"]
+after = ["expect(weightFor(.5)).toBe(52.5)", "expect(weightFor(.2)).toBe(24)"]
+message = "removed expect(weightFor(.25)).toBe(55); the test name dropped \"compresses range by square root\""
+label = "wrong"
+note = "The weight formula changed from square root to linear; the test now pins weightFor at 0.5 and 0.2 instead of 0.25, so it's no less strict."
+
+[[finding]]
+unit = "4104ce1f6c5c"
+pr = 7876
+rule = "test-disabled"
+path = "www/src/demos/demos.test.ts"
+test = "demo slots > keep room for every demo before it loads"
+before = ["expect(styles).toContain(`[data-demo='${name}'] {\\n  --demo-height:`) (in loop)"]
+after = []
+message = "deleted: demo slots > keep room for every demo before it loads"
+label = "intended"
+note = "The same commit drops the demo height reservations this test checked ('Drop the demo height reservations')."
+
+[[finding]]
+unit = "4984df110d76"
+pr = 7881
+rule = "test-disabled"
+path = "www/src/components/sponsors/pack.test.ts"
+test = "packSponsors > packs %s into a round cloud, not a diamond: it reaches near the edge every way out, and fills most of its circle"
+before = ["expect(Math.hypot(bubble.x - .5, bubble.y - .5) + bubble.r).toBeLessThanOrEqual(.5 + 1e-9) (in loop)", "expect(reach).toBeGreaterThan(0.4) (in loop)", "expect(filled).toBeGreaterThan(0.63)"]
+after = []
+message = "deleted: packSponsors > packs %s into a round cloud, not a diamond: it reaches near the edge every way out, and fills most of its circle"
+label = "wrong"
+note = "Renamed to 'packs %s into a heart...' when the cloud became a heart: same inputs, checked against the heart shape with more checks (bounds, lobes, point, fill)."
+
+[[finding]]
+unit = "64c1ef5e45b3"
+pr = 7883
+rule = "expectation-loosened"
+path = "www/src/components/sponsors/jelly.test.ts"
+test = "Jelly > squishes a moving bubble along the way it moves, keeping its area"
+before = ["expect(a).toBeGreaterThan(1.05)"]
+after = ["expect(a).toBeGreaterThan(1.03)"]
+message = "toBeGreaterThan lower bound lowered from 1.05 to 1.03"
+label = "wrong"
+note = "The same commit cuts mostStretch from 0.16 to 0.1 for a calmer hover; the bound moved from 1.05 to 1.03 in proportion, so it's the same check against the new expected result."
+
+[[finding]]
+unit = "64c1ef5e45b3"
+pr = 7883
+rule = "expectation-loosened"
+path = "www/src/components/sponsors/jelly.test.ts"
+test = "Jelly > pushes the bubbles near a pointer gently away from it, but not the one under it"
+before = ["expect(jelly.ox[1]).toBeLessThan(-2)"]
+after = ["expect(jelly.ox[1]).toBeLessThan(-1)"]
+message = "toBeLessThan upper bound raised from -2 to -1"
+label = "wrong"
+note = "The same commit cuts push from 900 to 360 and reach from 56 to 40; the accepted window moved from (-15, -2) to (-4, -1), narrower overall, to match."
+
+[[finding]]
+unit = "64c1ef5e45b3"
+pr = 7883
+rule = "expectation-loosened"
+path = "www/src/components/sponsors/jelly.test.ts"
+test = "Jelly > drags the bubbles a moving pointer passes along with it, until it stops"
+before = ["expect(jelly.vy[1]).toBeGreaterThan(20)"]
+after = ["expect(jelly.vy[1]).toBeGreaterThan(5)"]
+message = "toBeGreaterThan lower bound lowered from 20 to 5"
+label = "wrong"
+note = "The same commit cuts drag from 1.5 to 0.5; the bound moved from 20 to 5 to match the weaker drag."
+
+[[finding]]
+unit = "b135fde43aee"
+pr = 7704
+rule = "expectation-loosened"
+path = "packages/tests/server/websocketsLifecycle.test.ts"
+test = "stop during admission followed by $rejection"
+before = ["'abort'", "'genuine'", "'BAD_REQUEST'", "'INTERNAL_SERVER_ERROR'", "'implicit-message'", "'same-message'"]
+after = ["{ expected: null, reject: abortError, rejection: 'an AbortError' }", "{ expected: null, reject: () => new TRPCError({ code: 'INTERNAL_SERVER_ERROR', cause: abortError() }), rejection: 'an INTERNAL_SERVER_ERROR caused by an AbortError' }", "{ expected: { code: 'INTERNAL_SERVER_ERROR', message: 'admission failed' }, reject: () => new Error('admission failed'), rejection: 'an unrelated error' }", "{ expected: { code: 'BAD_REQUEST', message: 'admission refused' }, reject: () => new TRPCError({ code: 'BAD_REQUEST', message: 'admission refused', cause: abortError() }), rejection: 'an explicit error code caused by an AbortError' }"]
+message = ".each now runs 4 rows instead of 6"
+label = "intended"
+note = "The same commit simplifies cancelled-setup detection so the error's message no longer matters; three INTERNAL_SERVER_ERROR variants collapse into one row, so fewer inputs are checked."
+
+[[finding]]
+unit = "b135fde43aee"
+pr = 7704
+rule = "check-removed"
+path = "packages/tests/server/websocketsLifecycle.test.ts"
+test = "iteration errors wait until cleanup %ss before allowing immediate id reuse"
+before = ["expect(onError).toHaveBeenCalledOnce()"]
+after = ["expect(onError.mock.calls.map(([opts]) => [opts.error.code, opts.error.message])).toEqual(outcome === 'resolve' ? [['UNAUTHORIZED', 'iteration failed']] : [['UNAUTHORIZED', 'iteration failed'], ['INTERNAL_SERVER_ERROR', 'cleanup failed']])"]
+message = "removed expect(onError).toHaveBeenCalledOnce()"
+label = "wrong"
+note = "Replaced by an exact toEqual on onError's calls, which still pins one call for resolve (and two for reject, the new behaviour)."
+
+[[finding]]
+unit = "b135fde43aee"
+pr = 7704
+rule = "check-removed"
+path = "packages/tests/server/websocketsLifecycle.test.ts"
+test = "an id remains owned until asynchronous iterator cleanup %ss"
+before = ["expect(ctx.messages.some((message) => 'result' in message && message.result.type === 'stopped')).toBe(true) (in if)"]
+after = ["await expect(ctx.messages.at(-1)).toEqual({ id: 1, result: { type: 'stopped' } })", "expect(onError.mock.calls.map(([opts]) => opts.error.message)).toEqual(outcome === 'resolve' ? ['Duplicate id 1'] : ['Duplicate id 1', 'iterator cleanup failed'])"]
+message = "removed expect(ctx.messages.some((message) => 'result' in message &…"
+label = "wrong"
+note = "Replaced by a stricter check that the last message is exactly { id: 1, result: { type: 'stopped' } }."
+
+[[finding]]
+unit = "83ace1ae4de7"
+pr = 7892
+rule = "expectation-loosened"
+path = "packages/tests/server/websocketsLifecycle.test.ts"
+test = "stop during admission followed by $rejection"
+before = ["'abort'", "'genuine'", "'BAD_REQUEST'", "'INTERNAL_SERVER_ERROR'", "'implicit-message'", "'same-message'"]
+after = ["{ expected: null, reject: abortError, rejection: 'an AbortError' }", "{ expected: null, reject: () => new TRPCError({ code: 'INTERNAL_SERVER_ERROR', cause: abortError() }), rejection: 'an INTERNAL_SERVER_ERROR caused by an AbortError' }", "{ expected: { code: 'INTERNAL_SERVER_ERROR', message: 'admission failed' }, reject: () => new Error('admission failed'), rejection: 'an unrelated error' }", "{ expected: { code: 'BAD_REQUEST', message: 'admission refused' }, reject: () => new TRPCError({ code: 'BAD_REQUEST', message: 'admission refused', cause: abortError() }), rejection: 'an explicit error code caused by an AbortError' }"]
+message = ".each now runs 4 rows instead of 6"
+label = "wrong"
+note = "PR #7892 doesn't touch this file: the commit is from stacked PR #7704, which landed first, so it's attributed to the wrong PR."
+
+[[finding]]
+unit = "83ace1ae4de7"
+pr = 7892
+rule = "check-removed"
+path = "packages/tests/server/websocketsLifecycle.test.ts"
+test = "iteration errors wait until cleanup %ss before allowing immediate id reuse"
+before = ["expect(onError).toHaveBeenCalledOnce()"]
+after = ["expect(onError.mock.calls.map(([opts]) => [opts.error.code, opts.error.message])).toEqual(outcome === 'resolve' ? [['UNAUTHORIZED', 'iteration failed']] : [['UNAUTHORIZED', 'iteration failed'], ['INTERNAL_SERVER_ERROR', 'cleanup failed']])"]
+message = "removed expect(onError).toHaveBeenCalledOnce()"
+label = "wrong"
+note = "PR #7892 doesn't touch this file: the commit is from stacked PR #7704, which landed first, so it's attributed to the wrong PR."
+
+[[finding]]
+unit = "83ace1ae4de7"
+pr = 7892
+rule = "check-removed"
+path = "packages/tests/server/websocketsLifecycle.test.ts"
+test = "an id remains owned until asynchronous iterator cleanup %ss"
+before = ["expect(ctx.messages.some((message) => 'result' in message && message.result.type === 'stopped')).toBe(true) (in if)"]
+after = ["await expect(ctx.messages.at(-1)).toEqual({ id: 1, result: { type: 'stopped' } })", "expect(onError.mock.calls.map(([opts]) => opts.error.message)).toEqual(outcome === 'resolve' ? ['Duplicate id 1'] : ['Duplicate id 1', 'iterator cleanup failed'])"]
+message = "removed expect(ctx.messages.some((message) => 'result' in message &…"
+label = "wrong"
+note = "PR #7892 doesn't touch this file: the commit is from stacked PR #7704, which landed first, so it's attributed to the wrong PR."
+
+[[finding]]
+unit = "f11900e2d6f1"
+pr = 7891
+rule = "expectation-loosened"
+path = "packages/tests/server/websocketsLifecycle.test.ts"
+test = "stop during admission followed by $rejection"
+before = ["'abort'", "'genuine'", "'BAD_REQUEST'", "'INTERNAL_SERVER_ERROR'", "'implicit-message'", "'same-message'"]
+after = ["{ expected: null, reject: abortError, rejection: 'an AbortError' }", "{ expected: null, reject: () => new TRPCError({ code: 'INTERNAL_SERVER_ERROR', cause: abortError() }), rejection: 'an INTERNAL_SERVER_ERROR caused by an AbortError' }", "{ expected: { code: 'INTERNAL_SERVER_ERROR', message: 'admission failed' }, reject: () => new Error('admission failed'), rejection: 'an unrelated error' }", "{ expected: { code: 'BAD_REQUEST', message: 'admission refused' }, reject: () => new TRPCError({ code: 'BAD_REQUEST', message: 'admission refused', cause: abortError() }), rejection: 'an explicit error code caused by an AbortError' }"]
+message = ".each now runs 4 rows instead of 6"
+label = "wrong"
+note = "PR #7891 doesn't touch this file: the commit is from stacked PR #7704, which landed first, so it's attributed to the wrong PR."
+
+[[finding]]
+unit = "f11900e2d6f1"
+pr = 7891
+rule = "check-removed"
+path = "packages/tests/server/websocketsLifecycle.test.ts"
+test = "iteration errors wait until cleanup %ss before allowing immediate id reuse"
+before = ["expect(onError).toHaveBeenCalledOnce()"]
+after = ["expect(onError.mock.calls.map(([opts]) => [opts.error.code, opts.error.message])).toEqual(outcome === 'resolve' ? [['UNAUTHORIZED', 'iteration failed']] : [['UNAUTHORIZED', 'iteration failed'], ['INTERNAL_SERVER_ERROR', 'cleanup failed']])"]
+message = "removed expect(onError).toHaveBeenCalledOnce()"
+label = "wrong"
+note = "PR #7891 doesn't touch this file: the commit is from stacked PR #7704, which landed first, so it's attributed to the wrong PR."
+
+[[finding]]
+unit = "f11900e2d6f1"
+pr = 7891
+rule = "check-removed"
+path = "packages/tests/server/websocketsLifecycle.test.ts"
+test = "an id remains owned until asynchronous iterator cleanup %ss"
+before = ["expect(ctx.messages.some((message) => 'result' in message && message.result.type === 'stopped')).toBe(true) (in if)"]
+after = ["await expect(ctx.messages.at(-1)).toEqual({ id: 1, result: { type: 'stopped' } })", "expect(onError.mock.calls.map(([opts]) => opts.error.message)).toEqual(outcome === 'resolve' ? ['Duplicate id 1'] : ['Duplicate id 1', 'iterator cleanup failed'])"]
+message = "removed expect(ctx.messages.some((message) => 'result' in message &…"
+label = "wrong"
+note = "PR #7891 doesn't touch this file: the commit is from stacked PR #7704, which landed first, so it's attributed to the wrong PR."
+
+[[finding]]
+unit = "c869fa1075fc"
+pr = 7832
+rule = "gate-loosened"
+path = ".github/workflows/main.yml"
+before = ["if: github.event_name == 'pull_request' || github.event_name == 'merge_group'"]
+after = ["if: github.event_name != 'push' || startsWith(github.event.head_commit.message, 'chore: release v')"]
+message = "job typecheck-www: now runs only if github.event_name != 'push' || startsWith(github.event.head…"
+label = "wrong"
+note = "The new condition is a superset of the old one: PRs and the merge queue still run the job (they aren't 'push'), and release-commit pushes now run it too."
+
+[[finding]]
+unit = "c869fa1075fc"
+pr = 7832
+rule = "gate-loosened"
+path = ".github/workflows/main.yml"
+before = ["if: github.event_name == 'pull_request' || github.event_name == 'merge_group'"]
+after = ["if: github.event_name != 'push' || startsWith(github.event.head_commit.message, 'chore: release v')"]
+message = "job e2e: now runs only if github.event_name != 'push' || startsWith(github.event.head…"
+label = "wrong"
+note = "The new condition is a superset of the old one: PRs and the merge queue still run the job (they aren't 'push'), and release-commit pushes now run it too."
+
+[[finding]]
+unit = "c869fa1075fc"
+pr = 7832
+rule = "gate-loosened"
+path = ".github/workflows/main.yml"
+before = ["if: github.event_name == 'pull_request' || github.event_name == 'merge_group'"]
+after = ["if: github.event_name != 'push' || startsWith(github.event.head_commit.message, 'chore: release v')"]
+message = "job e2e-deno: now runs only if github.event_name != 'push' || startsWith(github.event.head…"
+label = "wrong"
+note = "The new condition is a superset of the old one: PRs and the merge queue still run the job (they aren't 'push'), and release-commit pushes now run it too."
+
+[[finding]]
+unit = "c869fa1075fc"
+pr = 7832
+rule = "gate-loosened"
+path = ".github/workflows/main.yml"
+before = ["if: github.event_name == 'pull_request' || github.event_name == 'merge_group'"]
+after = ["if: github.event_name != 'push' || startsWith(github.event.head_commit.message, 'chore: release v')"]
+message = "job e2e-bun: now runs only if github.event_name != 'push' || startsWith(github.event.head…"
+label = "wrong"
+note = "The new condition is a superset of the old one: PRs and the merge queue still run the job (they aren't 'push'), and release-commit pushes now run it too."
+
+[[finding]]
+unit = "c869fa1075fc"
+pr = 7832
+rule = "gate-loosened"
+path = ".github/workflows/main.yml"
+before = ["if: github.event_name == 'pull_request' || github.event_name == 'merge_group'"]
+after = ["if: github.event_name != 'push' || startsWith(github.event.head_commit.message, 'chore: release v')"]
+message = "job e2e-legacy-node: now runs only if github.event_name != 'push' || startsWith(github.event.head…"
+label = "wrong"
+note = "The new condition is a superset of the old one: PRs and the merge queue still run the job (they aren't 'push'), and release-commit pushes now run it too."
+
+[[finding]]
+unit = "c869fa1075fc"
+pr = 7832
+rule = "test-disabled"
+path = "tooling/release/src/tarballs.test.ts"
+test = "onRegistry > tells whether the registry lists a package's version"
+before = ["expect(yield* onRegistry(url, '@trpc/server', '11.23.0')).toBe(true) (in callback)", "expect(yield* onRegistry(url, '@trpc/server', '11.23.1')).toBe(false) (in callback)", "expect(yield* onRegistry(url, '@trpc/client', '11.23.0')).toBe(false) (in callback)"]
+after = []
+message = "deleted: onRegistry > tells whether the registry lists a package's version"
+label = "wrong"
+note = "Renamed to 'compares what the registry has with the tarball' when onRegistry started returning same/different/absent; it checks the same lookups, plus more."
+
+[[finding]]
+unit = "33ee2ba5880d"
+pr = 7915
+rule = "check-removed"
+path = "packages/tests/server/websocketsThrowingCallbacks.test.ts"
+test = "an async onError that rejects is ignored"
+before = ["expect(await ctx.client.greeting.query()).toBe('hello')"]
+after = []
+message = "removed expect(await ctx.client.greeting.query()).toBe('hello')"
+label = "intended"
+note = "The commit says it trims the throwing-callback tests; the check that the connection still answers after an async onError rejects was dropped."
+
+[[finding]]
+unit = "33ee2ba5880d"
+pr = 7915
+rule = "check-removed"
+path = "packages/tests/server/websocketsThrowingCallbacks.test.ts"
+test = "an errorFormatter that throws is reported, and the request gets a fallback error"
+before = ["expect(onError).toHaveBeenCalledTimes(2)"]
+after = ["expect(byId(socket.responses())).toEqual([{ error: fallbackError, id: 1 }, { id: 2, result: { data: 'hello', type: 'data' } }])"]
+message = "removed expect(onError).toHaveBeenCalledTimes(2); the test name dropped \"no reply other requests are answered\""
+label = "wrong"
+note = "Still pinned: the toEqual on onError's calls has exactly two entries, now with their paths too."
+
+[[finding]]
+unit = "33ee2ba5880d"
+pr = 7915
+rule = "check-removed"
+path = "packages/tests/server/websocketsThrowingCallbacks.test.ts"
+test = "an onError that throws on a socket error leaves the server serving"
+before = ["await expect(ctx.client.echo.query('x'.repeat(1e3))).rejects.toThrow()"]
+after = ["expect(uncaughtExceptions.errors).toEqual([])"]
+message = "removed await expect(ctx.client.echo.query('x'.repeat(1e3))).reject…"
+label = "wrong"
+note = "Rewritten to send the oversized frame on a raw socket and await its close, the same check, plus a check for no uncaught exceptions."
+
+[[finding]]
+unit = "33ee2ba5880d"
+pr = 7915
+rule = "matcher-swapped"
+path = "packages/tests/server/websocketsThrowingCallbacks.test.ts"
+test = "an errorFormatter that throws is reported, and the request gets a fallback error"
+before = ["expect(socket.responses()).toMatchObject([{ id: 2, result: { data: 'hello', type: 'data' } }])"]
+after = ["await expect(socket.responses()).toHaveLength(2)"]
+message = "swapped toMatchObject([{ id: 2, result: { data: 'hello', type: 'dat… for toHaveLength(2)"
+label = "wrong"
+note = "toHaveLength(2) is only the wait; the next line checks both responses exactly with toEqual, which is stricter than the old toMatchObject."
+
+[[finding]]
+unit = "d7f0ddb53b0e"
+pr = 7727
+rule = "check-removed"
+path = "packages/tests/server/websockets.test.ts"
+test = "a server-requested reconnect hands subscriptions off > a new socket that can't open leaves everything on the old one until the server closes it"
+before = ["expect(seen).toContain('connecting')"]
+after = []
+message = "removed expect(seen).toContain('connecting')"
+label = "intended"
+note = "The same commit reports repeated replacement failures as connecting, so seen can already hold it; the subscriber-level check after the close was dropped (the client's connection state is still checked)."
+
+[[finding]]
+unit = "d7f0ddb53b0e"
+pr = 7727
+rule = "check-removed"
+path = "packages/tests/server/websockets.test.ts"
+test = "a server-requested reconnect hands subscriptions off > the old socket stays open and serves its subscriptions until the new one opens"
+before = ["expect(receivedFor('greeting')).toEqual([])"]
+after = []
+message = "removed expect(receivedFor('greeting')).toEqual([])"
+label = "wrong"
+note = "Requests now go to the old socket during a reconnect by design; the same request is checked against the new outcome (it resolves, and arrived on the old socket)."
+
+[[finding]]
+unit = "d7f0ddb53b0e"
+pr = 7727
+rule = "check-removed"
+path = "packages/tests/server/websockets.test.ts"
+test = "requests pending on a socket that a server reconnect retires > a retired socket's connection-level frames are ignored"
+before = ["expect(oldFrames).toHaveLength(2)", "expect(oldClientSocket.readyState).toBe(WebSocket.CLOSED)", "expect(onOpen.mock.calls.length).toBeGreaterThanOrEqual(3)"]
+after = []
+message = "removed 3 checks, including expect(oldFrames).toHaveLength(2)"
+label = "wrong"
+note = "The polls became awaited deferreds that resolve on the same conditions (two frames, both close events, third open); onOpen is still checked at exactly 3."
+
+[[finding]]
+unit = "d7f0ddb53b0e"
+pr = 7727
+rule = "check-removed"
+path = "packages/tests/server/websockets.test.ts"
+test = "a server-requested reconnect hands subscriptions off > a subscription lost with the new socket isn't ended by the old socket's late stopped"
+before = ["expect(eventsSubscribed).toHaveBeenCalledTimes(1)", "expect(receivedFor('slow')).toHaveLength(1)", "expect(seen).toContain(1)", "expect(stopped!.count()).toBe(1)", "expect(eventsSubscribed).toHaveBeenCalledTimes(3)", "expect(seen).toContain(2)"]
+after = []
+message = "removed 6 checks, including expect(eventsSubscribed).toHaveBeenCalledTimes(1)"
+label = "wrong"
+note = "The polls became awaits on the same calls and held frames (the commit says so, to stop timeouts under load); the final exact check on seen is unchanged."
+
+[[finding]]
+unit = "d7f0ddb53b0e"
+pr = 7727
+rule = "check-removed"
+path = "packages/tests/server/websockets.test.ts"
+test = "a server-requested reconnect hands subscriptions off > a new socket that closes while its connectionParams are pending leaves an idle client on the old one"
+before = ["expect(onOpen).toHaveBeenCalledTimes(2)", "expect(onClose).toHaveBeenCalledTimes(1)"]
+after = []
+message = "removed 2 checks, including expect(onOpen).toHaveBeenCalledTimes(2)"
+label = "wrong"
+note = "The polls became awaits on onOpen.calledTimes(2) and onClose.calledTimes(1), the same conditions (the commit says so, to stop timeouts under load)."
+
+[[finding]]
+unit = "d7f0ddb53b0e"
+pr = 7727
+rule = "check-removed"
+path = "packages/tests/server/websockets.test.ts"
+test = "requests pending on a socket that a server reconnect retires > while connectionParams throw > a query pending on the retired socket resolves from it"
+before = ["expect(settled.mock.calls[0]![0]).toMatchObject({ name: 'TRPCClientError' })"]
+after = ["expect(settled).not.toHaveBeenCalled()", "expect(oldClientSocket.readyState).toBe(WebSocket.CLOSED)"]
+message = "removed expect(settled.mock.calls[0]![0]).toMatchObject({ name: 'TR…; the test name dropped \"fails\""
+label = "wrong"
+note = "The query now resolves from the retired socket by design; the same query is checked against the new outcome with the stricter toHaveBeenCalledExactlyOnceWith('resolved')."
+
+[[finding]]
+unit = "d7f0ddb53b0e"
+pr = 7727
+rule = "check-removed"
+path = "packages/tests/server/websockets.test.ts"
+test = "a server-requested reconnect hands subscriptions off > failed attempts to replace an open socket leave it serving every request"
+before = ["expect(states.map(({ state }) => state)).toContain('connecting')", "expect(states.slice(0, 2)).toEqual([{ error: null, state: 'pending' }, { error: expect.objectContaining({ cause: expect.objectContaining({ cause: expect.objectContaining({ message: 'token unavailable (3)' }) }) }), state: 'connecting' }])", "expect(states.at(-1)).toEqual({ error: null, state: 'pending' })", "expect(new Set(states.slice(1, -1).map(({ state }) => state))).toEqual(new Set(['connecting']))"]
+after = ["expect(onOpen.mock.calls.length).toBeGreaterThanOrEqual(4)", "expect(data).toEqual([1, 2])", "expect(states).toEqual([{ error: null, state: 'pending' }])"]
+message = "removed 4 checks, including expect(states.map(({ state }) => state)).toContain('connect…; the test name dropped \"the third attempt reports its error\""
+label = "wrong"
+note = "Failed replacements of an open socket are no longer reported, by design; the same scenario is checked with states pinned exactly to [pending]."
+
+[[finding]]
+unit = "d7f0ddb53b0e"
+pr = 7727
+rule = "check-removed"
+path = "packages/tests/server/websockets.test.ts"
+test = "a server-requested reconnect hands subscriptions off > a new socket that can't open leaves everything on the old one until the server closes it"
+before = ["expect(ctx.wsClient.connection?.state).toBe('connecting')", "expect(ctx.wsClient.connection!.ws).not.toBe(oldClientSocket)"]
+after = ["expect(shown.filter(({ state }) => state === 'connecting')).toEqual([{ error: expect.objectContaining({ cause: expect.objectContaining({ cause: expect.objectContaining({ message: expect.stringMatching(/^token unavailable/) }) }), message: 'Initialization error' }), state: 'connecting' }])", "expect(settled).not.toHaveBeenCalled()", "expect(settled).toHaveBeenCalledWith('hello')", "expect(receivedFor('greeting')).toHaveLength(2)", "expect(receivedFor('greeting')[1]!.socket).not.toBe(oldServerSocket)"]
+message = "removed 2 checks, including expect(ctx.wsClient.connection?.state).toBe('connecting')"
+label = "wrong"
+note = "Replaced by stricter checks: the connecting state shown with its error, and new requests waiting for and reaching the new socket."
+
+[[finding]]
+unit = "d7f0ddb53b0e"
+pr = 7727
+rule = "check-removed"
+path = "packages/tests/server/websockets.test.ts"
+test = "a server-requested reconnect hands subscriptions off > the old socket's data and stopped for a moved subscription are dropped"
+before = ["expect(valuesStarted).toHaveBeenCalledTimes(2)"]
+after = ["expect(eventsSubscribed).toHaveBeenCalledTimes(1)", "expect(eventsSubscribed).toHaveBeenCalledTimes(2)"]
+message = "removed expect(valuesStarted).toHaveBeenCalledTimes(2)"
+label = "wrong"
+note = "The test moved from the untracked values subscription to the tracked events one (untracked ones now behave differently); the same count is checked on eventsSubscribed."
+
+[[finding]]
+unit = "d7f0ddb53b0e"
+pr = 7727
+rule = "check-removed"
+path = "packages/tests/server/websockets.test.ts"
+test = "a server-requested reconnect hands subscriptions off > a new socket that can't open leaves everything on the old one until the server closes it"
+before = ["expect(shown.filter(({ state }) => state === 'connecting')).toEqual([{ error: expect.objectContaining({ cause: expect.objectContaining({ cause: expect.objectContaining({ message: expect.stringMatching(/^token unavailable/) }) }), message: 'Initialization error' }), state: 'connecting' }])"]
+after = ["expect(oldClientSocket.readyState).toBe(WebSocket.CLOSED)"]
+message = "removed expect(shown.filter(({ state }) => state === 'connecting'))…"
+label = "wrong"
+note = "Moved: the commit puts the last-failure check into the failed-attempts test, which checks states[1] for the same connecting error."
+
+[[finding]]
+unit = "6ea3d9873854"
+pr = 7946
+rule = "check-removed"
+path = "packages/tests/server/subscriptionAsyncIterable.test.ts"
+test = "each observer callback on its own makes a subscription with callbacks"
+before = ["expect(() => iteratorOf(sub as any)).toThrowError('A subscription with callbacks can\\'t be iterated') (in loop)"]
+after = []
+message = "removed expect(() => iteratorOf(sub as any)).toThrowError('A subscr…"
+label = "intended"
+note = "The PR drops the throwOnIterate guard because the types rule it out, so the per-callback iteration check goes too."
+
+[[finding]]
+unit = "6ea3d9873854"
+pr = 7946
+rule = "test-disabled"
+path = "packages/tests/server/subscriptionAsyncIterable.test.ts"
+test = "a subscription with callbacks throws when iterated"
+before = ["await expect(async () => { for await (const _ of sub) {} }).rejects.toThrowError('A subscription with callbacks can\\'t be iterated')"]
+after = []
+message = "deleted: a subscription with callbacks throws when iterated (only 2 of its 3 checks moved to other tests)"
+label = "intended"
+note = "The guard was dropped on purpose; the new test still iterates, but only expects any TypeError instead of the guard's message."
+
+[[finding]]
+unit = "6ea3d9873854"
+pr = 7946
+rule = "test-disabled"
+path = "packages/tests/server/subscriptionAsyncIterable.test.ts"
+test = "callbacks that are all undefined throw"
+before = ["expect(() => ctx.client.onEvent.subscribe(undefined, opts)).toThrowError('subscribe() was called with callbacks, but none of them is defined. Pass at least one callback, or omit them all to iterate with for await.')", "expect(() => ctx.emit(1)).toThrowError('Not subscribed')"]
+after = []
+message = "deleted: callbacks that are all undefined throw"
+label = "wrong"
+note = "The runtime guard was dropped on purpose; the new test checks all-undefined callbacks against the new outcome (an iterable subscription, plus a type check)."
+
+[[finding]]
+unit = "410b7f352f3e"
+pr = 7952
+rule = "check-removed"
+path = "www/build/sponsors-readme.test.ts"
+test = "sponsorCloudMarkdown > links the cloud to its place on /sponsor, at a URL that never changes"
+before = ["expect(src(sponsors)).toMatch(/^https:\\/\\/trpc\\.io\\/og\\/sponsor-cloud\\.png\\?v=[0-9a-f]{8}$/)", "expect(src([...sponsors, { ...sponsor('c', 10), imageless: true }])).toBe(src(sponsors))", "expect(src([sponsor('a', 41), sponsor('b', 20)])).not.toBe(src(sponsors))", "expect(src([sponsor('a', 40)])).not.toBe(src(sponsors))", "expect(src([sponsor('a', 40), { ...sponsor('b', 20), name: 'B Co' }])).not.toBe(src(sponsors))"]
+after = []
+message = "removed 5 checks, including expect(src(sponsors)).toMatch(/^https:\\/\\/trpc\\.io\\/og\\/spo…; the test name dropped \"version with who it draws\""
+label = "intended"
+note = "The README cloud URL is now fixed by design (the PR body explains camo caching); the version checks partly moved to the sponsorCloudSource and sponsorCloudVersion tests, but the fewer-sponsors and name-change cases weren't carried over."
+
+[[finding]]
+unit = "410b7f352f3e"
+pr = 7952
+rule = "test-disabled"
+path = "www/src/og/card.test.ts"
+test = "ogImagePath > mirrors the page path under /og"
+before = ["expect(ogImagePath('/')).toBe('/og/index.png')", "expect(ogImagePath('/docs/v10/client/links')).toBe('/og/docs/v10/client/links.png')", "expect(ogImagePath('/docs/quickstart')).toBe('/og/docs/quickstart.png')"]
+after = []
+message = "deleted: ogImagePath > mirrors the page path under /og"
+label = "wrong"
+note = "ogImagePath moved from seo.ts to og/version.ts and its test went with it (version.test.ts checks '/', '/docs/quickstart' and more, with and without a version)."
+
+[[finding]]
+unit = "410b7f352f3e"
+pr = 7952
+rule = "test-disabled"
+path = "www/src/og/sponsor-cloud.test.ts"
+test = "sponsorCloudUrl > is absolute, at the version of who it draws"
+before = ["expect(sponsorCloudUrl(list)).toBe(`https://trpc.io${sponsorCloudPath}?v=${sponsorCloudVersion(list)}`)", "expect(sponsorCloudVersion(list)).toMatch(/^[0-9a-f]{8}$/)", "expect(sponsorCloudVersion(list)).toBe(sponsorCloudVersion([...list, { ...sponsor('c', 10), imageless: true }]))", "expect(sponsorCloudVersion(list)).not.toBe(sponsorCloudVersion([sponsor('a', 40), sponsor('b', 21)]))", "expect(sponsorCloudVersion(list)).not.toBe(sponsorCloudVersion([sponsor('a', 40), { ...sponsor('b', 20), imgSrc: 'https://example.com/b.png' }]))"]
+after = []
+message = "deleted: sponsorCloudUrl > is absolute, at the version of who it draws"
+label = "wrong"
+note = "Split: sponsorCloudUrl is now a fixed URL checked exactly, and the change-detection checks moved to sponsorCloudSource and build/og-cards.test.ts."
+
+[[finding]]
+unit = "410b7f352f3e"
+pr = 7952
+rule = "test-disabled"
+path = "www/src/og/sponsor-cloud.test.ts"
+test = "sponsorCloudCacheControl > caches it as a page when every avatar loaded, at the current version or none"
+before = ["expect(sponsorCloudCacheControl({ avatars: all, bubbles, current, requested })).toBeUndefined() (in loop)"]
+after = []
+message = "deleted: sponsorCloudCacheControl > caches it as a page when every avatar loaded, at the current version or none"
+label = "wrong"
+note = "Renamed to 'caches it for good at its version...'; it now checks explicit immutable and must-revalidate headers where it expected undefined."
+
+[[finding]]
+unit = "410b7f352f3e"
+pr = 7952
+rule = "check-removed"
+path = "www/src/og/sponsor-cloud.test.ts"
+test = "sponsorCloudCacheControl > caches it briefly when an avatar is missing"
+before = ["expect(sponsorCloudCacheControl({ avatars: one, bubbles, current, requested: null })).toBe('public, max-age=0, s-maxage=600')", "expect(sponsorCloudCacheControl({ avatars: all, bubbles, current, requested: 'ffff0000' })).toBe('public, max-age=0, s-maxage=600')"]
+after = ["expect(sponsorCloudCacheControl({ avatars: new Map([...all].slice(0, 1)), bubbles, readme })).toBe('public, max-age=0, s-maxage=600') (in loop)"]
+message = "removed 2 checks, including expect(sponsorCloudCacheControl({ avatars: one, bubbles, cu…; the test name dropped \"or another version was asked for\""
+label = "wrong"
+note = "The missing-avatar check is still there (in a loop over readme true/false); another version now gets a 307 redirect, checked in the serveOgImage tests."
+
+[[finding]]
+unit = "410b7f352f3e"
+pr = 7952
+rule = "check-removed"
+path = "www/build/sponsors-readme.test.ts"
+test = "sponsorCloudMarkdown > links the cloud at its version to its place on /sponsor"
+before = ["expect(src(sponsors)).toMatch(/^https:\\/\\/trpc\\.io\\/og\\/sponsor-cloud\\.png\\?v=[0-9a-f]{8}$/)", "expect(src([...sponsors, { ...sponsor('c', 10), imageless: true }])).toBe(src(sponsors))", "expect(src([sponsor('a', 41), sponsor('b', 20)])).not.toBe(src(sponsors))", "expect(src([sponsor('a', 40)])).not.toBe(src(sponsors))", "expect(src([sponsor('a', 40), { ...sponsor('b', 20), name: 'B Co' }])).not.toBe(src(sponsors))"]
+after = []
+message = "removed 5 checks, including expect(src(sponsors)).toMatch(/^https:\\/\\/trpc\\.io\\/og\\/spo…; the test name dropped \"a that changes with who it draws\""
+label = "intended"
+note = "The commit moves the cloud's version out of the README markdown into the sync and build; its change checks moved to the og-cards and sponsorCloudSource tests, minus the fewer-sponsors and name-change cases."
+
+[[finding]]
+unit = "410b7f352f3e"
+pr = 7952
+rule = "check-removed"
+path = "www/src/og/version.test.ts"
+test = "versionRedirect > leaves the URL at the current version alone"
+before = ["expect(versionRedirect(url(''), '')).toBeUndefined()"]
+after = []
+message = "removed expect(versionRedirect(url(''), '')).toBeUndefined(); the test name dropped \"a\""
+label = "intended"
+note = "versionRedirect was rewritten for path versions in the same commit; the empty-version case (no OG_CARDS_VERSION) wasn't carried over, though the code still handles it."
+
+[[finding]]
+unit = "410b7f352f3e"
+pr = 7952
+rule = "check-removed"
+path = "www/src/og/version.test.ts"
+test = "versionRedirect > redirects another version, or any query, to the current version alone"
+before = ["expect(versionRedirect(url('?x=1'), '')?.headers.get('location')).toBe('/og/a.png')"]
+after = []
+message = "removed expect(versionRedirect(url('?x=1'), '')?.headers.get('locat…; the test name dropped \"none parameter\""
+label = "intended"
+note = "versionRedirect was rewritten for path versions in the same commit; the empty-version-with-a-query case wasn't carried over, though the code still handles it."
+
+[[finding]]
+unit = "410b7f352f3e"
+pr = 7952
+rule = "check-removed"
+path = "www/src/og/version.test.ts"
+test = "/og/* > redirects a card at no version, another version, or with a query, before drawing it"
+before = ["await expect(get('/og/abc/index.png')).rejects.toThrow('drew a card')"]
+after = []
+message = "removed await expect(get('/og/abc/index.png')).rejects.toThrow('dre…"
+label = "wrong"
+note = "The home card moved to a daily version; the draw-at-current check moved to the new home-card test (/og/abc-20261105/index.png), which also checks that /og/abc/index.png now redirects."
+
+[[finding]]
+unit = "410b7f352f3e"
+pr = 7952
+rule = "check-removed"
+path = "www/src/seo.test.ts"
+test = "ogImageUrl > carries the cards' version, so social sites fetch a changed card again"
+before = ["expect(ogImageUrl('/')).toBe(`${site.url}/og/0123abcdef/index.png`)"]
+after = []
+message = "removed expect(ogImageUrl('/')).toBe(`${site.url}/og/0123abcdef/ind…"
+label = "wrong"
+note = "The home card's URL now carries the day; it's checked in the new 'names the home card for the day' test through pageHead."
+
+[[finding]]
+unit = "410b7f352f3e"
+pr = 7952
+rule = "check-removed"
+path = "www/src/og/version.test.ts"
+test = "/og/* > redirects a card at no version, another version, or with a query, before drawing it"
+before = ["await expect(get('/og/index.png?v=abc')).rejects.toThrow('drew a card')"]
+after = ["await expect(get('/og/abc/docs/server/procedures.png')).rejects.toThrow('drew a card')", "await expect(get('/og/abc/index.png')).rejects.toThrow('drew a card')"]
+message = "removed await expect(get('/og/index.png?v=abc')).rejects.toThrow('d…; the test name dropped \"card's request\""
+label = "wrong"
+note = "Rewritten for path versions: the current URL is now /og/abc/index.png, which the test checks still draws."
+
+[[finding]]
+unit = "410b7f352f3e"
+pr = 7952
+rule = "test-disabled"
+path = "www/src/og/version.test.ts"
+test = "versionedPath > puts the version after /og/"
+before = ["expect(versionedPath('/og/docs/a.png', 'abc')).toBe('/og/abc/docs/a.png')", "expect(versionedPath('/og/docs/a.png', '')).toBe('/og/docs/a.png')"]
+after = []
+message = "deleted: versionedPath > puts the version after /og/"
+label = "wrong"
+note = "Replaced by ogImagePath for the new /og/<page>/<version>.png scheme, tested with and without a version."
+
+[[finding]]
+unit = "410b7f352f3e"
+pr = 7952
+rule = "test-disabled"
+path = "www/src/og/version.test.ts"
+test = "requestedImage > reads an image and its version from the path"
+before = ["expect(requestedImage('/og/docs/a.png', exists)).toEqual({ path: '/og/docs/a.png', version: '' })", "expect(requestedImage('/og/abc/docs/a.png', exists)).toEqual({ path: '/og/docs/a.png', version: 'abc' })"]
+after = []
+message = "deleted: requestedImage > reads an image and its version from the path"
+label = "wrong"
+note = "Replaced by requestedPage for the new path scheme, with more cases (with and without .png and a version)."
+
+[[finding]]
+unit = "410b7f352f3e"
+pr = 7952
+rule = "check-cant-fail"
+path = "www/src/og/version.test.ts"
+test = "/og/* > redirects the sponsor cloud at another version, as the READMEs' old ?v= URL, before drawing it"
+before = ["expect(response.status).toBe(307)"]
+after = ["expect(response.status).toBe(307) (in loop)"]
+message = "expect(response.status).toBe(307) is now inside a loop: it doesn't run if the loop runs zero times"
+label = "wrong"
+note = "The loop is over a literal non-empty array, so the check always runs."
+
+[[finding]]
+unit = "410b7f352f3e"
+pr = 7952
+rule = "check-cant-fail"
+path = "www/src/og/version.test.ts"
+test = "/og/* > redirects the sponsor cloud at another version, as the READMEs' old ?v= URL, before drawing it"
+before = ["expect(response.headers.get('location')).toBe(`${sponsorCloudPath}?v=${version}`)"]
+after = ["expect(response.headers.get('location')).toBe('/og/cloud1/sponsor-cloud.png') (in loop)"]
+message = "expect(response.headers.get('location')).toBe('/og/cloud1/s… is now inside a loop: it doesn't run if the loop runs zero times"
+label = "wrong"
+note = "The loop is over a literal non-empty array, so the check always runs."
+
+[[finding]]
+unit = "410b7f352f3e"
+pr = 7952
+rule = "check-cant-fail"
+path = "www/src/og/version.test.ts"
+test = "/og/* > answers a path without an image with a 404, whatever its version or query"
+before = ["expect((await get('/og/nothing.png?v=made-up')).status).toBe(404)"]
+after = ["expect((await get(path)).status).toBe(404) (in loop)"]
+message = "expect((await get(path)).status).toBe(404) is now inside a loop: it doesn't run if the loop runs zero times"
+label = "wrong"
+note = "The loop is over a literal non-empty array, so the check always runs."
+
+[[finding]]
+unit = "c561cd311fd1"
+pr = 7953
+rule = "check-removed"
+path = "www/src/og/version.test.ts"
+test = "dailyVersion > stays current until the next UTC day"
+before = ["expect(untilVersionChanges(false, new Date('2026-11-05T23:59:00Z'))).toBe(86400)"]
+after = []
+message = "removed expect(untilVersionChanges(false, new Date('2026-11-05T23:5…; the test name dropped \"and any other version a\""
+label = "intended"
+note = "Every card is now dated, so the non-daily branch is gone (untilVersionChanges became untilTomorrow) and its check went with it."
+
+[[finding]]
+unit = "c561cd311fd1"
+pr = 7953
+rule = "test-disabled"
+path = "www/src/og/version.test.ts"
+test = "serveOgImage > redirects a card at no version, another version, or with a query, before drawing it"
+before = ["expect(response.headers.get('location')).toBe('/og/docs/server/procedures/abcdef0123.png') (in loop)", "await expect(get('/og/docs/server/procedures/abcdef0123.png')).rejects.toThrow('drew a card')"]
+after = []
+message = "deleted: serveOgImage > redirects a card at no version, another version, or with a query, before drawing it (only 1 of its 3 checks moved to other tests)"
+label = "wrong"
+note = "Renamed to 'redirects any card at no version, another version or another day...': the same paths, plus dated ones, redirect to today's dated URL, which still draws; it now checks cache-control too."
+
+[[finding]]
+unit = "c561cd311fd1"
+pr = 7953
+rule = "test-disabled"
+path = "www/src/seo.test.ts"
+test = "ogImageUrl > carries the cards' version, so social sites fetch a changed card again"
+before = ["expect(ogImageUrl('/docs/server/procedures', null)).toBe(`${site.url}/og/docs/server/procedures/0123abcdef.png`)"]
+after = []
+message = "deleted: ogImageUrl > carries the cards' version, so social sites fetch a changed card again"
+label = "wrong"
+note = "Renamed to 'carries the cards' version and the UTC day...': the same call is checked against the dated URL."
+
+[[finding]]
+unit = "fe64009e62e9"
+pr = 7958
+rule = "matcher-loosened"
+path = "www/src/content/search.test.ts"
+test = "searchDocs > finds by prefix and with a typo"
+before = ["expect(ids('batc')).toEqual(['client/links#batching'])"]
+after = ["expect(ids('batc')).toContain('client/links#batching')"]
+message = "toEqual(['client/links#batching']) → toContain('client/links#batching'): now a partial match passes"
+label = "intended"
+note = "The same commit adds a fixture page that also matches 'batc' and changes ranking, so the exact list became a toContain; the test is less strict."
+
+[[finding]]
+unit = "b9b460ad186e"
+pr = 7957
+rule = "test-disabled"
+path = "packages/tanstack-react-query/src/unstable-handles/handles.ssr.test.tsx"
+test = "server rendering > useTRPC() starts its prefetches in the server render"
+before = ["expect(html).toContain('Posts on 2026-03-01')", "expect(html).toContain('Posts on 2026-03-02')", "expect(trpcWarnings(warn)).toEqual([])"]
+after = []
+message = "deleted: server rendering > useTRPC() starts its prefetches in the server render (only 1 of its 4 checks moved to other tests)"
+label = "intended"
+note = "The PR drops starting handles during render with useTRPC() (handles now only come from loadHandles), so this test goes."
+
+[[finding]]
+unit = "b9b460ad186e"
+pr = 7957
+rule = "check-removed"
+path = "packages/tanstack-react-query/src/unstable-handles/handles.test.tsx"
+test = "runtime > server load -> dehydrate -> hydrate -> read without a refetch"
+before = ["expect(handle).toEqual({ input: { id: '1' }, queryKey: [['post', 'byId'], { input: { id: '1' }, type: 'query' }] })", "expect(listHandle).toEqual({ input: { limit: 2 }, queryKey: [['post', 'list'], { input: { limit: 2 }, type: 'infinite' }] })"]
+after = []
+message = "removed 2 checks, including expect(handle).toEqual({ input: { id: '1' }, queryKey: [['p…; the test name dropped \"prefetch\""
+label = "intended"
+note = "Handles moved to loadHandles (API rewrite) and the exact shape checks of the two prefetch handles were dropped; the query handle's shape is still pinned elsewhere, the cursorless infinite one's isn't."
+
+[[finding]]
+unit = "b9b460ad186e"
+pr = 7957
+rule = "test-disabled"
+path = "packages/tanstack-react-query/test/handles.render.test.tsx"
+tests = ["unstable_$prefetch on useTRPC() during render > returns typed handles", "unstable_$prefetch on useTRPC() during render > starts every query before any reader renders", "unstable_$prefetch on useTRPC() during render > re-renders with the same input start nothing", "unstable_$prefetch on useTRPC() during render > a new mount shows cached data and refetches it if stale", "unstable_$prefetch on useTRPC() during render > a page that suspends on its own handle doesn't refetch when it retries", "unstable_$prefetch on useTRPC() during render > a failed query isn't restarted by the render that throws it"]
+before = ["unstable_$prefetch on useTRPC() during render > returns typed handles", "unstable_$prefetch on useTRPC() during render > starts every query before any reader renders", "unstable_$prefetch on useTRPC() during render > re-renders with the same input start nothing", "unstable_$prefetch on useTRPC() during render > a new mount shows cached data and refetches it if stale", "unstable_$prefetch on useTRPC() during render > a page that suspends on its own handle doesn't refetch when it retries", "unstable_$prefetch on useTRPC() during render > a failed query isn't restarted by the render that throws it"]
+after = []
+message = "file deleted: its 6 tests no longer run"
+label = "intended"
+note = "The PR drops unstable_$prefetch during render; the new render test file covers only queryOptions reads."
+
+[[finding]]
+unit = "b9b460ad186e"
+pr = 7957
+rule = "test-disabled"
+path = "packages/tanstack-react-query/test/handles.test.tsx"
+tests = ["types > unstable_$fromHandle is on every router level", "runtime > unstable_$ensure waits and rejects; prefetch never throws", "runtime > unstable_$fetchInfinite loads pages and returns an infinite handle", "runtime > useTRPC() doesn't take the verbs that wait"]
+before = ["types > unstable_$fromHandle is on every router level", "runtime > unstable_$ensure waits and rejects; prefetch never throws", "runtime > unstable_$fetchInfinite loads pages and returns an infinite handle", "runtime > useTRPC() doesn't take the verbs that wait"]
+after = []
+message = "file deleted: its 4 tests no longer run"
+label = "intended"
+note = "Three have renamed counterparts for the plain-function API (fromHandle on any level, ensure/fetch entries reject, infinite entries load pages); the useTRPC()-during-render guard test was dropped with the guard."
+
+[[finding]]
+unit = "b9b460ad186e"
+pr = 7957
+rule = "check-removed"
+path = "packages/tanstack-react-query/src/unstable-handles/handles.test.tsx"
+test = "loading > a fetch entry waits for stale data to refetch"
+before = ["expect(fresh).toEqual(handle)", "await expect(serverTrpc.post.byId.unstable_$fetch({ id: 'missing' })).rejects.toBeInstanceOf(TRPCError)"]
+after = ["expect(fresh.post.title).toBe('Post 1')"]
+message = "removed 2 checks, including expect(fresh).toEqual(handle); the test name dropped \"unstable_$fetch and rejects\""
+label = "wrong"
+note = "loadHandles now returns data, so the second fetch is checked by its data and call count; the missing-id rejection moved to 'rejects when a fetch or ensure entry fails'."
+
+[[finding]]
+unit = "b9b460ad186e"
+pr = 7957
+rule = "check-cant-fail"
+path = "packages/tanstack-react-query/src/unstable-handles/handles.test.tsx"
+test = "runtime > handles of procedures without input have no input key, so Next.js can serialize them"
+before = ["expect(Object.keys(handle)).toEqual(['queryKey']) (in loop)"]
+after = ["expect(Object.keys(handle)).toEqual(['queryKey']) (in if, in loop)"]
+message = "expect(Object.keys(handle)).toEqual(['queryKey']) is now inside an if: it may not run"
+label = "wrong"
+note = "The if only skips the withInput entry, the same as the old slice(0, 6), and the loop runs over 7 entries."
+
+[[finding]]
+unit = "b9b460ad186e"
+pr = 7957
+rule = "check-removed"
+path = "packages/tanstack-react-query/test/handles.test.tsx"
+test = "runtime > server load -> dehydrate -> hydrate -> read without a refetch"
+before = ["expect(listHandle).toEqual({ input: { limit: 2 }, queryKey: [['post', 'list'], { input: { limit: 2 }, type: 'infinite' }] })"]
+after = []
+message = "removed expect(listHandle).toEqual({ input: { limit: 2 }, queryKey:…; the test name dropped \"prefetch\""
+label = "intended"
+note = "The commit moves loading to loadHandles and drops the exact shape check of the cursorless infinite handle."
+
+[[finding]]
+unit = "b9b460ad186e"
+pr = 7957
+rule = "check-removed"
+path = "packages/tanstack-react-query/test/handles.test.tsx"
+test = "loading > useTRPC() can't load handles"
+before = ["expect(typeof trpc.unstable_$fromHandle).toBe('function') (in callback)"]
+after = []
+message = "removed expect(typeof trpc.unstable_$fromHandle).toBe('function')"
+label = "wrong"
+note = "fromHandle moved off the proxy to a plain function in the same commit; other tests call it with useTRPC()'s proxy."
+
+[[finding]]
+unit = "b9b460ad186e"
+pr = 7957
+rule = "test-disabled"
+path = "packages/tanstack-react-query/test/handles.test.tsx"
+test = "types > settleEntry turns an entry into a result on data"
+before = []
+after = []
+message = "deleted: types > settleEntry turns an entry into a result on data"
+label = "intended"
+note = "Revert of settleEntry, added earlier in the PR; the commit says loadHandlesSettled replaces it."
+
+[[finding]]
+unit = "b9b460ad186e"
+pr = 7957
+rule = "test-disabled"
+path = "packages/tanstack-react-query/test/handles.test.tsx"
+test = "loading > a settled entry resolves to a result, and only unsettled entries reject"
+before = ["expect(data.post).toEqual({ data: { id: '1', title: 'Post 1' }, status: 'success' })", "expect(data.viewer).toEqual({ name: 'KATT' })", "expect(data.missingPost.status).toBe('error')", "expect(failed.error).toBeInstanceOf(TRPCEntryError)", "expect(failed.error).toMatchObject({ code: 'NOT_FOUND', key: 'missingPost', path: 'post.byId' })", "expect(handles.missingPost.input).toEqual({ id: 'missing' })", "await expect(loadHandles(server.trpc, { settled: settleEntry(ensureEntry(server.trpc.post.byId, { id: '1' })), post: ensureEntry(server.trpc.post.byId, { id: 'missing' }) })).rejects.toMatchObject({ code: 'NOT_FOUND', key: 'post' })"]
+after = []
+message = "deleted: loading > a settled entry resolves to a result, and only unsettled entries reject"
+label = "intended"
+note = "Revert of settleEntry, added earlier in the PR; the commit says loadHandlesSettled replaces it."
+
+[[finding]]
+unit = "b9b460ad186e"
+pr = 7957
+rule = "test-disabled"
+path = "packages/tanstack-react-query/test/handles.test.tsx"
+test = "loading > JavaScript callers get a readable error for settling a prefetch entry"
+before = ["expect(() => settleEntry(prefetchEntry(trpc.post.byId, { id: '1' }) as any)).toThrowErrorMatchingInlineSnapshot('[Error: `settleEntry()` takes a fetch or ensure entry: a prefetch entry never makes the load reject]')", "expect(() => settleEntry({} as any)).toThrowErrorMatchingInlineSnapshot('[Error: Expected an entry from `prefetchEntry()`, `fetchEntry()` or `ensureEntry()` for `settleEntry()`, got {}]')"]
+after = []
+message = "deleted: loading > JavaScript callers get a readable error for settling a prefetch entry"
+label = "intended"
+note = "Revert of settleEntry, added earlier in the PR; the commit says loadHandlesSettled replaces it."
+
+[[finding]]
+unit = "b9b460ad186e"
+pr = 7957
+rule = "test-disabled"
+path = "packages/tanstack-react-query/src/unstable-handles/handles.ssr.test.tsx"
+test = "server rendering > useTRPC() starts waterfall handles in the server render"
+before = ["expect(html).toContain('Posts on 2026-03-01')", "expect(html).toContain('Posts on 2026-03-02')", "expect(resource.calls).toHaveBeenCalledTimes(2)", "expect(trpcWarnings(warn)).toEqual([])"]
+after = []
+message = "deleted: server rendering > useTRPC() starts waterfall handles in the server render"
+label = "intended"
+note = "The commit drops waterfallHandle on purpose (render-time inputs are read with queryOptions instead)."
+
+[[finding]]
+unit = "b9b460ad186e"
+pr = 7957
+rule = "test-disabled"
+path = "packages/tanstack-react-query/src/unstable-handles/handles.test.tsx"
+tests = ["types > waterfall handles switch to an input of the same procedure", "waterfall handles > start a query the cache has no state for, which the reader reuses", "waterfall handles > switching keeps a loader's handle while the key is the same", "waterfall handles > switching restarts a query the cache lost, before any reader asks", "waterfall handles > can't switch a handle for another procedure"]
+before = ["types > waterfall handles switch to an input of the same procedure", "waterfall handles > start a query the cache has no state for, which the reader reuses", "waterfall handles > switching keeps a loader's handle while the key is the same", "waterfall handles > switching restarts a query the cache lost, before any reader asks", "waterfall handles > can't switch a handle for another procedure"]
+after = []
+message = "deleted 5 tests, including types > waterfall handles switch to an input of the same pr…"
+label = "intended"
+note = "The commit drops waterfallHandle on purpose (render-time inputs are read with queryOptions instead)."
+
+[[finding]]
+unit = "b9b460ad186e"
+pr = 7957
+rule = "check-removed"
+path = "packages/tanstack-react-query/test/handles.test.tsx"
+test = "loading > a fetch entry waits for stale data to refetch"
+before = ["expect(fresh).toEqual(handle)", "await expect(serverTrpc.post.byId.unstable_$fetch({ id: 'missing' })).rejects.toBeInstanceOf(TRPCError)"]
+after = ["expect(fresh.post.title).toBe('Post 1')"]
+message = "removed 2 checks, including expect(fresh).toEqual(handle); the test name dropped \"unstable_$fetch and rejects\""
+label = "wrong"
+note = "loadHandles now returns data, so the second fetch is checked by its data and call count; the missing-id rejection moved to 'rejects when a fetch or ensure entry fails'."
+
+[[finding]]
+unit = "b9b460ad186e"
+pr = 7957
+rule = "test-disabled"
+path = "packages/tanstack-react-query/test/handles.test.tsx"
+test = "loading > an ensure entry refetches on the reader that mounts"
+before = ["expect(utils.container).toHaveTextContent('title:stale')", "await expect(utils.container).toHaveTextContent('title:Post 1')", "expect(resource.calls).toHaveBeenCalledTimes(1)"]
+after = []
+message = "deleted: loading > an ensure entry refetches on the reader that mounts"
+label = "wrong"
+note = "Ensure entries now refetch stale data from the loader by design; the same stale-data case is checked against that in the renamed neighbouring test, and this slot became an infinite-entry variant."
+
+[[finding]]
+unit = "b9b460ad186e"
+pr = 7957
+rule = "test-disabled"
+path = "packages/tanstack-react-query/src/unstable-handles/handles.test.tsx"
+test = "loading > useTRPC() can't load handles"
+before = ["expect(() => loadHandles(resource.optionsProxyServer as any, {})).toThrow((error as Error).message)", "expect(error).toMatchInlineSnapshot('[Error: `loadHandles()` needs the proxy from `createTRPCLoaderProxy`, not `useTRPC()` or `createTRPCOptionsProxy`: loading waits for queries, which a render can\\'t. Load handles in a route loader or server component, or build one in a component with `waterfallHandle` and wait where you read it, with `useSuspenseQuery`. See https://trpc.io/docs/client/tanstack-react-query/handles#in-render]')", "expect(resource.calls).not.toHaveBeenCalled()"]
+after = []
+message = "deleted: loading > useTRPC() can't load handles"
+label = "wrong"
+note = "The commit lets any options proxy load handles on purpose; loading with createTRPCOptionsProxy (the old input) now succeeds and is checked across the file."
+
+[[finding]]
+unit = "b9b460ad186e"
+pr = 7957
+rule = "test-disabled"
+path = "packages/tanstack-react-query/src/unstable-handles/handles.render.test.tsx"
+tests = ["waterfallHandle on useTRPC() during render > returns typed handles", "waterfallHandle on useTRPC() during render > starts every query before any reader renders", "waterfallHandle on useTRPC() during render > handles read one after another in one component still load in parallel", "waterfallHandle on useTRPC() during render > re-renders with the same input start nothing", "waterfallHandle on useTRPC() during render > a new mount shows cached data and refetches it if stale", "waterfallHandle on useTRPC() during render > a page that suspends on its own handle doesn't refetch when it retries", "waterfallHandle on useTRPC() during render > a failed query isn't restarted by the render that throws it", "waterfallHandle on useTRPC() during render > switching input reads the loader's query first, then the new one"]
+before = ["waterfallHandle on useTRPC() during render > returns typed handles", "waterfallHandle on useTRPC() during render > starts every query before any reader renders", "waterfallHandle on useTRPC() during render > handles read one after another in one component still load in parallel", "waterfallHandle on useTRPC() during render > re-renders with the same input start nothing", "waterfallHandle on useTRPC() during render > a new mount shows cached data and refetches it if stale", "waterfallHandle on useTRPC() during render > a page that suspends on its own handle doesn't refetch when it retries", "waterfallHandle on useTRPC() during render > a failed query isn't restarted by the render that throws it", "waterfallHandle on useTRPC() during render > switching input reads the loader's query first, then the new one"]
+after = []
+message = "deleted 8 tests, including waterfallHandle on useTRPC() during render > returns typed …"
+label = "intended"
+note = "The commit drops waterfallHandle on purpose (render-time inputs are read with queryOptions instead)."
+
+[[finding]]
+unit = "c60fecd38f6d"
+pr = 7975
+rule = "gate-loosened"
+path = ".github/workflows/main.yml"
+before = ["pnpm --filter www test"]
+after = []
+message = "job typecheck-www: test step \"pnpm --filter www test\" removed"
+label = "wrong"
+note = "The www test step moved from typecheck-www to the 'test' job (after building its dependencies), so it still runs."
+
+[[finding]]
+unit = "8f4826679aa7"
+pr = 7987
+rule = "check-removed"
+path = "www/src/twoslash-hovers.test.ts"
+test = "a popup that opens before the popups load is filled once they do"
+before = ["expect(element('lazy-popup').innerHTML).toBe('')"]
+after = ["expect(lazyPopup()).toBe('')"]
+message = "removed expect(element('lazy-popup').innerHTML).toBe('')"
+label = "wrong"
+note = "Moved into the lazyPopup() helper; the popup container is no longer pre-rendered by design, so the helper returns '' when it's missing."
+
+[[finding]]
+unit = "83b89e536d55"
+pr = 7999
+rule = "test-disabled"
+path = "www/src/og/avatar.test.ts"
+test = "Avatars with a shared cache > keeps no failure there, and fetches each avatar when it can't reach the store"
+before = ["expect((await offline.runPromise(fetchAvatars([server.url('/a.png')]))).size).toBe(1)"]
+after = []
+message = "deleted: Avatars with a shared cache > keeps no failure there, and fetches each avatar when it can't reach the store (only 1 of its 2 checks moved to other tests)"
+label = "wrong"
+note = "Both checks moved: no failure kept is checked in 'keeps no failure, in memory or the store', and fetching when the store fails is checked in runtime-cache.test.ts."
+
+[[finding]]
+unit = "83b89e536d55"
+pr = 7999
+rule = "test-disabled"
+path = "www/src/og/avatar.test.ts"
+test = "Avatars with a shared cache > fetches an avatar the store has no image data for, or doesn't answer for in time"
+before = ["expect((await runtime.runPromise(fetchAvatars([image]))).size).toBe(1) (in loop)", "expect(server.hits).toEqual(['/a.png', '/a.png', '/a.png'])"]
+after = []
+message = "deleted: Avatars with a shared cache > fetches an avatar the store has no image data for, or doesn't answer for in time"
+label = "wrong"
+note = "Moved to runtime-cache.test.ts ('fetches an avatar the cache keeps something else for, fails for or doesn't answer in time'), with one more store case."
+
+[[finding]]
+unit = "83b89e536d55"
+pr = 7999
+rule = "check-removed"
+path = "www/src/og/avatar.test.ts"
+test = "Avatars.layerCached > draws an avatar another instance fetched from the store, without fetching it"
+before = ["expect([...kept.values()].map((entry) => entry.ttl)).toEqual([30])"]
+after = []
+message = "removed expect([...kept.values()].map((entry) => entry.ttl)).toEqua…"
+label = "wrong"
+note = "Moved to runtime-cache.test.ts, which checks the stored entry's ttl is 30 (from 30.9 seconds), plus its key and tag."
+
+[[finding]]
+unit = "83b89e536d55"
+pr = 7999
+rule = "check-removed"
+path = "www/src/og/avatar.test.ts"
+test = "Avatars with a shared cache > draws an avatar another instance fetched from the store, without fetching it"
+before = ["expect(kept.get(avatarUrl(server.url('/a.png')))?.ttl).toBe(30)"]
+after = ["expect([...kept.values()].map((entry) => entry.ttl)).toEqual([30])"]
+message = "removed expect(kept.get(avatarUrl(server.url('/a.png')))?.ttl).toBe…"
+label = "wrong"
+note = "Keys now include the UTC day, so the lookup by URL became a check over the values: still exactly one entry with ttl 30."
+
+[[finding]]
+unit = "8f853e3a98ed"
+pr = 8000
+rule = "test-disabled"
+path = "www/src/components/error-page.test.ts"
+test = "a page that renders forgets its reload, so a later deploy's reloads it again"
+before = ["expect(container.textContent).toBe('Home')", "expect(sessionStorage.getItem('trpc-docs:reloaded-for:route:/')).toBeNull()"]
+after = []
+message = "deleted: a page that renders forgets its reload, so a later deploy's reloads it again"
+label = "wrong"
+note = "The commit replaces clearing the mark on render with a time-stamped mark; the goal (an earlier reload doesn't block a later one) is checked by the new 'a reload for an earlier visit doesn't stop this one's' test."
+
+[[finding]]
+unit = "9645cc7c69f3"
+pr = 7997
+rule = "test-disabled"
+path = "packages/tests/server/publicTypeExports.test.ts"
+tests = ["type-only exports stay importable from the public entry points"]
+before = ["type-only exports stay importable from the public entry points"]
+after = []
+message = "file deleted: its test no longer runs"
+label = "unexplained"
+note = "The PR added this type-export test and dropped it in a later commit with no reason given (the PR body only says no test is committed)."
+
+[[finding]]
+unit = "8ebc95f88dad"
+pr = 7996
+rule = "test-disabled"
+path = "packages/tests/server/publicTypeExports.test.ts"
+tests = ["type-only exports stay importable from the public entry points"]
+before = ["type-only exports stay importable from the public entry points"]
+after = []
+message = "file deleted: its test no longer runs"
+label = "wrong"
+note = "PR #7996 doesn't touch this file: the commits are from stacked PR #7997, which landed first, so it's attributed to the wrong PR."
+
+[[finding]]
+unit = "857116837d41"
+pr = 8014
+rule = "test-disabled"
+path = "www/build/highlight.test.ts"
+tests = ["stripHighlightMarkers > drops the marker and the space before it, and keeps the line", "stripHighlightMarkers > leaves other comments alone"]
+before = ["stripHighlightMarkers > drops the marker and the space before it, and keeps the line", "stripHighlightMarkers > leaves other comments alone"]
+after = []
+message = "file deleted: its 2 tests no longer run"
+label = "intended"
+note = "The commit drops the highlight transformer this file tested ('Drops the build changes: ... the highlight transformer')."
+
+[[finding]]
+unit = "857116837d41"
+pr = 8014
+rule = "test-disabled"
+path = "www/src/tabs-dom.test.ts"
+tests = ["restoreTabs > shows the reader's saved tab when the URL picks none", "restoreTabs > keeps the tab the URL picks, for a later visit without it", "chooseTab > keeps a clicked tab when the page restores its tabs again"]
+before = ["restoreTabs > shows the reader's saved tab when the URL picks none", "restoreTabs > keeps the tab the URL picks, for a later visit without it", "chooseTab > keeps a clicked tab when the page restores its tabs again"]
+after = []
+message = "file deleted: its 3 tests no longer run"
+label = "intended"
+note = "The commit replaces DOM-restored tabs with router-link tabs; only saving is tested now, not which tab a page without ?framework= shows."
+
+[[finding]]
+unit = "73c019281ef8"
+pr = 8033
+rule = "check-removed"
+path = "packages/tanstack-react-query/test/streamedQuery.test.tsx"
+test = "a query that streams > a refetch stops the older stream on the server at its next chunk"
+before = ["expect(older!.signal?.aborted).toBe(false)"]
+after = []
+message = "removed expect(older!.signal?.aborted).toBe(false); the test name dropped \"leaves running to end\""
+label = "wrong"
+note = "Refetch and cancel now abort the stream by design; the same scenario now checks signal.aborted is true (in the serverAborted helper)."
+
+[[finding]]
+unit = "73c019281ef8"
+pr = 8033
+rule = "test-disabled"
+path = "packages/tanstack-react-query/test/streamedQuery.test.tsx"
+tests = ["a query that streams > streams into a query with its own queryHash", "a query that streams > one key array under two queryHashes at once gives each its whole stream", "a query that streams > one key array at its hash and under its own queryHash at once keeps the streams apart", "a query that streams > streams into a query with its own queryKeyHashFn", "a query that streams > streams into a query with its own queryKeyHashFn when the client default throws"]
+before = ["a query that streams > streams into a query with its own queryHash", "a query that streams > one key array under two queryHashes at once gives each its whole stream", "a query that streams > one key array at its hash and under its own queryHash at once keeps the streams apart", "a query that streams > streams into a query with its own queryKeyHashFn", "a query that streams > streams into a query with its own queryKeyHashFn when the client default throws"]
+after = []
+message = "deleted 5 tests, including a query that streams > streams into a query with its own qu…"
+label = "intended"
+note = "Streaming moved to TanStack's streamedQuery, which writes chunks under the key's default hash; per-chunk streaming into custom queryHash/queryKeyHashFn queries is gone, and one end-result queryKeyHashFn test replaces the five."
+
+[[finding]]
+unit = "73c019281ef8"
+pr = 8033
+rule = "check-removed"
+path = "packages/tanstack-react-query/test/streamedQuery.test.tsx"
+test = "a query that streams > cancelQueries stops the stream on the server at its next chunk"
+before = ["expect(call!.signal?.aborted).toBe(false)"]
+after = ["expect(t.data()).toEqual(['a1'])"]
+message = "removed expect(call!.signal?.aborted).toBe(false); the test name dropped \"leaves running to end\""
+label = "wrong"
+note = "Refetch and cancel now abort the stream by design; the same scenario now checks signal.aborted is true (in the serverAborted helper)."

@@ -1,0 +1,257 @@
+# Labels for `assertrust backtest --labels`: a verdict on each finding.
+#   wrong        nothing got weaker: assertrust misread the change
+#   intended     weaker on purpose: the code the test covered went too, or a commit says why
+#   unexplained  weaker, and nothing in the change says why
+# "" is a finding not labelled yet. `--update-labels` rewrites this file: it adds new
+# findings and drops false alarms no longer found. Keep remarks in `note`.
+
+repo = "https://github.com/h3js/h3.git"
+range = "75fd2de8797122070562cb8e9a39517244cfb92e..f0e17808ac2439b6434bb10609a961067f4d555b"
+
+[[finding]]
+unit = "07273db68ae8"
+rule = "check-removed"
+path = "test/unit/cli.test.ts"
+test = "h3 CLI docs > resolves docs directory to valid filesystem path instead of URL pathname"
+before = ["expect(binContent).toMatch(/`\\${runnerCmd} mdzilla \"\\${docsDir}\"/)"]
+after = []
+message = "removed expect(binContent).toMatch(/`\\${runnerCmd} mdzilla \"\\${docs…"
+label = "wrong"
+note = "Follows the previous push's switch to execFileSync; moved to a new test that checks execFileSync, the mdzilla/docsDir args and no shell template, which is stronger."
+
+[[finding]]
+unit = "f5b33e4e3170"
+pr = 1559
+rule = "test-disabled"
+path = "test/rules/rules.test.ts"
+test = "redirect rule > skips a same-origin absolute target but never another origin"
+before = ["expect((await app.fetch(new Request('http://test/docs/v2/a'))).status).toBe(200)", "expect((await app.fetch(new Request('http://other/docs/v2/a'))).status).toBe(307)", "expect(ext.headers.get('location')).toBe('https://h3.dev/ext/a')"]
+after = []
+message = "deleted: redirect rule > skips a same-origin absolute target but never another origin"
+label = "wrong"
+note = "Absolute targets are now never skipped (the commit says so); renamed to 'never skips an absolute URL target', which asserts the same config and request with the new redirect; cross-origin locations are checked elsewhere."
+
+[[finding]]
+unit = "f5b33e4e3170"
+pr = 1559
+rule = "check-removed"
+path = "test/rules/rules.test.ts"
+test = "redirect rule > never skips an encoded traversal out of the target"
+before = ["expect(res.status).toBe(400)"]
+after = ["expect(`${to} ${path} -> ${res.status}`).toBe(`${to} ${path} -> 400`) (in loop)"]
+message = "removed expect(res.status).toBe(400)"
+label = "wrong"
+note = "Same status-400 check, now in a loop over the original case plus two more, with a labelled string so a failure names the case."
+
+[[finding]]
+unit = "3cfd7491f91c"
+rule = "expectation-loosened"
+path = "test/bench/bundle.test.ts"
+test = "benchmark > bundle size (H3)"
+before = ["expect(bundle.bytes).toBeLessThanOrEqual(17600)"]
+after = ["expect(bundle.bytes).toBeLessThanOrEqual(20600)"]
+message = "toBeLessThanOrEqual upper bound raised from 17600 to 20600"
+label = "intended"
+note = "Bundle-size budget raised for the rou3 upgrade made in the same commit (rou3 is bundled into H3)."
+
+[[finding]]
+unit = "3cfd7491f91c"
+rule = "expectation-loosened"
+path = "test/bench/bundle.test.ts"
+test = "benchmark > bundle size (H3)"
+before = ["expect(bundle.gzipSize).toBeLessThanOrEqual(6850)"]
+after = ["expect(bundle.gzipSize).toBeLessThanOrEqual(7950)"]
+message = "toBeLessThanOrEqual upper bound raised from 6850 to 7950"
+label = "intended"
+note = "Bundle-size budget raised for the rou3 upgrade made in the same commit (rou3 is bundled into H3)."
+
+[[finding]]
+unit = "a546b4c1c6df"
+rule = "expectation-loosened"
+path = "test/bench/bundle.test.ts"
+test = "benchmark > bundle size (H3)"
+before = ["expect(bundle.bytes).toBeLessThanOrEqual(20600)"]
+after = ["expect(bundle.bytes).toBeLessThanOrEqual(20800)"]
+message = "toBeLessThanOrEqual upper bound raised from 20600 to 20800"
+label = "intended"
+note = "Bundle-size budget raised for the rou3 upgrade made in the same commit (rou3 is bundled into H3)."
+
+[[finding]]
+unit = "a546b4c1c6df"
+rule = "expectation-loosened"
+path = "test/bench/bundle.test.ts"
+test = "benchmark > bundle size (H3)"
+before = ["expect(bundle.gzipSize).toBeLessThanOrEqual(7950)"]
+after = ["expect(bundle.gzipSize).toBeLessThanOrEqual(8050)"]
+message = "toBeLessThanOrEqual upper bound raised from 7950 to 8050"
+label = "intended"
+note = "Bundle-size budget raised for the rou3 upgrade made in the same commit (rou3 is bundled into H3)."
+
+[[finding]]
+unit = "62c263298b41"
+rule = "expectation-loosened"
+path = "test/bench/bundle.test.ts"
+test = "benchmark > bundle size (H3)"
+before = ["expect(bundle.bytes).toBeLessThanOrEqual(20800)"]
+after = ["expect(bundle.bytes).toBeLessThanOrEqual(22400)"]
+message = "toBeLessThanOrEqual upper bound raised from 20800 to 22400"
+label = "intended"
+note = "Bundle-size budget raised for the rou3 upgrade made in the same commit (rou3 is bundled into H3)."
+
+[[finding]]
+unit = "62c263298b41"
+rule = "expectation-loosened"
+path = "test/bench/bundle.test.ts"
+test = "benchmark > bundle size (H3)"
+before = ["expect(bundle.gzipSize).toBeLessThanOrEqual(8050)"]
+after = ["expect(bundle.gzipSize).toBeLessThanOrEqual(8850)"]
+message = "toBeLessThanOrEqual upper bound raised from 8050 to 8850"
+label = "intended"
+note = "Bundle-size budget raised for the rou3 upgrade made in the same commit (rou3 is bundled into H3)."
+
+[[finding]]
+unit = "62c263298b41"
+rule = "test-disabled"
+path = "test/rules/match.test.ts"
+test = "method-agnostic rules vs node-aliased method-scoped siblings > materializes an agnostic rule only onto methods scoped on a node it shares"
+before = ["expect(shared.match(/data:\\$0/g)).toHaveLength(2)"]
+after = []
+message = "deleted: method-agnostic rules vs node-aliased method-scoped siblings > materializes an agnostic rule only onto methods scoped on a node it shares (only 3 of its 4 checks moved to other tests)"
+label = "wrong"
+note = "Renamed; per-method materialization was dropped (the commit says so), so the copy-count check became a runtime check that POST gets both layers and GET one, on the same config."
+
+[[finding]]
+unit = "48e6982ac47c"
+rule = "check-removed"
+path = "test/rules/premerge.test.ts"
+test = "compareRoutes verdicts preMerge relies on > wildcards subsume deeper patterns"
+before = ["expect(sub('/a/**', '/a/*')).toBe(true)"]
+after = []
+message = "removed expect(sub('/a/**', '/a/*')).toBe(true)"
+label = "wrong"
+note = "`*` is now a catch-all (rou3 v0.12), so the same pair is pinned as compareRoutes('/a/**', '/a/*') === 'equal' in 'a trailing star is a catch-all'."
+
+[[finding]]
+unit = "48e6982ac47c"
+rule = "expectation-loosened"
+path = "test/bench/bundle.test.ts"
+test = "benchmark > bundle size (H3)"
+before = ["expect(bundle.bytes).toBeLessThanOrEqual(22400)"]
+after = ["expect(bundle.bytes).toBeLessThanOrEqual(27900)"]
+message = "toBeLessThanOrEqual upper bound raised from 22400 to 27900"
+label = "intended"
+note = "Bundle-size budget raised for the rou3 v0.12 upgrade in the same commit; the message notes the bundle-size impact."
+
+[[finding]]
+unit = "48e6982ac47c"
+rule = "expectation-loosened"
+path = "test/bench/bundle.test.ts"
+test = "benchmark > bundle size (H3)"
+before = ["expect(bundle.gzipSize).toBeLessThanOrEqual(8850)"]
+after = ["expect(bundle.gzipSize).toBeLessThanOrEqual(11150)"]
+message = "toBeLessThanOrEqual upper bound raised from 8850 to 11150"
+label = "intended"
+note = "Bundle-size budget raised for the rou3 v0.12 upgrade in the same commit; the message notes the bundle-size impact."
+
+[[finding]]
+unit = "7cbf21ce9cf0"
+rule = "test-disabled"
+path = "test/rules/encoding.test.ts"
+test = "decodeRoutePattern > decodes escapes that stand for an ordinary literal character"
+before = ["expect(decodeRoutePattern('/a%20b')).toBe('/a b')", "expect(decodeRoutePattern('/caf%C3%A9/x')).toBe('/café/x')"]
+after = []
+message = "deleted: decodeRoutePattern > decodes escapes that stand for an ordinary literal character (only 2 of its 4 checks moved to other tests)"
+label = "wrong"
+note = "Renamed to 'normalizes a key exactly like a route'; the same two inputs are still asserted, with new expected values since keys now keep those escapes like routes do."
+
+[[finding]]
+unit = "3f1c9e5ef77c"
+rule = "test-disabled"
+path = "test/rules/merge.test.ts"
+test = "dual-path union (Nitro #4396) > an alternate reading never reinstates a permission, even from a narrower pattern"
+before = ["expect(merged.cors).toBeUndefined()"]
+after = []
+message = "deleted: dual-path union (Nitro #4396) > an alternate reading never reinstates a permission, even from a narrower pattern"
+label = "wrong"
+note = "Renamed; the commit deliberately lets a narrower pattern reinstate a reset rule, and the same scenario is still asserted with the new result plus a no-predicate control."
+
+[[finding]]
+unit = "1161eb7e05fe"
+rule = "test-disabled"
+path = "test/mount.test.ts"
+test = "mount fetch > collapses leading slashes after stripping base"
+before = ["expect(await t.fetch('/api//evil.com').then((r) => r.text())).toBe('/evil.com')"]
+after = []
+message = "deleted: mount fetch > collapses leading slashes after stripping base"
+label = "wrong"
+note = "Renamed to 'rejects an empty segment after base': the same /api//evil.com request is now asserted to 404 without reaching the handler, which is stronger."
+
+[[finding]]
+unit = "1161eb7e05fe"
+rule = "test-disabled"
+path = "test/mount.test.ts"
+test = "mount H3 > collapses leading slashes for child middleware after stripping base"
+before = ["expect(seenPathname).toBe('/evil.com')", "expect(await res.text()).toBe('/evil.com')"]
+after = []
+message = "deleted: mount H3 > collapses leading slashes for child middleware after stripping base"
+label = "wrong"
+note = "Renamed to 'rejects an empty segment after base for child middleware and routes': same request, now asserted to 404 with the child middleware never reached, which is stronger."
+
+[[finding]]
+unit = "1161eb7e05fe"
+rule = "test-disabled"
+path = "test/utils.test.ts"
+test = "withBase > collapses leading slashes after stripping base"
+before = ["expect(await result.text()).toBe('/evil.com')"]
+after = []
+message = "deleted: withBase > collapses leading slashes after stripping base"
+label = "wrong"
+note = "Renamed to 'rejects an empty segment after base': the same /api//evil.com request is now asserted to 404 without reaching the handler, which is stronger."
+
+[[finding]]
+unit = "b48b480030be"
+pr = 1602
+rule = "test-disabled"
+path = "test/unit/cli.test.ts"
+test = "h3 CLI docs > resolves docs directory to valid filesystem path instead of URL pathname"
+before = ["expect(binContent).toMatch(/fileURLToPath\\(new URL\\(['\"]\\.\\.\\/dist\\/docs['\"], import\\.meta\\.url\\)\\)/)"]
+after = []
+message = "deleted: h3 CLI docs > resolves docs directory to valid filesystem path instead of URL pathname"
+label = "intended"
+note = "`h3 docs` now opens h3.dev; the bundled docs and mdzilla runner these tests checked were removed in the same PR."
+
+[[finding]]
+unit = "b48b480030be"
+pr = 1602
+rule = "test-disabled"
+path = "test/unit/cli.test.ts"
+test = "h3 CLI docs > passes docs dir and args to the runner without a shell"
+before = ["expect(binContent).toMatch(/execFileSync\\(/)", "expect(binContent).toMatch(/[\"']mdzilla[\"'],\\s*docsDir/)", "expect(binContent).not.toMatch(/\\${docsDir}/)"]
+after = []
+message = "deleted: h3 CLI docs > passes docs dir and args to the runner without a shell"
+label = "intended"
+note = "`h3 docs` now opens h3.dev; the bundled docs and mdzilla runner these tests checked were removed in the same PR."
+
+[[finding]]
+unit = "b48b480030be"
+pr = 1602
+rule = "test-disabled"
+path = "test/unit/cli.test.ts"
+test = "h3 CLI docs > fileURLToPath correctly handles spaces and special characters compared to URL.pathname"
+before = ["expect(sampleUrl.pathname).toBe('/path%20with%20spaces/docs')", "expect(fileURLToPath(sampleUrl)).toBe('/path with spaces/docs')"]
+after = []
+message = "deleted: h3 CLI docs > fileURLToPath correctly handles spaces and special characters compared to URL.pathname"
+label = "intended"
+note = "`h3 docs` now opens h3.dev; the bundled docs and mdzilla runner these tests checked were removed in the same PR."
+
+[[finding]]
+unit = "f90f4c8e4d80"
+pr = 1613
+rule = "test-disabled"
+path = "test/rules/rules.test.ts"
+test = "headers rule on error responses > outer rule still wins over a nested headers rule on errors"
+before = ["expect(ok.headers.get('cache-control')).toBe('outer')", "expect(res.headers.get('cache-control')).toBe('outer')"]
+after = []
+message = "deleted: headers rule on error responses > outer rule still wins over a nested headers rule on errors (only 1 of its 3 checks moved to other tests)"
+label = "wrong"
+note = "Merged into 'stacked rules: outer wins, and both yield to an HTTPError header', which still checks 'outer' on the ok and the 404 path via a fetchCC helper; only the redundant status check went."

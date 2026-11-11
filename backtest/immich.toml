@@ -1,0 +1,1017 @@
+# Labels for `assertrust backtest --labels`: a verdict on each finding.
+#   wrong        nothing got weaker: assertrust misread the change
+#   intended     weaker on purpose: the code the test covered went too, or a commit says why
+#   unexplained  weaker, and nothing in the change says why
+# "" is a finding not labelled yet. `--update-labels` rewrites this file: it adds new
+# findings and drops false alarms no longer found. Keep remarks in `note`.
+
+repo = "https://github.com/immich-app/immich.git"
+range = "0733865f468861291ac4bce35eb82607d442cce0..975a6aed4ab48666756406847f022d0a8e1cdb48"
+
+[[finding]]
+unit = "9d0048b232ef"
+pr = 33007
+rule = "test-disabled"
+path = "server/src/repositories/storage.repository.spec.ts"
+test = "StorageRepository.name > walk > should only return assets and respect exclusions: $exclusionPatterns"
+before = ["expect(batches.every((batch) => batch.length === 1)).toBe(true)", "expect(batches.flat().toSorted()).toEqual([ '/photos/photo.jpg', '/photos/photo.nef', ...exclusionPatterns.includes('**/excluded/**') ? [] : ['/photos/excluded/photo.jpg'] ].toSorted())"]
+after = []
+message = "deleted: StorageRepository.name > walk > should only return assets and respect exclusions: $exclusionPatterns"
+label = "unexplained"
+note = "The walk exclusion and asset-filter test was dropped in the move to medium tests; the new walk test only checks batching."
+
+[[finding]]
+unit = "862059712620"
+pr = 32983
+rule = "test-disabled"
+path = "web/src/lib/components/Image.spec.ts"
+test = "Image component > passes through additional HTML attributes"
+before = ["expect(img.getAttribute('alt')).toBe('test alt')", "expect(img.getAttribute('draggable')).toBe('false')"]
+after = []
+message = "deleted: Image component > passes through additional HTML attributes"
+label = "unexplained"
+note = "Attribute passthrough (alt, draggable) is no longer checked anywhere."
+
+[[finding]]
+unit = "862059712620"
+pr = 32983
+rule = "test-disabled"
+path = "web/src/lib/components/SharedLinkFormFields.spec.ts"
+tests = ["SharedLinkFormFields component > turns downloads off when metadata is disabled"]
+before = ["SharedLinkFormFields component > turns downloads off when metadata is disabled"]
+after = []
+message = "file deleted: its test no longer runs"
+label = "wrong"
+note = "Moved to the medium shared-link test 'turning show metadata off also turns downloads off in the create form' with the same checks."
+
+[[finding]]
+unit = "862059712620"
+pr = 32983
+rule = "test-disabled"
+path = "web/src/lib/components/album-page/__tests__/AlbumCard.spec.ts"
+tests = ["AlbumCard component > shows album data without thumbnail with count $count - shared: $shared", "AlbumCard component > shows album data", "AlbumCard component > hides context menu when \"contextMenuItems\" is undefined"]
+before = ["AlbumCard component > shows album data without thumbnail with count $count - shared: $shared", "AlbumCard component > shows album data", "AlbumCard component > hides context menu when \"contextMenuItems\" is undefined"]
+after = []
+message = "file deleted: its 3 tests no longer run"
+label = "unexplained"
+note = "Albums page.spec covers the shared label and cover alt text, but the item count text and the hidden context menu are no longer checked."
+
+[[finding]]
+unit = "862059712620"
+pr = 32983
+rule = "test-disabled"
+path = "web/src/lib/components/album-page/__tests__/AlbumCover.spec.ts"
+tests = ["AlbumCover component > renders an image when the album has a thumbnail", "AlbumCover component > renders an image when the album has no thumbnail"]
+before = ["AlbumCover component > renders an image when the album has a thumbnail", "AlbumCover component > renders an image when the album has no thumbnail"]
+after = []
+message = "file deleted: its 2 tests no longer run"
+label = "unexplained"
+note = "Only the cover alt for a named album survives (albums page.spec); unnamed_album alt, loading attribute and thumbnail src checks are gone."
+
+[[finding]]
+unit = "862059712620"
+pr = 32983
+rule = "test-disabled"
+path = "web/src/lib/components/album-page/__tests__/AlbumSummary.spec.ts"
+tests = ["AlbumSummary component > updates the date range when the start date of the album changes"]
+before = ["AlbumSummary component > updates the date range when the start date of the album changes"]
+after = []
+message = "file deleted: its test no longer runs"
+label = "wrong"
+note = "Moved: album page.spec checks the date range and the medium album test checks the summary updates after an asset is removed."
+
+[[finding]]
+unit = "862059712620"
+pr = 32983
+rule = "test-disabled"
+path = "web/src/lib/components/asset-viewer/AssetViewerNavBar.spec.ts"
+tests = ["AssetViewerNavBar component > shows back button", "AssetViewerNavBar component > if the current user owns the asset > shows delete button"]
+before = ["AssetViewerNavBar component > shows back button", "AssetViewerNavBar component > if the current user owns the asset > shows delete button"]
+after = []
+message = "file deleted: its 2 tests no longer run"
+label = "wrong"
+note = "Moved to the medium navbar test 'shows the back button and move to trash on /photos/:id'."
+
+[[finding]]
+unit = "862059712620"
+pr = 32983
+rule = "test-disabled"
+path = "web/src/lib/components/asset-viewer/DetailPanelDescription.spec.ts"
+tests = ["DetailPanelDescription > clears unsaved draft on asset change", "DetailPanelDescription > updates description on asset switch"]
+before = ["DetailPanelDescription > clears unsaved draft on asset change", "DetailPanelDescription > updates description on asset switch"]
+after = []
+message = "file deleted: its 2 tests no longer run"
+label = "wrong"
+note = "Moved to the medium detail-panel test 'description follows the asset and a draft is saved, not carried over'."
+
+[[finding]]
+unit = "862059712620"
+pr = 32983
+rule = "test-disabled"
+path = "web/src/lib/components/asset-viewer/actions/DeleteAction.spec.ts"
+tests = ["DeleteAction component > given an asset which is not trashed yet > displays a button to move the asset to the trash bin", "DeleteAction component > but if the asset is already trashed > displays a button to permanently delete the asset"]
+before = ["DeleteAction component > given an asset which is not trashed yet > displays a button to move the asset to the trash bin", "DeleteAction component > but if the asset is already trashed > displays a button to permanently delete the asset"]
+after = []
+message = "file deleted: its 2 tests no longer run"
+label = "wrong"
+note = "Moved to the medium navbar tests for move-to-trash vs permanently delete, with the same positive and negative checks."
+
+[[finding]]
+unit = "862059712620"
+pr = 32983
+rule = "test-disabled"
+path = "web/src/lib/components/assets/thumbnail/ImageThumbnail.spec.ts"
+tests = ["ImageThumbnail component > renders an img element with correct attributes", "ImageThumbnail component > shows BrokenAsset on error", "ImageThumbnail component > calls onComplete with false on successful load", "ImageThumbnail component > calls onComplete with true on error", "ImageThumbnail component > applies hidden classes when hidden is true", "ImageThumbnail component > sets alt text after loading"]
+before = ["ImageThumbnail component > renders an img element with correct attributes", "ImageThumbnail component > shows BrokenAsset on error", "ImageThumbnail component > calls onComplete with false on successful load", "ImageThumbnail component > calls onComplete with true on error", "ImageThumbnail component > applies hidden classes when hidden is true", "ImageThumbnail component > sets alt text after loading"]
+after = []
+message = "file deleted: its 6 tests no longer run"
+label = "unexplained"
+note = "Only the broken-image message is still checked (medium timeline thumbnail test); onComplete callbacks, hidden classes and alt-after-load checks are gone."
+
+[[finding]]
+unit = "862059712620"
+pr = 32983
+rule = "test-disabled"
+path = "web/src/lib/components/assets/thumbnail/__test__/Thumbnail.spec.ts"
+tests = ["Thumbnail component > should only contain a single tabbable element (the container)", "Thumbnail component > shows thumbhash while image is loading"]
+before = ["Thumbnail component > should only contain a single tabbable element (the container)", "Thumbnail component > shows thumbhash while image is loading"]
+after = []
+message = "file deleted: its 2 tests no longer run"
+label = "unexplained"
+note = "Tab-order check moved to the medium timeline test, but the thumbhash is now only checked for a broken image, not while the image is loading."
+
+[[finding]]
+unit = "862059712620"
+pr = 32983
+rule = "test-disabled"
+path = "web/src/lib/components/maintenance/MaintenanceBackupEntry.spec.ts"
+tests = ["MaintenanceBackupEntry > renders relative backup time using the user timezone instead of UTC"]
+before = ["MaintenanceBackupEntry > renders relative backup time using the user timezone instead of UTC"]
+after = []
+message = "file deleted: its test no longer runs"
+label = "wrong"
+note = "Moved to admin/maintenance page.spec 'shows the backup time relative to the backup timezone'."
+
+[[finding]]
+unit = "862059712620"
+pr = 32983
+rule = "test-disabled"
+path = "web/src/lib/components/shared-components/__test__/NumberRangeInput.spec.ts"
+tests = ["NumberRangeInput component > updates value", "NumberRangeInput component > restricts minimum value", "NumberRangeInput component > restricts maximum value", "NumberRangeInput component > allows entering negative numbers", "NumberRangeInput component > allows entering zero", "NumberRangeInput component > allows entering decimal numbers", "NumberRangeInput component > ignores text input", "NumberRangeInput component > test"]
+before = ["NumberRangeInput component > updates value", "NumberRangeInput component > restricts minimum value", "NumberRangeInput component > restricts maximum value", "NumberRangeInput component > allows entering negative numbers", "NumberRangeInput component > allows entering zero", "NumberRangeInput component > allows entering decimal numbers", "NumberRangeInput component > ignores text input", "NumberRangeInput component > test"]
+after = []
+message = "file deleted: its 8 tests no longer run"
+label = "unexplained"
+note = "Only min/max clamping survives via the medium location-editor test; negative, zero, decimal, text-ignore and callback checks are gone."
+
+[[finding]]
+unit = "862059712620"
+pr = 32983
+rule = "test-disabled"
+path = "web/src/lib/components/shared-components/search-bar/SearchTagsSection.spec.ts"
+tests = ["SearchTagsSection component > removes the tag when its chip is clicked", "SearchTagsSection component > keeps focus inside the section when a chip is removed"]
+before = ["SearchTagsSection component > removes the tag when its chip is clicked", "SearchTagsSection component > keeps focus inside the section when a chip is removed"]
+after = []
+message = "file deleted: its 2 tests no longer run"
+label = "wrong"
+note = "Moved to the search page.spec test 'removing a chip drops the tag and keeps focus in the panel'."
+
+[[finding]]
+unit = "862059712620"
+pr = 32983
+rule = "test-disabled"
+path = "web/src/lib/components/shared-components/settings/SettingInputField.spec.ts"
+tests = ["SettingInputField component > validates number input on blur", "SettingInputField component > allows emptying number inputs while editing"]
+before = ["SettingInputField component > validates number input on blur", "SettingInputField component > allows emptying number inputs while editing"]
+after = []
+message = "file deleted: its 2 tests no longer run"
+label = "unexplained"
+note = "Moved to system-settings page.spec, but the blur clamp is now only checked at the minimum; the max clamp and decimal input are no longer tested."
+
+[[finding]]
+unit = "862059712620"
+pr = 32983
+rule = "test-disabled"
+path = "web/src/lib/components/shared-components/settings/SettingSwitch.spec.ts"
+tests = ["SettingSwitch component > links switch and subtitle ids on the switch"]
+before = ["SettingSwitch component > links switch and subtitle ids on the switch"]
+after = []
+message = "file deleted: its test no longer runs"
+label = "unexplained"
+note = "The aria-describedby link between switch and subtitle is no longer checked anywhere."
+
+[[finding]]
+unit = "862059712620"
+pr = 32983
+rule = "test-disabled"
+path = "web/src/lib/components/shared-components/side-bar/RecentAlbums.spec.ts"
+tests = ["RecentAlbums component > sorts albums by most recently updated"]
+before = ["RecentAlbums component > sorts albums by most recently updated"]
+after = []
+message = "file deleted: its test no longer runs"
+label = "wrong"
+note = "Moved to albums page.spec 'sidebar lists the three most recently updated albums' with the same data and order."
+
+[[finding]]
+unit = "862059712620"
+pr = 32983
+rule = "test-disabled"
+path = "web/src/lib/components/sharedlinks-page/covers/__tests__/AssetCover.spec.ts"
+tests = ["AssetCover component > renders correctly"]
+before = ["AssetCover component > renders correctly"]
+after = []
+message = "file deleted: its test no longer runs"
+label = "unexplained"
+note = "The medium shared-link cover test only checks the cover is visible; the alt, src, loading and class checks are gone."
+
+[[finding]]
+unit = "862059712620"
+pr = 32983
+rule = "test-disabled"
+path = "web/src/lib/components/sharedlinks-page/covers/__tests__/NoCover.spec.ts"
+tests = ["NoCover component > renders correctly"]
+before = ["NoCover component > renders correctly"]
+after = []
+message = "file deleted: its test no longer runs"
+label = "unexplained"
+note = "The medium shared-link cover test only checks the cover is visible; the alt, src, loading and class checks are gone."
+
+[[finding]]
+unit = "862059712620"
+pr = 32983
+rule = "test-disabled"
+path = "web/src/lib/components/sidebar/Sidebar.spec.ts"
+tests = ["Sidebar component > inert is $expectedInert when isFullSidebar=$isFullSidebar and isSidebarOpen=$isSidebarOpen", "Sidebar component > should set width when sidebar is expanded", "Sidebar component > should close the sidebar if it is open on initial render"]
+before = ["Sidebar component > inert is $expectedInert when isFullSidebar=$isFullSidebar and isSidebarOpen=$isSidebarOpen", "Sidebar component > should set width when sidebar is expanded", "Sidebar component > should close the sidebar if it is open on initial render"]
+after = []
+message = "file deleted: its 3 tests no longer run"
+label = "unexplained"
+note = "Two cases moved to albums page.spec (inert on a narrow screen, closes on render), but the other inert combinations and the width classes are no longer checked."
+
+[[finding]]
+unit = "862059712620"
+pr = 32983
+rule = "test-disabled"
+path = "web/src/lib/components/timeline/AssetLayout.spec.ts"
+tests = ["AssetLayout component > moves the remaining thumbnails into place when an asset is removed"]
+before = ["AssetLayout component > moves the remaining thumbnails into place when an asset is removed"]
+after = []
+message = "file deleted: its test no longer runs"
+label = "wrong"
+note = "Moved to medium album and trash tests that check the next thumbnail moves into the removed one's position."
+
+[[finding]]
+unit = "862059712620"
+pr = 32983
+rule = "check-removed"
+path = "web/src/lib/elements/__test__/FormatMessage.spec.ts"
+test = "FormatMessage component > formats a plain text message"
+before = ["expect(screen.getByText('Hello test')).toBeInTheDocument()"]
+after = []
+message = "removed expect(screen.getByText('Hello test')).toBeInTheDocument(); the test has no checks left"
+label = "wrong"
+note = "Check still there, rewritten as await expect.element(...).toBeInTheDocument() for vitest browser mode."
+
+[[finding]]
+unit = "862059712620"
+pr = 32983
+rule = "check-removed"
+path = "web/src/lib/elements/__test__/FormatMessage.spec.ts"
+test = "FormatMessage component > shows raw message when value is empty"
+before = ["expect(screen.getByText('Hello {name}')).toBeInTheDocument()"]
+after = []
+message = "removed expect(screen.getByText('Hello {name}')).toBeInTheDocument(); the test has no checks left"
+label = "wrong"
+note = "Check still there, rewritten as await expect.element(...).toBeInTheDocument() for vitest browser mode."
+
+[[finding]]
+unit = "862059712620"
+pr = 32983
+rule = "check-removed"
+path = "web/src/lib/elements/__test__/FormatMessage.spec.ts"
+test = "FormatMessage component > shows message when slot is empty"
+before = ["expect(screen.getByText('Hello test')).toBeInTheDocument()"]
+after = []
+message = "removed expect(screen.getByText('Hello test')).toBeInTheDocument(); the test has no checks left"
+label = "wrong"
+note = "Check still there, rewritten as await expect.element(...).toBeInTheDocument() for vitest browser mode."
+
+[[finding]]
+unit = "862059712620"
+pr = 32983
+rule = "check-removed"
+path = "web/src/lib/elements/__test__/FormatMessage.spec.ts"
+test = "FormatMessage component > protects against XSS injection"
+before = ["expect(screen.getByText('<image/src/onerror=prompt(8)>')).toBeInTheDocument()"]
+after = []
+message = "removed expect(screen.getByText('<image/src/onerror=prompt(8)>')).t…; the test has no checks left"
+label = "wrong"
+note = "Check still there, rewritten as await expect.element(...).toBeInTheDocument() for vitest browser mode."
+
+[[finding]]
+unit = "862059712620"
+pr = 32983
+rule = "check-removed"
+path = "web/src/lib/elements/__test__/FormatMessage.spec.ts"
+test = "FormatMessage component > displays the message key when not found"
+before = ["expect(screen.getByText('invalid.key')).toBeInTheDocument()"]
+after = []
+message = "removed expect(screen.getByText('invalid.key')).toBeInTheDocument(); the test has no checks left"
+label = "wrong"
+note = "Check still there, rewritten as await expect.element(...).toBeInTheDocument() for vitest browser mode."
+
+[[finding]]
+unit = "862059712620"
+pr = 32983
+rule = "test-disabled"
+path = "web/src/lib/elements/__test__/StarRating.spec.ts"
+tests = ["StarRating component > renders correctly", "StarRating component > renders correctly with readOnly"]
+before = ["StarRating component > renders correctly", "StarRating component > renders correctly with readOnly"]
+after = []
+message = "file deleted: its 2 tests no longer run"
+label = "unexplained"
+note = "The medium detail-panel test only checks the rating shows with the right star; readOnly, clear button and radio attributes are no longer checked."
+
+[[finding]]
+unit = "862059712620"
+pr = 32983
+rule = "test-disabled"
+path = "web/src/lib/index.spec.ts"
+tests = ["cleanClass > should return a string of class names", "cleanClass > should filter out undefined, null, and false values", "cleanClass > should unnest arrays", "cleanClass > should unnest doubly nested arrays", "isDefined > should return false for null", "isDefined > should return false for undefined", "isDefined > should return true for everything else"]
+before = ["cleanClass > should return a string of class names", "cleanClass > should filter out undefined, null, and false values", "cleanClass > should unnest arrays", "cleanClass > should unnest doubly nested arrays", "isDefined > should return false for null", "isDefined > should return false for undefined", "isDefined > should return true for everything else"]
+after = []
+message = "file deleted: its 7 tests no longer run"
+label = "unexplained"
+note = "cleanClass and isDefined still exist but lost all their tests."
+
+[[finding]]
+unit = "862059712620"
+pr = 32983
+rule = "test-disabled"
+path = "web/src/lib/managers/activity-manager.svelte.spec.ts"
+tests = ["ActivityManager > keeps the other comments when a comment is deleted"]
+before = ["ActivityManager > keeps the other comments when a comment is deleted"]
+after = []
+message = "file deleted: its test no longer runs"
+label = "unexplained"
+note = "The album page.spec test checks the list after the API call and refresh, so it no longer isolates the local list update the old regression test checked."
+
+[[finding]]
+unit = "862059712620"
+pr = 32983
+rule = "test-disabled"
+path = "web/src/lib/managers/timeline-manager/timeline-manager.svelte.spec.ts"
+tests = ["TimelineManager > upsertAssets - updating existing > yearMonth is not a shared reference with asset.localDateTime (reference bug)", "TimelineManager > showAssetOwners > defaults to false", "TimelineManager > showAssetOwners > setShowAssetOwners updates value", "TimelineManager > showAssetOwners > toggleShowAssetOwners flips value"]
+before = ["TimelineManager > upsertAssets - updating existing > yearMonth is not a shared reference with asset.localDateTime (reference bug)", "TimelineManager > showAssetOwners > defaults to false", "TimelineManager > showAssetOwners > setShowAssetOwners updates value", "TimelineManager > showAssetOwners > toggleShowAssetOwners flips value"]
+after = []
+message = "deleted 4 tests, including TimelineManager > upsertAssets - updating existing > yearMo…"
+label = "unexplained"
+note = "The reference-bug test and three showAssetOwners tests were dropped while the code still exists."
+
+[[finding]]
+unit = "862059712620"
+pr = 32983
+rule = "expectation-loosened"
+path = "web/src/lib/managers/timeline-manager/timeline-manager.svelte.spec.ts"
+test = "TimelineManager > init > calculates month height"
+before = ["expect(plainMonths).toEqual(expect.arrayContaining([expect.objectContaining({ height: 283, month: 3, year: 2024 }), expect.objectContaining({ height: 7711, month: 2, year: 2024 }), expect.objectContaining({ height: 283, month: 1, year: 2024 })]))"]
+after = ["expect(plainMonths).toEqual(expect.arrayContaining([expect.objectContaining({ height: 283, month: 3, year: 2024 }), expect.objectContaining({ height: 3808, month: 2, year: 2024 }), expect.objectContaining({ height: 283, month: 1, year: 2024 })]))"]
+message = "toEqual no longer checks expect.objectContaining({ height: 7711, month: 2, year: 2024 })"
+label = "unexplained"
+note = "Expected value changed because bucket fetches now never resolve, so it checks an estimated height instead of a laid-out loaded month."
+
+[[finding]]
+unit = "862059712620"
+pr = 32983
+rule = "test-disabled"
+path = "web/src/lib/modals/AlbumPickerModal.spec.ts"
+tests = ["AlbumPickerModal component > shows the singular selection count title when selectedItemsCount is 1", "AlbumPickerModal component > shows the plural selection count title when selectedItemsCount is greater than 1", "AlbumPickerModal component > shows the generic title when selectedItemsCount is not provided"]
+before = ["AlbumPickerModal component > shows the singular selection count title when selectedItemsCount is 1", "AlbumPickerModal component > shows the plural selection count title when selectedItemsCount is greater than 1", "AlbumPickerModal component > shows the generic title when selectedItemsCount is not provided"]
+after = []
+message = "file deleted: its 3 tests no longer run"
+label = "unexplained"
+note = "The medium timeline test only checks the count title appears (key only in dev locale); singular/plural text and the generic title case are gone."
+
+[[finding]]
+unit = "862059712620"
+pr = 32983
+rule = "test-disabled"
+path = "web/src/lib/modals/AssetChangeDateModal.spec.ts"
+tests = ["AssetChangeDateModal component > preserves the selected timezone when changing the datetime"]
+before = ["AssetChangeDateModal component > preserves the selected timezone when changing the datetime"]
+after = []
+message = "file deleted: its test no longer runs"
+label = "wrong"
+note = "Moved to the medium detail-panel test 'date editor shows the asset zone and keeps a chosen one'."
+
+[[finding]]
+unit = "862059712620"
+pr = 32983
+rule = "test-disabled"
+path = "web/src/lib/modals/AssetSelectionChangeDateModal.spec.ts"
+tests = ["DateSelectionModal component > should render correct values", "DateSelectionModal component > calls onConfirm with correct date on confirm", "DateSelectionModal component > calls onCancel on cancel", "DateSelectionModal component > does not fall back to UTC when datetime-local value has no seconds", "DateSelectionModal component > does not fall back to UTC when datetime-local value has no milliseconds", "DateSelectionModal component > when date is in daylight saving time > should render correct timezone with offset", "DateSelectionModal component > when date is in daylight saving time > calls onConfirm with correct date on confirm", "DateSelectionModal component > calls onConfirm with correct offset in relative mode", "DateSelectionModal component > calls onConfirm with correct timeZone in relative mode", "DateSelectionModal component > correctly handles date preview"]
+before = ["DateSelectionModal component > should render correct values", "DateSelectionModal component > calls onConfirm with correct date on confirm", "DateSelectionModal component > calls onCancel on cancel", "DateSelectionModal component > does not fall back to UTC when datetime-local value has no seconds", "DateSelectionModal component > does not fall back to UTC when datetime-local value has no milliseconds", "DateSelectionModal component > when date is in daylight saving time > should render correct timezone with offset", "DateSelectionModal component > when date is in daylight saving time > calls onConfirm with correct date on confirm", "DateSelectionModal component > calls onConfirm with correct offset in relative mode", "DateSelectionModal component > calls onConfirm with correct timeZone in relative mode", "DateSelectionModal component > correctly handles date preview"]
+after = []
+message = "file deleted: its 10 tests no longer run"
+label = "unexplained"
+note = "Most checks moved to timezone-utils.spec and medium timeline tests, but cancel and the relative-mode timeZone in the request are no longer checked."
+
+[[finding]]
+unit = "862059712620"
+pr = 32983
+rule = "test-disabled"
+path = "web/src/lib/services/asset.service.spec.ts"
+tests = ["AssetService > getAssetActions > should allow shared link downloads if the user owns the asset and shared link downloads are disabled", "AssetService > getAssetActions > should not allow shared link downloads if the user does not own the asset and shared link downloads are disabled", "AssetService > getAssetActions > should allow shared link downloads if shared link downloads are enabled regardless of user", "AssetService > handleDownloadAsset > should use the asset originalFileName when showing toasts", "AssetService > handleDownloadAsset > should use the motion asset originalFileName when showing toasts"]
+before = ["AssetService > getAssetActions > should allow shared link downloads if the user owns the asset and shared link downloads are disabled", "AssetService > getAssetActions > should not allow shared link downloads if the user does not own the asset and shared link downloads are disabled", "AssetService > getAssetActions > should allow shared link downloads if shared link downloads are enabled regardless of user", "AssetService > handleDownloadAsset > should use the asset originalFileName when showing toasts", "AssetService > handleDownloadAsset > should use the motion asset originalFileName when showing toasts"]
+after = []
+message = "file deleted: its 5 tests no longer run"
+label = "unexplained"
+note = "Shared-link download rules moved to medium navbar tests and filenames to download.spec, but the toast's filename value is no longer checked."
+
+[[finding]]
+unit = "862059712620"
+pr = 32983
+rule = "test-disabled"
+path = "web/src/lib/stores/ocr.svelte.spec.ts"
+tests = ["OcrManager > initial state > should initialize with empty data", "OcrManager > initial state > should initialize with showOverlay as false", "OcrManager > initial state > should initialize with hasOcrData as false", "OcrManager > getAssetOcr > should load OCR data for an asset", "OcrManager > getAssetOcr > should handle empty OCR data", "OcrManager > getAssetOcr > should reset the loader when previously cleared", "OcrManager > getAssetOcr > should handle concurrent requests safely", "OcrManager > getAssetOcr > should handle errors gracefully", "OcrManager > clear > should clear OCR data", "OcrManager > clear > should reset showOverlay to false", "OcrManager > clear > should mark as cleared for next load", "OcrManager > toggleOcrBoundingBox > should toggle showOverlay from false to true", "OcrManager > toggleOcrBoundingBox > should toggle showOverlay from true to false", "OcrManager > toggleOcrBoundingBox > should toggle multiple times", "OcrManager > hasOcrData derived state > should be false when data is empty", "OcrManager > hasOcrData derived state > should be true when data is present", "OcrManager > hasOcrData derived state > should update when data is cleared", "OcrManager > data immutability > should return the same reference when data does not change", "OcrManager > data immutability > should return a new reference when data changes"]
+before = ["OcrManager > initial state > should initialize with empty data", "OcrManager > initial state > should initialize with showOverlay as false", "OcrManager > initial state > should initialize with hasOcrData as false", "OcrManager > getAssetOcr > should load OCR data for an asset", "OcrManager > getAssetOcr > should handle empty OCR data", "OcrManager > getAssetOcr > should reset the loader when previously cleared", "OcrManager > getAssetOcr > should handle concurrent requests safely", "OcrManager > getAssetOcr > should handle errors gracefully", "OcrManager > clear > should clear OCR data", "OcrManager > clear > should reset showOverlay to false", "OcrManager > clear > should mark as cleared for next load", "OcrManager > toggleOcrBoundingBox > should toggle showOverlay from false to true", "OcrManager > toggleOcrBoundingBox > should toggle showOverlay from true to false", "OcrManager > toggleOcrBoundingBox > should toggle multiple times", "OcrManager > hasOcrData derived state > should be false when data is empty", "OcrManager > hasOcrData derived state > should be true when data is present", "OcrManager > hasOcrData derived state > should update when data is cleared", "OcrManager > data immutability > should return the same reference when data does not change", "OcrManager > data immutability > should return a new reference when data changes"]
+after = []
+message = "file deleted: its 19 tests no longer run"
+label = "unexplained"
+note = "Medium OCR tests cover the empty, error and race paths, but manager-level checks (clear/reset, toggle, data reference stability) are gone."
+
+[[finding]]
+unit = "862059712620"
+pr = 32983
+rule = "test-disabled"
+path = "web/src/lib/utils/adaptive-image-loader.spec.ts"
+tests = ["AdaptiveImageLoader > constructor > initializes with thumbnail URL set", "AdaptiveImageLoader > constructor > initializes all qualities as unloaded", "AdaptiveImageLoader > onStart > sets started to true", "AdaptiveImageLoader > onStart > is a no-op after destroy", "AdaptiveImageLoader > onLoad > sets quality to success and calls callbacks", "AdaptiveImageLoader > onLoad > calls onAfterLoad callback", "AdaptiveImageLoader > onLoad > ignores load if URL is not set", "AdaptiveImageLoader > onLoad > ignores load if a higher quality is already loaded", "AdaptiveImageLoader > onLoad > is a no-op after destroy", "AdaptiveImageLoader > onError > sets quality to error and clears URL", "AdaptiveImageLoader > onError > calls onAfterError callback", "AdaptiveImageLoader > onError > is a no-op after destroy", "AdaptiveImageLoader > trigger > sets the URL for the quality", "AdaptiveImageLoader > trigger > returns true if URL is already set", "AdaptiveImageLoader > trigger > returns false when triggering a new quality", "AdaptiveImageLoader > trigger > clears hasError when triggering", "AdaptiveImageLoader > trigger > calls imageLoader when provided", "AdaptiveImageLoader > trigger > returns false after destroy", "AdaptiveImageLoader > trigger > calls onAfterError if URL is empty", "AdaptiveImageLoader > start > throws if no imageLoader is provided", "AdaptiveImageLoader > start > calls imageLoader with thumbnail URL", "AdaptiveImageLoader > destroy > cancels all image URLs when no imageLoader", "AdaptiveImageLoader > destroy > calls destroy functions when imageLoader is provided"]
+before = ["AdaptiveImageLoader > constructor > initializes with thumbnail URL set", "AdaptiveImageLoader > constructor > initializes all qualities as unloaded", "AdaptiveImageLoader > onStart > sets started to true", "AdaptiveImageLoader > onStart > is a no-op after destroy", "AdaptiveImageLoader > onLoad > sets quality to success and calls callbacks", "AdaptiveImageLoader > onLoad > calls onAfterLoad callback", "AdaptiveImageLoader > onLoad > ignores load if URL is not set", "AdaptiveImageLoader > onLoad > ignores load if a higher quality is already loaded", "AdaptiveImageLoader > onLoad > is a no-op after destroy", "AdaptiveImageLoader > onError > sets quality to error and clears URL", "AdaptiveImageLoader > onError > calls onAfterError callback", "AdaptiveImageLoader > onError > is a no-op after destroy", "AdaptiveImageLoader > trigger > sets the URL for the quality", "AdaptiveImageLoader > trigger > returns true if URL is already set", "AdaptiveImageLoader > trigger > returns false when triggering a new quality", "AdaptiveImageLoader > trigger > clears hasError when triggering", "AdaptiveImageLoader > trigger > calls imageLoader when provided", "AdaptiveImageLoader > trigger > returns false after destroy", "AdaptiveImageLoader > trigger > calls onAfterError if URL is empty", "AdaptiveImageLoader > start > throws if no imageLoader is provided", "AdaptiveImageLoader > start > calls imageLoader with thumbnail URL", "AdaptiveImageLoader > destroy > cancels all image URLs when no imageLoader", "AdaptiveImageLoader > destroy > calls destroy functions when imageLoader is provided"]
+after = []
+message = "deleted 23 tests, including AdaptiveImageLoader > constructor > initializes with thumbn…"
+label = "unexplained"
+note = "21 of 23 AdaptiveImageLoader tests dropped; only the two progressive-loading tests remain."
+
+[[finding]]
+unit = "862059712620"
+pr = 32983
+rule = "test-disabled"
+path = "web/src/lib/utils/asset-utils.spec.ts"
+test = "toggleArchive > updates both isArchived and visibility when archiving"
+before = ["expect(asset.isArchived).toBe(true)", "expect(asset.visibility).toBe(AssetVisibility.Archive)"]
+after = []
+message = "deleted: toggleArchive > updates both isArchived and visibility when archiving"
+label = "wrong"
+note = "Moved to medium archive.spec, which archives from the viewer and checks the asset leaves the timeline (the regression this guarded)."
+
+[[finding]]
+unit = "862059712620"
+pr = 32983
+rule = "test-disabled"
+path = "web/src/lib/utils/asset-utils.spec.ts"
+test = "toggleArchive > updates both isArchived and visibility when unarchiving"
+before = ["expect(asset.isArchived).toBe(false)", "expect(asset.visibility).toBe(AssetVisibility.Timeline)"]
+after = []
+message = "deleted: toggleArchive > updates both isArchived and visibility when unarchiving"
+label = "wrong"
+note = "Moved to medium archive.spec, which unarchives from the archive viewer and checks the asset leaves the archive."
+
+[[finding]]
+unit = "862059712620"
+pr = 32983
+rule = "check-removed"
+path = "web/src/lib/utils/cancellable-task.spec.ts"
+test = "CancellableTask > reset allows the task to run again"
+before = ["expect(task.executed).toBe(true)"]
+after = []
+message = "removed expect(task.executed).toBe(true); the test name dropped \"should allow re-execution after\""
+label = "unexplained"
+note = "Renamed from 'should allow re-execution after reset'; the task.executed check is dropped and not made anywhere else."
+
+[[finding]]
+unit = "862059712620"
+pr = 32983
+rule = "test-disabled"
+path = "web/src/lib/utils/container-utils.spec.ts"
+test = "getContentMetrics > should use clientWidth/clientHeight for video elements"
+before = ["expect(metrics.contentWidth).toBe(800)", "expect(metrics.contentHeight).toBe(450)", "expect(metrics.offsetX).toBe(0)", "expect(metrics.offsetY).toBe(75)"]
+after = []
+message = "deleted: getContentMetrics > should use clientWidth/clientHeight for video elements"
+label = "unexplained"
+note = "The video branch of getContentMetrics is no longer tested."
+
+[[finding]]
+unit = "862059712620"
+pr = 32983
+rule = "test-disabled"
+path = "web/src/lib/utils/container-utils.spec.ts"
+test = "getNaturalSize > should return naturalWidth/naturalHeight for images"
+before = ["expect(getNaturalSize(img)).toEqual({ height: 3000, width: 4000 })"]
+after = []
+message = "deleted: getNaturalSize > should return naturalWidth/naturalHeight for images"
+label = "wrong"
+note = "getNaturalSize's image branch is still exercised by the getContentMetrics image tests, which fail if it returns the wrong size."
+
+[[finding]]
+unit = "862059712620"
+pr = 32983
+rule = "test-disabled"
+path = "web/src/lib/utils/container-utils.spec.ts"
+test = "getNaturalSize > should return videoWidth/videoHeight for videos"
+before = ["expect(getNaturalSize(video)).toEqual({ height: 1080, width: 1920 })"]
+after = []
+message = "deleted: getNaturalSize > should return videoWidth/videoHeight for videos"
+label = "unexplained"
+note = "The video branch of getNaturalSize is no longer tested."
+
+[[finding]]
+unit = "862059712620"
+pr = 32983
+rule = "test-disabled"
+path = "web/src/lib/utils/date-time.spec.ts"
+tests = ["getShortDateRange > should correctly return long month if start and end date are within the same month, ignoring local time zone", "getShortDateRange > should correctly return long month if start and end date are within the same month, ignoring local time zone", "getShortDateRange > should correctly return month range if start and end date are in separate months within the same year, ignoring local time zone", "getShortDateRange > should correctly return range if start and end date are in separate months and years, ignoring local time zone", "getShortDateRange > should correctly return range if start and end date are in separate months and years, ignoring local time zone", "getAlbumDateRange > should correctly return range if start and end date are in separate months and years, ignoring local time zone", "getAlbumDateRange > should correctly return range if start and end date are in separate months and years, ignoring local time zone"]
+before = ["getShortDateRange > should correctly return long month if start and end date are within the same month, ignoring local time zone", "getShortDateRange > should correctly return long month if start and end date are within the same month, ignoring local time zone", "getShortDateRange > should correctly return month range if start and end date are in separate months within the same year, ignoring local time zone", "getShortDateRange > should correctly return range if start and end date are in separate months and years, ignoring local time zone", "getShortDateRange > should correctly return range if start and end date are in separate months and years, ignoring local time zone", "getAlbumDateRange > should correctly return range if start and end date are in separate months and years, ignoring local time zone", "getAlbumDateRange > should correctly return range if start and end date are in separate months and years, ignoring local time zone"]
+after = []
+message = "deleted 7 tests, including getShortDateRange > should correctly return long month if s…"
+label = "unexplained"
+note = "The TZ-stubbing 'ignoring local time zone' tests were dropped (TZ can't be stubbed in browser mode); nothing in the change says so."
+
+[[finding]]
+unit = "862059712620"
+pr = 32983
+rule = "test-disabled"
+path = "web/src/routes/(user)/albums/[albumId=id]/[[photos=photos]]/[[assetId=id]]/AlbumDescription.spec.ts"
+tests = ["AlbumDescription component > shows an AutogrowTextarea component when isOwned is true", "AlbumDescription component > does not show an AutogrowTextarea component when isOwned is false"]
+before = ["AlbumDescription component > shows an AutogrowTextarea component when isOwned is true", "AlbumDescription component > does not show an AutogrowTextarea component when isOwned is false"]
+after = []
+message = "file deleted: its 2 tests no longer run"
+label = "wrong"
+note = "Moved to album page.spec 'editor can edit the description' and 'viewer cannot edit the description'."
+
+[[finding]]
+unit = "862059712620"
+pr = 32983
+rule = "check-removed"
+path = "web/src/routes/(user)/people/manage/page.spec.ts"
+test = "keeps toggled hidden state when loading more people"
+before = ["expect(personButtons).toHaveLength(2)", "expect(personButtons[0].getAttribute('aria-pressed')).toBe('true')", "expect(personButtons).toHaveLength(3)", "expect(personButtons[0].getAttribute('aria-pressed')).toBe('true')", "expect(personButtons[2].getAttribute('aria-pressed')).toBe('true')"]
+after = []
+message = "removed 5 checks, including expect(personButtons).toHaveLength(2); the test has no checks left"
+label = "wrong"
+note = "Checks still there as await expect.element(...) on the hidden list (Alice and Carol); the vitest-browser assertion was not recognised."
+
+[[finding]]
+unit = "862059712620"
+pr = 32983
+rule = "test-disabled"
+path = "web/src/routes/(user)/shared-links/(list)/ShareCover.spec.ts"
+tests = ["ShareCover component > renders an image when the shared link is an album", "ShareCover component > renders an image when the shared link is an individual share", "ShareCover component > renders an image when the shared link has no album or assets"]
+before = ["ShareCover component > renders an image when the shared link is an album", "ShareCover component > renders an image when the shared link is an individual share", "ShareCover component > renders an image when the shared link has no album or assets"]
+after = []
+message = "file deleted: its 3 tests no longer run"
+label = "unexplained"
+note = "The medium shared-link cover test only checks covers are visible; the alt text per link type, src and loading checks are gone."
+
+[[finding]]
+unit = "862059712620"
+pr = 32983
+rule = "check-removed"
+path = "web/test/medium/specs/asset-viewer/broken-asset.spec.ts"
+test = "broken asset > stack strip shows the message without an icon"
+before = ["await expect(brokenAsset.locator('span')).toHaveClass(/text-xs/) (in loop)"]
+after = []
+message = "removed await expect(brokenAsset.locator('span')).toHaveClass(/text…; the test name dropped \"a compact\""
+label = "unexplained"
+note = "Text-size class check (text-xs) dropped and the test renamed to match; no reason given."
+
+[[finding]]
+unit = "862059712620"
+pr = 32983
+rule = "check-removed"
+path = "web/test/medium/specs/asset-viewer/broken-asset.spec.ts"
+test = "broken asset > main viewer shows the icon and the message"
+before = ["await expect(brokenAsset.locator('span')).toHaveClass(/text-base/)"]
+after = []
+message = "removed await expect(brokenAsset.locator('span')).toHaveClass(/text…; the test name dropped \"base text size\""
+label = "unexplained"
+note = "Text-size class check (text-base) dropped and the test renamed to match; no reason given."
+
+[[finding]]
+unit = "862059712620"
+pr = 32983
+rule = "check-removed"
+path = "web/src/lib/managers/timeline-manager/timeline-manager.svelte.spec.ts"
+test = "TimelineManager > init > should load months in viewport"
+before = ["expect(sdkMock.getTimeBuckets).toHaveBeenCalledOnce()", "expect(sdkMock.getTimeBucket).toHaveBeenCalledTimes(2)"]
+after = ["expect(api.getTimeBuckets.calls).toHaveLength(1)", "expect(api.getTimeBucket.calls).toHaveLength(2)"]
+message = "removed 2 checks, including expect(sdkMock.getTimeBuckets).toHaveBeenCalledOnce()"
+label = "wrong"
+note = "Same call-count check, now on the api fixture (api.getTimeBucket(s).calls toHaveLength) instead of the sdk mock."
+
+[[finding]]
+unit = "862059712620"
+pr = 32983
+rule = "check-removed"
+path = "web/src/lib/managers/timeline-manager/timeline-manager.svelte.spec.ts"
+test = "TimelineManager > loadTimelineMonth > loads a month"
+before = ["expect(sdkMock.getTimeBucket).toHaveBeenCalledOnce()"]
+after = ["expect(api.getTimeBucket.calls).toHaveLength(1)"]
+message = "removed expect(sdkMock.getTimeBucket).toHaveBeenCalledOnce()"
+label = "wrong"
+note = "Same call-count check, now on the api fixture (api.getTimeBucket(s).calls toHaveLength) instead of the sdk mock."
+
+[[finding]]
+unit = "862059712620"
+pr = 32983
+rule = "check-removed"
+path = "web/src/lib/managers/timeline-manager/timeline-manager.svelte.spec.ts"
+test = "TimelineManager > loadTimelineMonth > prevents loading months multiple times"
+before = ["expect(sdkMock.getTimeBucket).toHaveBeenCalledOnce()", "expect(sdkMock.getTimeBucket).toHaveBeenCalledOnce()"]
+after = ["expect(api.getTimeBucket.calls).toHaveLength(1)", "expect(api.getTimeBucket.calls).toHaveLength(1)"]
+message = "removed 2 checks, including expect(sdkMock.getTimeBucket).toHaveBeenCalledOnce()"
+label = "wrong"
+note = "Same call-count check, now on the api fixture (api.getTimeBucket(s).calls toHaveLength) instead of the sdk mock."
+
+[[finding]]
+unit = "862059712620"
+pr = 32983
+rule = "test-disabled"
+path = "web/src/lib/utils.spec.ts"
+tests = ["utils > getAssetUrl.name > should return thumbnail URL for static images", "utils > getAssetUrl.name > should return thumbnail URL for static gifs", "utils > getAssetUrl.name > should return thumbnail URL for static webp images", "utils > getAssetUrl.name > should return original URL for animated gifs", "utils > getAssetUrl.name > should return original URL for animated webp images", "utils > getAssetUrl.name > should return original URL for video assets with forceOriginal", "utils > getAssetUrl.name > should return thumbnail URL for video assets without forceOriginal", "utils > getAssetUrl.name > should return thumbnail URL for static images in shared link even with download and showMetadata permissions", "utils > getAssetUrl.name > should return original URL for animated images in shared link with download and showMetadata permissions", "utils > getAssetUrl.name > should return thumbnail URL (not original) for animated images when shared link download permission is false", "utils > getAssetUrl.name > should return thumbnail URL (not original) for animated images when shared link showMetadata permission is false"]
+before = ["utils > getAssetUrl.name > should return thumbnail URL for static images", "utils > getAssetUrl.name > should return thumbnail URL for static gifs", "utils > getAssetUrl.name > should return thumbnail URL for static webp images", "utils > getAssetUrl.name > should return original URL for animated gifs", "utils > getAssetUrl.name > should return original URL for animated webp images", "utils > getAssetUrl.name > should return original URL for video assets with forceOriginal", "utils > getAssetUrl.name > should return thumbnail URL for video assets without forceOriginal", "utils > getAssetUrl.name > should return thumbnail URL for static images in shared link even with download and showMetadata permissions", "utils > getAssetUrl.name > should return original URL for animated images in shared link with download and showMetadata permissions", "utils > getAssetUrl.name > should return thumbnail URL (not original) for animated images when shared link download permission is false", "utils > getAssetUrl.name > should return thumbnail URL (not original) for animated images when shared link showMetadata permission is false"]
+after = []
+message = "deleted 11 tests, including utils > getAssetUrl.name > should return thumbnail URL for …"
+label = "wrong"
+note = "All 11 cases moved into it.each tables that check the exact URL, stronger than the old toContain."
+
+[[finding]]
+unit = "862059712620"
+pr = 32983
+rule = "test-disabled"
+path = "web/src/lib/utils/cancellable-task.spec.ts"
+tests = ["CancellableTask > execute > should execute task successfully and return LOADED", "CancellableTask > execute > should call loadedCallback when task completes successfully", "CancellableTask > execute > should return DONE if task is already executed", "CancellableTask > execute > should wait if task is already running", "CancellableTask > execute > should pass AbortSignal to task function", "CancellableTask > execute > should set cancellable flag correctly", "CancellableTask > execute > should not allow transition from prevent cancel to allow cancel when task is running", "CancellableTask > cancel > should cancel a running task", "CancellableTask > cancel > should call canceledCallback when task is canceled", "CancellableTask > cancel > should not cancel if task is not cancellable", "CancellableTask > cancel > should return CANCELED when concurrent caller is waiting and task is canceled", "CancellableTask > cancel > should not cancel if task is already executed", "CancellableTask > reset > should reset task to initial state", "CancellableTask > reset > should cancel running task before resetting", "CancellableTask > waitUntilCompletion > should return DONE if task is already executed", "CancellableTask > waitUntilCompletion > should return WAITED if task completes while waiting", "CancellableTask > waitUntilCompletion > should return CANCELED if task is canceled", "CancellableTask > waitUntilExecution > should return DONE if task is already executed", "CancellableTask > waitUntilExecution > should return WAITED if task completes successfully", "CancellableTask > waitUntilExecution > should retry if task is canceled and wait for next execution", "CancellableTask > error handling > should return ERRORED when task throws non-abort error", "CancellableTask > error handling > should call errorCallback when task throws non-abort error", "CancellableTask > error handling > should return CANCELED when task throws AbortError", "CancellableTask > error handling > should allow re-execution after error", "CancellableTask > loading property > should return true when task is running", "CancellableTask > complete promise > should resolve when task completes successfully", "CancellableTask > complete promise > should reject when task is canceled", "CancellableTask > complete promise > should reject when task errors", "CancellableTask > abort signal handling > should automatically call abort() on signal when task is canceled", "CancellableTask > abort signal handling > should detect if signal was aborted after task completes", "CancellableTask > abort signal handling > should handle abort signal in async operations"]
+before = ["CancellableTask > execute > should execute task successfully and return LOADED", "CancellableTask > execute > should call loadedCallback when task completes successfully", "CancellableTask > execute > should return DONE if task is already executed", "CancellableTask > execute > should wait if task is already running", "CancellableTask > execute > should pass AbortSignal to task function", "CancellableTask > execute > should set cancellable flag correctly", "CancellableTask > execute > should not allow transition from prevent cancel to allow cancel when task is running", "CancellableTask > cancel > should cancel a running task", "CancellableTask > cancel > should call canceledCallback when task is canceled", "CancellableTask > cancel > should not cancel if task is not cancellable", "CancellableTask > cancel > should return CANCELED when concurrent caller is waiting and task is canceled", "CancellableTask > cancel > should not cancel if task is already executed", "CancellableTask > reset > should reset task to initial state", "CancellableTask > reset > should cancel running task before resetting", "CancellableTask > waitUntilCompletion > should return DONE if task is already executed", "CancellableTask > waitUntilCompletion > should return WAITED if task completes while waiting", "CancellableTask > waitUntilCompletion > should return CANCELED if task is canceled", "CancellableTask > waitUntilExecution > should return DONE if task is already executed", "CancellableTask > waitUntilExecution > should return WAITED if task completes successfully", "CancellableTask > waitUntilExecution > should retry if task is canceled and wait for next execution", "CancellableTask > error handling > should return ERRORED when task throws non-abort error", "CancellableTask > error handling > should call errorCallback when task throws non-abort error", "CancellableTask > error handling > should return CANCELED when task throws AbortError", "CancellableTask > error handling > should allow re-execution after error", "CancellableTask > loading property > should return true when task is running", "CancellableTask > complete promise > should resolve when task completes successfully", "CancellableTask > complete promise > should reject when task is canceled", "CancellableTask > complete promise > should reject when task errors", "CancellableTask > abort signal handling > should automatically call abort() on signal when task is canceled", "CancellableTask > abort signal handling > should detect if signal was aborted after task completes", "CancellableTask > abort signal handling > should handle abort signal in async operations"]
+after = []
+message = "deleted 31 tests, including CancellableTask > execute > should execute task successfull…"
+label = "unexplained"
+note = "31 of 34 CancellableTask tests dropped (callbacks, waitUntil*, abort handling); only cancel, reset and error remain."
+
+[[finding]]
+unit = "862059712620"
+pr = 32983
+rule = "test-disabled"
+path = "web/src/lib/utils/editor.spec.ts"
+tests = ["edit normalization > should handle no edits", "edit normalization > should handle a single 90° rotation", "edit normalization > should handle a single 180° rotation", "edit normalization > should handle a single 270° rotation", "edit normalization > should handle a single horizontal mirror", "edit normalization > should handle a single vertical mirror", "edit normalization > should handle 90° rotation + horizontal mirror", "edit normalization > should handle 90° rotation + vertical mirror", "edit normalization > should handle 90° rotation + both mirrors", "edit normalization > should handle 180° rotation + horizontal mirror", "edit normalization > should handle 180° rotation + vertical mirror", "edit normalization > should handle 180° rotation + both mirrors", "edit normalization > should handle 270° rotation + horizontal mirror", "edit normalization > should handle 270° rotation + vertical mirror", "edit normalization > should handle 270° rotation + both mirrors", "edit normalization > should handle horizontal mirror + 90° rotation", "edit normalization > should handle horizontal mirror + 180° rotation", "edit normalization > should handle horizontal mirror + 270° rotation", "edit normalization > should handle vertical mirror + 90° rotation", "edit normalization > should handle vertical mirror + 180° rotation", "edit normalization > should handle vertical mirror + 270° rotation", "edit normalization > should handle both mirrors + 90° rotation", "edit normalization > should handle both mirrors + 180° rotation", "edit normalization > should handle both mirrors + 270° rotation"]
+before = ["edit normalization > should handle no edits", "edit normalization > should handle a single 90° rotation", "edit normalization > should handle a single 180° rotation", "edit normalization > should handle a single 270° rotation", "edit normalization > should handle a single horizontal mirror", "edit normalization > should handle a single vertical mirror", "edit normalization > should handle 90° rotation + horizontal mirror", "edit normalization > should handle 90° rotation + vertical mirror", "edit normalization > should handle 90° rotation + both mirrors", "edit normalization > should handle 180° rotation + horizontal mirror", "edit normalization > should handle 180° rotation + vertical mirror", "edit normalization > should handle 180° rotation + both mirrors", "edit normalization > should handle 270° rotation + horizontal mirror", "edit normalization > should handle 270° rotation + vertical mirror", "edit normalization > should handle 270° rotation + both mirrors", "edit normalization > should handle horizontal mirror + 90° rotation", "edit normalization > should handle horizontal mirror + 180° rotation", "edit normalization > should handle horizontal mirror + 270° rotation", "edit normalization > should handle vertical mirror + 90° rotation", "edit normalization > should handle vertical mirror + 180° rotation", "edit normalization > should handle vertical mirror + 270° rotation", "edit normalization > should handle both mirrors + 90° rotation", "edit normalization > should handle both mirrors + 180° rotation", "edit normalization > should handle both mirrors + 270° rotation"]
+after = []
+message = "deleted 24 tests, including edit normalization > should handle no edits"
+label = "wrong"
+note = "Same 24 cases kept as an it.each table with the same check."
+
+[[finding]]
+unit = "862059712620"
+pr = 32983
+rule = "test-disabled"
+path = "web/src/lib/utils/executor-queue.spec.ts"
+test = "Executor Queue test > should respect concurrency parameter"
+before = ["expect(finished).toHaveBeenCalledTimes(3)"]
+after = []
+message = "deleted: Executor Queue test > should respect concurrency parameter (only 3 of its 4 checks moved to other tests)"
+label = "wrong"
+note = "Renamed and fixed: same scenario, now also checks the 4th task starts when the first finishes and all 4 finish (the old 3 was a known-broken sync-timer value)."
+
+[[finding]]
+unit = "862059712620"
+pr = 32983
+rule = "check-removed"
+path = "web/src/routes/(user)/people/manage/page.spec.ts"
+test = "shows newly loaded hidden people as hidden"
+before = ["expect(personButtons).toHaveLength(3)", "expect(personButtons[2].getAttribute('aria-pressed')).toBe('true')"]
+after = ["expect(app.people.manage.hidden.elements()).toHaveLength(1)"]
+message = "removed 2 checks, including expect(personButtons).toHaveLength(3)"
+label = "wrong"
+note = "Still checks Carol shows as hidden via expect.element and hidden list length 1; the vitest-browser assertion was not recognised."
+
+[[finding]]
+unit = "862059712620"
+pr = 32983
+rule = "check-removed"
+path = "web/test/medium/specs/albums/album.spec.ts"
+test = "cancelling the asset picker keeps the new album"
+before = ["await expect(page.getByRole('button', { name: 'select_photos', exact: true })).toBeVisible()"]
+after = ["await expect(app.album.selectPhotosButton).toBeVisible()"]
+message = "removed await expect(page.getByRole('button', { name: 'select_photo…"
+label = "wrong"
+note = "Same locator moved to the app.album.selectPhotosButton helper (getByRole button 'select_photos')."
+
+[[finding]]
+unit = "862059712620"
+pr = 32983
+rule = "check-removed"
+path = "web/test/medium/specs/asset-viewer/detail-panel.spec.ts"
+test = "detail panel > date editor shows the asset zone and keeps a chosen one"
+before = ["await expect(page.getByRole('dialog')).toBeVisible()"]
+after = ["await expect(app.dialog).toBeVisible()", "await expect(app.viewer.changeDate.timezoneInput).toHaveValue('Pacific/Pitcairn (-08:00)')", "await expect(app.viewer.changeDate.timezoneInput).toHaveValue('Pacific/Pitcairn (-08:00)')"]
+message = "removed await expect(page.getByRole('dialog')).toBeVisible(); the test name dropped \"timezone not first with same offset\""
+label = "wrong"
+note = "Same locator moved to the app.dialog helper (page.getByRole('dialog')); the timezone checks are kept and extended."
+
+[[finding]]
+unit = "862059712620"
+pr = 32983
+rule = "check-removed"
+path = "web/test/medium/specs/asset-viewer/face-editor.spec.ts"
+test = "face editor > tags the selected person after confirming"
+before = ["await expect(page.getByRole('dialog')).toBeVisible()"]
+after = ["await expect(app.dialog).toBeVisible()"]
+message = "removed await expect(page.getByRole('dialog')).toBeVisible()"
+label = "wrong"
+note = "Same locator moved to the app.dialog helper (page.getByRole('dialog'))."
+
+[[finding]]
+unit = "fa44c744e33d"
+pr = 33010
+rule = "check-removed"
+path = "server/test/medium/specs/sync/sync-album-user.spec.ts"
+test = "SyncRequestType.AlbumUsersV1 > should sync an album user with the correct properties"
+before = ["await expect(ctx.syncStream(auth, [SyncRequestType.AlbumUsersV1])).resolves.toEqual([{ ack: expect.any(String), data: expect.objectContaining({ albumId: album.id, role: AlbumUserRole.Owner }), type: SyncEntityType.AlbumUserV1 }, { ack: expect.any(String), data: expect.objectContaining({ albumId: albumUser.albumId, role: albumUser.role, userId: albumUser.userId }), type: SyncEntityType.AlbumUserV1 }, expect.objectContaining({ type: SyncEntityType.SyncCompleteV1 })])"]
+after = []
+message = "removed await expect(ctx.syncStream(auth, [SyncRequestType.AlbumUse…; the test has no checks left"
+label = "wrong"
+note = "Same records checked via the new ctx.assertSyncResponse helper; only the order of the records is no longer enforced, the test still has full checks."
+
+[[finding]]
+unit = "fa44c744e33d"
+pr = 33010
+rule = "check-removed"
+path = "server/test/medium/specs/sync/sync-album-user.spec.ts"
+test = "SyncRequestType.AlbumUsersV1 > owner > should detect and sync a new shared user"
+before = ["expect(response).toEqual([{ ack: expect.any(String), data: expect.objectContaining({ albumId: album.id, role: AlbumUserRole.Owner }), type: SyncEntityType.AlbumUserV1 }, { ack: expect.any(String), data: expect.objectContaining({ albumId: albumUser.albumId, role: albumUser.role, userId: albumUser.userId }), type: SyncEntityType.AlbumUserV1 }, expect.objectContaining({ type: SyncEntityType.SyncCompleteV1 })])"]
+after = []
+message = "removed expect(response).toEqual([{ ack: expect.any(String), data: …; the test has no checks left"
+label = "wrong"
+note = "Same records checked via the new ctx.assertSyncResponse helper; only the order of the records is no longer enforced, the test still has full checks."
+
+[[finding]]
+unit = "fa44c744e33d"
+pr = 33010
+rule = "check-removed"
+path = "server/test/medium/specs/sync/sync-album-user.spec.ts"
+test = "SyncRequestType.AlbumUsersV1 > owner > should detect and sync an updated shared user"
+before = ["expect(newResponse).toEqual([{ ack: expect.any(String), data: expect.objectContaining({ albumId: albumUser.albumId, role: AlbumUserRole.Viewer, userId: albumUser.userId }), type: SyncEntityType.AlbumUserV1 }, expect.objectContaining({ type: SyncEntityType.SyncCompleteV1 })])"]
+after = []
+message = "removed expect(newResponse).toEqual([{ ack: expect.any(String), dat…; the test has no checks left"
+label = "wrong"
+note = "Moved into the new ctx.assertSyncResponse helper, which checks the same record(s) plus SyncComplete last."
+
+[[finding]]
+unit = "fa44c744e33d"
+pr = 33010
+rule = "check-removed"
+path = "server/test/medium/specs/sync/sync-album-user.spec.ts"
+test = "SyncRequestType.AlbumUsersV1 > owner > should detect and sync a deleted shared user"
+before = ["expect(newResponse).toEqual([{ ack: expect.any(String), data: expect.objectContaining({ albumId: albumUser.albumId, userId: albumUser.userId }), type: SyncEntityType.AlbumUserDeleteV1 }, expect.objectContaining({ type: SyncEntityType.SyncCompleteV1 })])"]
+after = []
+message = "removed expect(newResponse).toEqual([{ ack: expect.any(String), dat…; the test has no checks left"
+label = "wrong"
+note = "Moved into the new ctx.assertSyncResponse helper, which checks the same record(s) plus SyncComplete last."
+
+[[finding]]
+unit = "fa44c744e33d"
+pr = 33010
+rule = "check-removed"
+path = "server/test/medium/specs/sync/sync-album-user.spec.ts"
+test = "SyncRequestType.AlbumUsersV1 > shared user > should detect and sync a new shared user"
+before = ["expect(response).toHaveLength(3)", "expect(response).toEqual(expect.arrayContaining([{ ack: expect.any(String), data: expect.objectContaining({ albumId: album.id, role: AlbumUserRole.Owner }), type: SyncEntityType.AlbumUserV1 }, { ack: expect.any(String), data: expect.objectContaining({ albumId: albumUser.albumId, role: albumUser.role, userId: albumUser.userId }), type: SyncEntityType.AlbumUserV1 }, expect.objectContaining({ type: SyncEntityType.SyncCompleteV1 })]))"]
+after = []
+message = "removed 2 checks, including expect(response).toHaveLength(3); the test has no checks left"
+label = "wrong"
+note = "Moved into ctx.assertSyncResponse, which checks the same records and length (and now that SyncComplete is last)."
+
+[[finding]]
+unit = "fa44c744e33d"
+pr = 33010
+rule = "check-removed"
+path = "server/test/medium/specs/sync/sync-album-user.spec.ts"
+test = "SyncRequestType.AlbumUsersV1 > shared user > should detect and sync an updated shared user"
+before = ["expect(response).toEqual([expect.objectContaining({ type: SyncEntityType.AlbumUserV1 }), expect.objectContaining({ type: SyncEntityType.AlbumUserV1 }), expect.objectContaining({ type: SyncEntityType.AlbumUserV1 }), expect.objectContaining({ type: SyncEntityType.SyncCompleteV1 })])", "expect(newResponse).toEqual([{ ack: expect.any(String), data: expect.objectContaining({ albumId: album.id, role: AlbumUserRole.Viewer, userId: user.id }), type: SyncEntityType.AlbumUserV1 }, expect.objectContaining({ type: SyncEntityType.SyncCompleteV1 })])"]
+after = []
+message = "removed 2 checks, including expect(response).toEqual([expect.objectContaining({ type: S…; the test has no checks left"
+label = "wrong"
+note = "Moved into the new ctx.assertSyncResponse helper, which checks the same record(s) plus SyncComplete last."
+
+[[finding]]
+unit = "fa44c744e33d"
+pr = 33010
+rule = "check-removed"
+path = "server/test/medium/specs/sync/sync-album-user.spec.ts"
+test = "SyncRequestType.AlbumUsersV1 > shared user > should detect and sync a deleted shared user"
+before = ["expect(response).toEqual([expect.objectContaining({ type: SyncEntityType.AlbumUserV1 }), expect.objectContaining({ type: SyncEntityType.AlbumUserV1 }), expect.objectContaining({ type: SyncEntityType.AlbumUserV1 }), expect.objectContaining({ type: SyncEntityType.SyncCompleteV1 })])", "expect(newResponse).toEqual([{ ack: expect.any(String), data: expect.objectContaining({ albumId: album.id, userId: user.id }), type: SyncEntityType.AlbumUserDeleteV1 }, expect.objectContaining({ type: SyncEntityType.SyncCompleteV1 })])"]
+after = []
+message = "removed 2 checks, including expect(response).toEqual([expect.objectContaining({ type: S…; the test has no checks left"
+label = "wrong"
+note = "Moved into the new ctx.assertSyncResponse helper, which checks the same record(s) plus SyncComplete last."
+
+[[finding]]
+unit = "fa44c744e33d"
+pr = 33010
+rule = "check-removed"
+path = "server/test/medium/specs/sync/sync-album-user.spec.ts"
+test = "SyncRequestType.AlbumUsersV1 > shared user > should backfill album users when a user shares an album with you"
+before = ["expect(response).toEqual([{ ack: expect.any(String), data: expect.objectContaining({ albumId: album2.id, role: AlbumUserRole.Owner, userId: user.id }), type: SyncEntityType.AlbumUserV1 }, { ack: expect.any(String), data: expect.objectContaining({ albumId: album2.id, role: AlbumUserRole.Editor, userId: auth.user.id }), type: SyncEntityType.AlbumUserV1 }, expect.objectContaining({ type: SyncEntityType.SyncCompleteV1 })])"]
+after = []
+message = "removed expect(response).toEqual([{ ack: expect.any(String), data: …"
+label = "wrong"
+note = "Same records checked via the new ctx.assertSyncResponse helper; only the order of the records is no longer enforced, the test still has full checks."
+
+[[finding]]
+unit = "fa44c744e33d"
+pr = 33010
+rule = "check-removed"
+path = "server/test/medium/specs/sync/sync-asset-edit.spec.ts"
+test = "SyncRequestType.AssetEditsV1 > should detect and sync the first asset edit"
+before = ["expect(response).toEqual([{ ack: expect.any(String), data: { action: AssetEditAction.Crop, assetId: asset.id, id: expect.any(String), parameters: { height: 200, width: 100, x: 10, y: 20 }, sequence: 0 }, type: SyncEntityType.AssetEditV1 }, expect.objectContaining({ type: SyncEntityType.SyncCompleteV1 })])"]
+after = []
+message = "removed expect(response).toEqual([{ ack: expect.any(String), data: …; the test has no checks left"
+label = "wrong"
+note = "Moved into the new ctx.assertSyncResponse helper, which checks the same record(s) plus SyncComplete last."
+
+[[finding]]
+unit = "fa44c744e33d"
+pr = 33010
+rule = "check-removed"
+path = "server/test/medium/specs/sync/sync-asset-edit.spec.ts"
+test = "SyncRequestType.AssetEditsV1 > should detect and sync multiple asset edits for the same asset"
+before = ["expect(response).toEqual(expect.arrayContaining([{ ack: expect.any(String), data: { action: AssetEditAction.Crop, assetId: asset.id, id: expect.any(String), parameters: { height: 200, width: 100, x: 10, y: 20 }, sequence: 0 }, type: SyncEntityType.AssetEditV1 }, { ack: expect.any(String), data: { action: AssetEditAction.Rotate, assetId: asset.id, id: expect.any(String), parameters: { angle: 90 }, sequence: 1 }, type: SyncEntityType.AssetEditV1 }, { ack: expect.any(String), data: { action: AssetEditAction.Mirror, assetId: asset.id, id: expect.any(String), parameters: { axis: MirrorAxis.Horizontal }, sequence: 2 }, type: SyncEntityType.AssetEditV1 }, expect.objectContaining({ type: SyncEntityType.SyncCompleteV1 })]))"]
+after = []
+message = "removed expect(response).toEqual(expect.arrayContaining([{ ack: exp…; the test has no checks left"
+label = "wrong"
+note = "Moved into ctx.assertSyncResponse, which keeps the arrayContaining check and adds a length check (stronger)."
+
+[[finding]]
+unit = "fa44c744e33d"
+pr = 33010
+rule = "check-removed"
+path = "server/test/medium/specs/sync/sync-asset-edit.spec.ts"
+test = "SyncRequestType.AssetEditsV1 > should detect and sync updated edits"
+before = ["expect(response2).toEqual(expect.arrayContaining([{ ack: expect.any(String), data: { action: AssetEditAction.Crop, assetId: asset.id, id: expect.any(String), parameters: { height: 250, width: 150, x: 50, y: 60 }, sequence: 0 }, type: SyncEntityType.AssetEditV1 }, expect.objectContaining({ type: SyncEntityType.SyncCompleteV1 })]))"]
+after = []
+message = "removed expect(response2).toEqual(expect.arrayContaining([{ ack: ex…; the test has no checks left"
+label = "wrong"
+note = "Moved into ctx.assertSyncResponse, which keeps the arrayContaining check and adds a length check (stronger)."
+
+[[finding]]
+unit = "fa44c744e33d"
+pr = 33010
+rule = "check-removed"
+path = "server/test/medium/specs/sync/sync-asset-edit.spec.ts"
+test = "SyncRequestType.AssetEditsV1 > should detect and sync deleted asset edits"
+before = ["expect(response2).toEqual(expect.arrayContaining([{ ack: expect.any(String), data: { editId: edits[0].id }, type: SyncEntityType.AssetEditDeleteV1 }, expect.objectContaining({ type: SyncEntityType.SyncCompleteV1 })]))"]
+after = []
+message = "removed expect(response2).toEqual(expect.arrayContaining([{ ack: ex…; the test has no checks left"
+label = "wrong"
+note = "Moved into ctx.assertSyncResponse, which keeps the arrayContaining check and adds a length check (stronger)."
+
+[[finding]]
+unit = "fa44c744e33d"
+pr = 33010
+rule = "check-removed"
+path = "server/test/medium/specs/sync/sync-asset-edit.spec.ts"
+test = "SyncRequestType.AssetEditsV1 > should only sync asset edits for own user"
+before = ["await expect(ctx.syncStream(auth2, [SyncRequestType.AssetEditsV1])).resolves.toEqual([expect.objectContaining({ type: SyncEntityType.AssetEditV1 }), expect.objectContaining({ type: SyncEntityType.SyncCompleteV1 })])"]
+after = []
+message = "removed await expect(ctx.syncStream(auth2, [SyncRequestType.AssetEd…; the test has no checks left"
+label = "wrong"
+note = "Moved into the new ctx.assertSyncResponse helper, which checks the same record(s) plus SyncComplete last."
+
+[[finding]]
+unit = "fa44c744e33d"
+pr = 33010
+rule = "check-removed"
+path = "server/test/medium/specs/sync/sync-asset-edit.spec.ts"
+test = "SyncRequestType.AssetEditsV1 > should sync edits for multiple assets"
+before = ["expect(response).toEqual(expect.arrayContaining([{ ack: expect.any(String), data: { action: AssetEditAction.Crop, assetId: asset1.id, id: expect.any(String), parameters: { height: 200, width: 100, x: 10, y: 20 }, sequence: 0 }, type: SyncEntityType.AssetEditV1 }, { ack: expect.any(String), data: { action: AssetEditAction.Rotate, assetId: asset2.id, id: expect.any(String), parameters: { angle: 270 }, sequence: 0 }, type: SyncEntityType.AssetEditV1 }, expect.objectContaining({ type: SyncEntityType.SyncCompleteV1 })]))"]
+after = []
+message = "removed expect(response).toEqual(expect.arrayContaining([{ ack: exp…; the test has no checks left"
+label = "wrong"
+note = "Moved into ctx.assertSyncResponse, which keeps the arrayContaining check and adds a length check (stronger)."
+
+[[finding]]
+unit = "fa44c744e33d"
+pr = 33010
+rule = "check-removed"
+path = "server/test/medium/specs/sync/sync-partner.spec.ts"
+test = "SyncEntityType.PartnerV1 > should detect and sync the first partner"
+before = ["expect(response).toEqual([{ ack: expect.any(String), data: { inTimeline: partner.inTimeline, sharedById: partner.sharedById, sharedWithId: partner.sharedWithId }, type: 'PartnerV1' }, expect.objectContaining({ type: SyncEntityType.SyncCompleteV1 })])"]
+after = []
+message = "removed expect(response).toEqual([{ ack: expect.any(String), data: …; the test has no checks left"
+label = "wrong"
+note = "Moved into the new ctx.assertSyncResponse helper, which checks the same record(s) plus SyncComplete last."
+
+[[finding]]
+unit = "fa44c744e33d"
+pr = 33010
+rule = "check-removed"
+path = "server/test/medium/specs/sync/sync-partner.spec.ts"
+test = "SyncEntityType.PartnerV1 > should detect and sync a deleted partner"
+before = ["expect(response).toEqual([{ ack: expect.any(String), data: { sharedById: partner.sharedById, sharedWithId: partner.sharedWithId }, type: 'PartnerDeleteV1' }, expect.objectContaining({ type: SyncEntityType.SyncCompleteV1 })])"]
+after = []
+message = "removed expect(response).toEqual([{ ack: expect.any(String), data: …; the test has no checks left"
+label = "wrong"
+note = "Moved into the new ctx.assertSyncResponse helper, which checks the same record(s) plus SyncComplete last."
+
+[[finding]]
+unit = "fa44c744e33d"
+pr = 33010
+rule = "check-removed"
+path = "server/test/medium/specs/sync/sync-partner.spec.ts"
+test = "SyncEntityType.PartnerV1 > should detect and sync a partner share both to and from another user"
+before = ["expect(response).toHaveLength(3)", "expect(response).toEqual(expect.arrayContaining([{ ack: expect.any(String), data: { inTimeline: partner1.inTimeline, sharedById: partner1.sharedById, sharedWithId: partner1.sharedWithId }, type: 'PartnerV1' }, { ack: expect.any(String), data: { inTimeline: partner2.inTimeline, sharedById: partner2.sharedById, sharedWithId: partner2.sharedWithId }, type: 'PartnerV1' }, expect.objectContaining({ type: SyncEntityType.SyncCompleteV1 })]))"]
+after = []
+message = "removed 2 checks, including expect(response).toHaveLength(3); the test has no checks left"
+label = "wrong"
+note = "Moved into ctx.assertSyncResponse, which checks the same records and length (and now that SyncComplete is last)."
+
+[[finding]]
+unit = "fa44c744e33d"
+pr = 33010
+rule = "check-removed"
+path = "server/test/medium/specs/sync/sync-partner.spec.ts"
+test = "SyncEntityType.PartnerV1 > should sync a partner and then an update to that same partner"
+before = ["expect(response).toEqual([{ ack: expect.any(String), data: { inTimeline: partner.inTimeline, sharedById: partner.sharedById, sharedWithId: partner.sharedWithId }, type: 'PartnerV1' }, expect.objectContaining({ type: SyncEntityType.SyncCompleteV1 })])", "expect(newResponse).toEqual([{ ack: expect.any(String), data: { inTimeline: updated.inTimeline, sharedById: updated.sharedById, sharedWithId: updated.sharedWithId }, type: 'PartnerV1' }, expect.objectContaining({ type: SyncEntityType.SyncCompleteV1 })])"]
+after = []
+message = "removed 2 checks, including expect(response).toEqual([{ ack: expect.any(String), data: …; the test has no checks left"
+label = "wrong"
+note = "Moved into the new ctx.assertSyncResponse helper, which checks the same record(s) plus SyncComplete last."
+
+[[finding]]
+unit = "fa44c744e33d"
+pr = 33010
+rule = "check-removed"
+path = "server/test/medium/specs/sync/sync-user.spec.ts"
+test = "SyncEntityType.UserV1 > should detect and sync the first user"
+before = ["expect(response).toEqual([{ ack: expect.any(String), data: { avatarColor: user.avatarColor, deletedAt: user.deletedAt, email: user.email, hasProfileImage: user.profileImagePath !== '', id: user.id, name: user.name, profileChangedAt: user.profileChangedAt.toISOString() }, type: 'UserV1' }, expect.objectContaining({ type: SyncEntityType.SyncCompleteV1 })])"]
+after = []
+message = "removed expect(response).toEqual([{ ack: expect.any(String), data: …; the test has no checks left"
+label = "wrong"
+note = "Moved into the new ctx.assertSyncResponse helper, which checks the same record(s) plus SyncComplete last."
+
+[[finding]]
+unit = "fa44c744e33d"
+pr = 33010
+rule = "check-removed"
+path = "server/test/medium/specs/sync/sync-user.spec.ts"
+test = "SyncEntityType.UserV1 > should detect and sync a soft deleted user"
+before = ["expect(response).toEqual(expect.arrayContaining([{ ack: expect.any(String), data: expect.objectContaining({ id: auth.user.id }), type: 'UserV1' }, { ack: expect.any(String), data: expect.objectContaining({ id: deleted.id }), type: 'UserV1' }, expect.objectContaining({ type: SyncEntityType.SyncCompleteV1 })]))"]
+after = []
+message = "removed expect(response).toEqual(expect.arrayContaining([{ ack: exp…; the test has no checks left"
+label = "wrong"
+note = "Moved into ctx.assertSyncResponse, which keeps the arrayContaining check and adds a length check (stronger)."
+
+[[finding]]
+unit = "fa44c744e33d"
+pr = 33010
+rule = "check-removed"
+path = "server/test/medium/specs/sync/sync-user.spec.ts"
+test = "SyncEntityType.UserV1 > should detect and sync a deleted user"
+before = ["expect(response).toEqual([{ ack: expect.any(String), data: { userId: user.id }, type: 'UserDeleteV1' }, { ack: expect.any(String), data: expect.objectContaining({ id: authUser.id }), type: 'UserV1' }, expect.objectContaining({ type: SyncEntityType.SyncCompleteV1 })])"]
+after = []
+message = "removed expect(response).toEqual([{ ack: expect.any(String), data: …; the test has no checks left"
+label = "wrong"
+note = "Same records checked via the new ctx.assertSyncResponse helper; only the order of the records is no longer enforced, the test still has full checks."
+
+[[finding]]
+unit = "fa44c744e33d"
+pr = 33010
+rule = "check-removed"
+path = "server/test/medium/specs/sync/sync-user.spec.ts"
+test = "SyncEntityType.UserV1 > should sync a user and then an update to that same user"
+before = ["expect(response).toEqual([{ ack: expect.any(String), data: expect.objectContaining({ id: user.id }), type: 'UserV1' }, expect.objectContaining({ type: SyncEntityType.SyncCompleteV1 })])", "expect(newResponse).toEqual([{ ack: expect.any(String), data: expect.objectContaining({ id: user.id, name: updated.name }), type: 'UserV1' }, expect.objectContaining({ type: SyncEntityType.SyncCompleteV1 })])"]
+after = []
+message = "removed 2 checks, including expect(response).toEqual([{ ack: expect.any(String), data: …; the test has no checks left"
+label = "wrong"
+note = "Moved into the new ctx.assertSyncResponse helper, which checks the same record(s) plus SyncComplete last."
+
+[[finding]]
+unit = "42cd0dab416c"
+pr = 33028
+rule = "test-disabled"
+path = "server/src/maintenance/maintenance-worker.service.spec.ts"
+test = "MaintenanceWorkerService.name > init > takes the backups SDK lock so its jobs run during maintenance"
+before = ["expect(mocks.database.tryLock).toHaveBeenCalledWith(DatabaseLock.FutoBackupsModuleConfig)", "expect(futoBackups.acquireLock).toHaveBeenCalled()"]
+after = []
+message = "deleted: MaintenanceWorkerService.name > init > takes the backups SDK lock so its jobs run during maintenance"
+label = "intended"
+note = "The FutoBackupsModuleConfig lock code was removed in the same commit (replaced by setDatabaseHooks), and the enum entry with it."
+
+[[finding]]
+unit = "42cd0dab416c"
+pr = 33028
+rule = "test-disabled"
+path = "server/src/maintenance/maintenance-worker.service.spec.ts"
+test = "MaintenanceWorkerService.name > init > leaves the backups SDK lock to whoever already holds it"
+before = ["expect(futoBackups.acquireLock).not.toHaveBeenCalled()"]
+after = []
+message = "deleted: MaintenanceWorkerService.name > init > leaves the backups SDK lock to whoever already holds it"
+label = "intended"
+note = "The FutoBackupsModuleConfig lock code was removed in the same commit (replaced by setDatabaseHooks), and the enum entry with it."

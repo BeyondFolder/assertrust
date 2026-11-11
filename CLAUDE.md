@@ -21,4 +21,4 @@ assertrust is a Rust CLI that detects changes that weaken a test suite. Read `RE
 
 ## Private code
 
-- Mailyond, the backtest target, is a private, proprietary codebase. Never commit its code or fixtures copied from it. A few short snippets quoted in docs are fine. The backtest reads a local clone, with the path set by an env var.
+- Mailyond, a backtest target, is a private, proprietary codebase. Never commit its code or fixtures copied from it. A few short snippets quoted in docs are fine. Its backtest labels quote its code, so they live in a local file outside this repo; `backtest/run.sh` finds them through `ASSERTRUST_PRIVATE_LABELS`.

@@ -26,6 +26,7 @@ mod git;
 mod mode;
 mod model;
 
+use std::collections::HashSet;
 use std::fs;
 use std::io;
 use std::path::{Component, Path};
@@ -69,6 +70,44 @@ impl Repo {
             }
             Resolved::Staged | Resolved::WorkTree => None,
         })
+    }
+
+    /// The commits that landed on `head`'s branch, oldest first: its first-parent line after
+    /// `base`, or the last `limit` commits on it. On a main branch that's one commit per
+    /// merge or push, which is what `assertrust backtest` replays.
+    pub fn first_parent(
+        &self,
+        base: Option<&str>,
+        head: &str,
+        limit: Option<usize>,
+    ) -> Result<Vec<Commit>, Error> {
+        self.git.first_parent(base, head, limit)
+    }
+
+    /// Whether `commit` can be a squash merge of `theirs` onto `ours`: `theirs` merges into
+    /// `ours` without conflicts (GitHub merges no other way), and each file `commit` changed
+    /// is one that merge changes too. Not that the files end up the same: a squash can
+    /// differ a little from the plain merge (a PR stacked on another one, a last edit while
+    /// merging). `None` when git can't say (no shared history, or a git older than 2.38).
+    pub fn squashes(&self, ours: &str, theirs: &str, commit: &str) -> Option<bool> {
+        let Some(merged) = self.git.merge_tree(ours, theirs).ok()? else {
+            return Some(false);
+        };
+        let paths = |after: &str| -> Option<HashSet<String>> {
+            let changes = self.git.diff_trees(ours, after).ok()?;
+            Some(
+                changes
+                    .into_iter()
+                    .flat_map(|change| change.before.into_iter().chain(change.after))
+                    .collect(),
+            )
+        };
+        Some(paths(commit)?.is_subset(&paths(&merged)?))
+    }
+
+    /// The URL of the `origin` remote, if there is one.
+    pub fn origin_url(&self) -> Option<String> {
+        self.git.origin_url()
     }
 
     /// The repo's top-level directory (where `assertrust.toml` lives).

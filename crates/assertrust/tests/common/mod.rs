@@ -154,6 +154,21 @@ impl TestRepo {
         run(command.envs(env.iter().copied()))
     }
 
+    /// Runs any program with the same isolation as git, from `dir`, with extra environment
+    /// variables.
+    pub fn program_in(
+        &self,
+        dir: &std::path::Path,
+        program: &str,
+        args: &[&str],
+        env: &[(&str, &str)],
+    ) -> Run {
+        let mut command = Command::new(program);
+        command.args(args);
+        self.isolated(&mut command);
+        run(command.current_dir(dir).envs(env.iter().copied()))
+    }
+
     /// Runs `assertrust` from a subdirectory of the repo (relative to the repo root).
     pub fn assertrust_in(&self, subdir: &str, args: &[&str]) -> Run {
         run(self

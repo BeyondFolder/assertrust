@@ -68,21 +68,14 @@ fn render(analysis: &Analysis, report: &Report, config: &Config, verbose: bool) 
     let visible: Vec<&Reported> = report
         .findings
         .iter()
-        .filter(|reported| {
-            let shown = match reported.status {
-                Status::Shown | Status::BeforeLanding | Status::Allowed { .. } => true,
-                Status::Hidden => verbose,
-                Status::Transient => config.show_transient,
-            };
-            shown && (verbose || !judged(reported, config))
-        })
+        .filter(|reported| visible(reported, config, verbose))
         .collect();
     for (i, reported) in visible.iter().enumerate() {
         // With `-v` each finding takes several lines, so they're kept apart.
         if verbose && i > 0 {
             line(&mut out, "");
         }
-        finding(&mut out, reported, verbose);
+        finding(&mut out, reported, verbose, None);
     }
     if !visible.is_empty() || !report.notes.is_empty() {
         line(&mut out, "");
@@ -152,6 +145,16 @@ fn summary(report: &Report, config: &Config, verbose: bool) -> String {
     parts.join(" · ")
 }
 
+/// Whether the terminal output shows the finding.
+pub fn visible(reported: &Reported, config: &Config, verbose: bool) -> bool {
+    let shown = match reported.status {
+        Status::Shown | Status::BeforeLanding | Status::Allowed { .. } => true,
+        Status::Hidden => verbose,
+        Status::Transient => config.show_transient,
+    };
+    shown && (verbose || !judged(reported, config))
+}
+
 /// Whether the finding's rule is left to the judge, so only `-v` shows it.
 pub fn judged(reported: &Reported, config: &Config) -> bool {
     config.setting(reported.finding.rule) == Setting::Judge
@@ -193,9 +196,10 @@ pub fn commit_list(commits: &[&Commit]) -> String {
     shas.join(", ")
 }
 
-/// Two lines: where, how sure and which rule; then what got weaker. An allowed finding adds
-/// the reason. `-v` adds the test, the code before and after, and the commit message.
-fn finding(out: &mut String, reported: &Reported, verbose: bool) {
+/// Two lines: where, how sure and which rule (then `tag`, if any); then what got weaker. An
+/// allowed finding adds the reason. `-v` adds the test, the code before and after, and the
+/// commit message.
+pub(crate) fn finding(out: &mut String, reported: &Reported, verbose: bool, tag: Option<&str>) {
     let finding = &reported.finding;
     let mut header = format!(
         "{}  {}  {}",
@@ -208,6 +212,9 @@ fn finding(out: &mut String, reported: &Reported, verbose: bool) {
         Status::Transient => header.push_str("  (undone later)"),
         Status::BeforeLanding => header.push_str("  (before landing)"),
         Status::Shown | Status::Hidden => {}
+    }
+    if let Some(tag) = tag {
+        write!(header, "  [{tag}]").expect("writing to a String");
     }
     line(out, &header);
     let mut message = format!("  {}", finding.message);

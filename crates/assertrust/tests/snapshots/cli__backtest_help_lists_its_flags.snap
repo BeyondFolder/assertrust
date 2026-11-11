@@ -1,0 +1,38 @@
+---
+source: crates/assertrust/tests/cli.rs
+expression: run.stdout
+---
+Replay a branch's history as CI would have checked it: each merged PR, each push
+
+Usage: assertrust backtest [OPTIONS]
+
+Options:
+      --range <RANGE>
+          The commits to replay: BASE..HEAD, those on HEAD's first-parent line after BASE
+
+      --last <N>
+          Replay the last N commits on the current branch's first-parent line (default: 100, or the labels file's range)
+
+      --labels <FILE>
+          A file with a verdict on each finding, to measure assertrust: prints how often it's right, and exits with 1 when a finding isn't labelled yet, one labelled right is no longer found, or a commit couldn't be checked
+
+      --update-labels
+          Add new findings to the labels file, not labelled yet, and drop false alarms no longer found
+
+      --format <FORMAT>
+          Output format
+
+          Possible values:
+          - terminal: Short, human-readable findings, by PR and push
+          - json:     Machine-readable findings, for scripts and other tools
+          
+          [default: terminal]
+
+      --show-transient
+          Also show weakening that was undone later in the same PR
+
+  -v, --verbose
+          Show the test name, before/after snippets, the full commit message, and changed outcomes
+
+  -h, --help
+          Print help (see a summary with '-h')

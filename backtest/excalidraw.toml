@@ -781,6 +781,18 @@ unit = "d3a9c2a19518"
 pr = 11997
 rule = "check-removed"
 path = "packages/element/tests/renderEnvironmentCaches.test.ts"
+test = "render environment cache invalidation > installs a fresh identity per swap, dropping identity-keyed caches"
+before = ["expect(swapped.createCanvas()).toEqual({})"]
+after = ["expect(getRenderEnvironment()).toBe(before)", "expect(cache.get(swapped)).toBeUndefined()", "expect(getRenderEnvironment()).not.toBe(swapped)"]
+message = "removed expect(swapped.createCanvas()).toEqual({}); the test name dropped \"environment object\""
+label = "intended"
+note = "Commit \"cut non-critical\" tests; the check that the swapped env's createCanvas is used was dropped when the test moved files."
+
+[[finding]]
+unit = "d3a9c2a19518"
+pr = 11997
+rule = "check-removed"
+path = "packages/element/tests/renderEnvironmentCaches.test.ts"
 test = "render environment cache invalidation > never serves one environment's char widths to another"
 before = ["expect(charWidth.getCache(FONT)).toBeUndefined()", "expect(charWidth.calculate('A', FONT)).toBe(10)"]
 after = ["expect(getMaxCharWidth(FONT, env)).toBe(0)", "expect(getMaxCharWidth(FONT)).toBe(0)"]
@@ -799,6 +811,30 @@ after = []
 message = "deleted 8 tests, including Tooltip > shows the tooltip again after re-enabling"
 label = "wrong"
 note = "The 8 tests were merged into two combined tests (\"clears the shared tooltip when the trigger goes away mid-hover\", \"drops the tooltip when its owning window goes away\"); the hover-delay checks run in \"lets a new owner take over\"."
+
+[[finding]]
+unit = "d3a9c2a19518"
+pr = 11997
+rule = "check-cant-fail"
+path = "packages/excalidraw/tests/tooltip.test.tsx"
+test = "Tooltip > clears the shared tooltip when the trigger goes away mid-hover"
+before = ["expect(wrapper).not.toBeNull()"]
+after = ["expect(wrapper).not.toBeNull() (in callback)"]
+message = "expect(wrapper).not.toBeNull() is now inside a callback: it may run after the test ends, or not at all"
+label = "wrong"
+note = "The callback is a synchronous local helper (hover) called directly in the test, so the check always runs."
+
+[[finding]]
+unit = "d3a9c2a19518"
+pr = 11997
+rule = "check-cant-fail"
+path = "packages/excalidraw/tests/tooltip.test.tsx"
+test = "Tooltip > clears the shared tooltip when the trigger goes away mid-hover"
+before = ["expect(tooltip).toHaveClass(TOOLTIP_VISIBLE_CLASS)"]
+after = ["expect(tooltip).toHaveClass(TOOLTIP_VISIBLE_CLASS) (in callback)"]
+message = "expect(tooltip).toHaveClass(TOOLTIP_VISIBLE_CLASS) is now inside a callback: it may run after the test ends, or not at all"
+label = "wrong"
+note = "The callback is a synchronous local helper (hover) called directly in the test, so the check always runs."
 
 [[finding]]
 unit = "d3a9c2a19518"
@@ -835,6 +871,18 @@ after = ["expect(canvas).toBe(target) (in callback)"]
 message = "expect(canvas).toBe(target) is now inside a callback: it may run after the test ends, or not at all"
 label = "wrong"
 note = "The callback is an async helper awaited directly in the test (twice), so the check always runs."
+
+[[finding]]
+unit = "d3a9c2a19518"
+pr = 11997
+rule = "matcher-swapped"
+path = "packages/excalidraw/tests/tooltip.test.tsx"
+test = "Tooltip > clears the shared tooltip when the trigger goes away mid-hover"
+before = ["expect(tooltip).not.toBeNull()"]
+after = ["expect(tooltip).not.toHaveClass(TOOLTIP_VISIBLE_CLASS)"]
+message = "swapped .not.toBe(null) for .not.toHaveClass(TOOLTIP_VISIBLE_CLASS)"
+label = "wrong"
+note = "Not a matcher swap: the not-null check is subsumed by toHaveClass(TOOLTIP_VISIBLE_CLASS) in the hover helper; the not.toHaveClass line is a different, later check."
 
 [[finding]]
 unit = "bee01e3a1281"

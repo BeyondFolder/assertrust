@@ -104,7 +104,7 @@ fn headline(report: &Report, config: &Config) -> String {
         count(shown, "finding")
     };
     let pr_added = report.with_status(|status| *status == Status::PrAdded);
-    if let Some(part) = check_command::pr_added(pr_added, config, false) {
+    if let Some(part) = check_command::pr_added(pr_added, config.show_pr_added, "this PR", false) {
         text.push_str(&format!(" · {part}"));
     }
     text

@@ -260,8 +260,9 @@ struct Owned {
     commits: Vec<Commit>,
     /// Its rule is left to the judge, so only `-v` shows it.
     judged: bool,
-    /// A PR check would report it: shown, added by the PR (with `--show-pr-added`) or
-    /// allowed, and not left to the judge. Labels are about these.
+    /// A PR check would report it: shown, allowed, or added by its PR (shown only with
+    /// `--show-pr-added`, but labelled either way), and not left to the judge. Labels are
+    /// about these.
     reported: bool,
     /// Shown without `-v`, and with it.
     quiet: bool,
@@ -571,7 +572,7 @@ fn render(
         &summary(units, args, started.elapsed().as_secs_f64()),
     );
     if let Some(scored) = scored {
-        label_summary(&mut out, units, scored);
+        label_summary(&mut out, units, scored, args.verbose);
     }
     out
 }
@@ -629,21 +630,21 @@ fn summary(units: &[Unit], args: &BacktestArgs, seconds: f64) -> String {
     }
     // Findings left to the judge stay out of the counts too, unless `-v` shows them.
     let counted = |owned: &Owned| args.verbose || !owned.judged;
-    let (pr_added, hidden): (Vec<&Owned>, Vec<&Owned>) = findings()
+    let (added_shown, added_hidden): (Vec<&Owned>, Vec<&Owned>) = findings()
         .filter(|owned| owned.status == Status::PrAdded && counted(owned))
         .partition(|owned| owned.shown(args.verbose));
-    if !pr_added.is_empty() {
-        parts.push(format!(
-            "{} on code its PR added (can't fail)",
-            pr_added.len()
-        ));
-    }
-    if !hidden.is_empty() {
-        parts.push(format!(
-            "{} on code its PR added hidden (--show-pr-added shows them)",
-            hidden.len()
-        ));
-    }
+    parts.extend(check_command::pr_added(
+        added_shown.len(),
+        true,
+        "its PR",
+        true,
+    ));
+    parts.extend(check_command::pr_added(
+        added_hidden.len(),
+        false,
+        "its PR",
+        true,
+    ));
     let allowed = findings()
         .filter(|owned| matches!(owned.status, Status::Allowed { .. }) && counted(owned))
         .count();
@@ -677,18 +678,23 @@ fn pushes(n: usize) -> String {
     }
 }
 
-/// What the labels say: how often assertrust is right, and what isn't labelled or is gone.
-/// Findings on code a PR added, hidden by default, are counted apart.
-fn label_summary(out: &mut String, units: &[Unit], scored: &Scored) {
-    let labelled: Vec<(Label, &Owned)> = units
+/// Each labelled finding with its label, split into findings on code their PR added (hidden
+/// by default, so counted apart) and the rest.
+type Split<'a> = (Vec<(Label, &'a Owned)>, Vec<(Label, &'a Owned)>);
+
+fn labelled<'a>(units: &'a [Unit], scored: &Scored) -> Split<'a> {
+    units
         .iter()
         .zip(&scored.tags)
         .flat_map(|(unit, row)| unit.findings.iter().zip(row))
         .filter_map(|(owned, tag)| Some((tag.as_ref()?.label()?, owned)))
-        .collect();
-    let (pr_added, shown): (Vec<_>, Vec<_>) = labelled
-        .into_iter()
-        .partition(|(_, owned)| owned.status == Status::PrAdded);
+        .partition(|(_, owned)| owned.status == Status::PrAdded)
+}
+
+/// What the labels say: how often assertrust is right, and what isn't labelled or is gone.
+/// Findings on code a PR added, hidden by default, are counted apart.
+fn label_summary(out: &mut String, units: &[Unit], scored: &Scored, verbose: bool) {
+    let (pr_added, shown) = labelled(units, scored);
     if shown.is_empty() && pr_added.is_empty() {
         line(out, "labels: none of the findings are labelled yet");
     }
@@ -723,12 +729,36 @@ fn label_summary(out: &mut String, units: &[Unit], scored: &Scored) {
             ),
         );
     }
-    let not_labelled = scored.not_labelled();
-    if not_labelled > 0 {
-        line(
+    // Those not labelled are marked, unless hidden: say how to see them.
+    let (marked, hidden) = units
+        .iter()
+        .zip(&scored.tags)
+        .flat_map(|(unit, row)| unit.findings.iter().zip(row))
+        .filter(|(_, tag)| tag.as_ref().is_some_and(|tag| tag.label().is_none()))
+        .fold((0, 0), |(marked, hidden), (owned, _)| {
+            if owned.shown(verbose) {
+                (marked + 1, hidden)
+            } else {
+                (marked, hidden + 1)
+            }
+        });
+    match (marked, hidden) {
+        (0, 0) => {}
+        (marked, 0) => line(out, &format!("{marked} not labelled yet (marked above)")),
+        (0, hidden) => line(
             out,
-            &format!("{not_labelled} not labelled yet (marked above)"),
-        );
+            &format!(
+                "{hidden} not labelled yet, on code its PR added (--show-pr-added shows them)"
+            ),
+        ),
+        (marked, hidden) => line(
+            out,
+            &format!(
+                "{} not labelled yet: {marked} marked above, {hidden} on code its PR added \
+                 (--show-pr-added shows them)",
+                marked + hidden
+            ),
+        ),
     }
     let missed: Vec<&Entry> = scored.missed().collect();
     if !missed.is_empty() {
@@ -845,25 +875,17 @@ fn render_json(range: &str, units: &[Unit], scored: Option<&Scored>) -> String {
                 .collect()
         };
         // Labels of findings on code their PR added (hidden by default) are counted apart.
-        let with = |label: Label, pr_added: bool| {
-            units
-                .iter()
-                .zip(&scored.tags)
-                .flat_map(|(unit, row)| unit.findings.iter().zip(row))
-                .filter(|(owned, tag)| {
-                    (owned.status == Status::PrAdded) == pr_added
-                        && tag.as_ref().and_then(Tag::label) == Some(label)
-                })
-                .count()
-        };
+        let (pr_added, shown) = labelled(units, scored);
+        let with =
+            |of: &[(Label, &Owned)], label: Label| of.iter().filter(|(l, _)| *l == label).count();
         document["labels"] = json!({
-            "wrong": with(Label::Wrong, false),
-            "intended": with(Label::Intended, false),
-            "unexplained": with(Label::Unexplained, false),
+            "wrong": with(&shown, Label::Wrong),
+            "intended": with(&shown, Label::Intended),
+            "unexplained": with(&shown, Label::Unexplained),
             "pr_added": {
-                "wrong": with(Label::Wrong, true),
-                "intended": with(Label::Intended, true),
-                "unexplained": with(Label::Unexplained, true),
+                "wrong": with(&pr_added, Label::Wrong),
+                "intended": with(&pr_added, Label::Intended),
+                "unexplained": with(&pr_added, Label::Unexplained),
             },
             "not_labelled": scored.not_labelled(),
             "missed": entries(scored.missed().collect()),

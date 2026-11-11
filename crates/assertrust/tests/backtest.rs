@@ -648,3 +648,46 @@ fn labels_of_findings_on_code_its_pr_added_are_counted_apart() {
     assert_eq!(json["labels"]["intended"], 1);
     assert_eq!(json["labels"]["pr_added"]["wrong"], 1);
 }
+
+#[test]
+fn findings_not_labelled_yet_say_how_to_see_them_when_hidden() {
+    // PR #7 only loosens a test it added, which is hidden by default.
+    let mut repo = TestRepo::new();
+    repo.write("test/a.test.ts", TESTS);
+    repo.commit("Add tests");
+    repo.branch("feature");
+    repo.write(
+        "test/total.test.ts",
+        "it('totals', () => {\n  expect(total()).toBe(30)\n})\n",
+    );
+    repo.commit("Test the total");
+    repo.write(
+        "test/total.test.ts",
+        "it('totals', () => {\n  expect(total()).toBeGreaterThan(0)\n})\n",
+    );
+    repo.commit("Make it pass");
+    repo.switch("main");
+    repo.merge(
+        "feature",
+        "Merge pull request #7 from org/feature\n\nTotals",
+    );
+    let labels = repo.path().join("labels.toml");
+    let path = labels.to_str().unwrap();
+    backtest(&repo, &["--labels", path, "--update-labels"]);
+    let run = backtest(&repo, &["--labels", path]);
+    assert_eq!(run.code, 1);
+    assert!(
+        run.stdout.ends_with(
+            "labels: none of the findings are labelled yet\n\
+             1 not labelled yet, on code its PR added (--show-pr-added shows them)\n"
+        ),
+        "{}",
+        run.stdout
+    );
+    let run = backtest(&repo, &["--labels", path, "--show-pr-added"]);
+    assert!(
+        run.stdout.ends_with("1 not labelled yet (marked above)\n"),
+        "{}",
+        run.stdout
+    );
+}

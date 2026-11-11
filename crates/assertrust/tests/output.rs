@@ -533,6 +533,110 @@ fn a_new_test_renamed_as_it_was_weakened_and_then_deleted_is_still_added_by_the_
     );
 }
 
+/// `it('charges', …)` with these checks, one per line.
+fn charges(checks: &[&str]) -> String {
+    let body: String = checks.iter().map(|check| format!("  {check}\n")).collect();
+    format!("it('charges', () => {{\n{body}}})\n")
+}
+
+const CHARGES: [&str; 4] = [
+    "expect(c).toBe(3)",
+    "expect(d).toBe(4)",
+    "expect(e).toBe(5)",
+    "expect(f).toBe(6)",
+];
+
+#[test]
+fn a_new_test_weakened_as_its_file_was_renamed_is_followed_to_the_head() {
+    // c2 renames b to c and drops a check; c3 renames c to d. Still weaker at the head.
+    let mut repo = feature_branch();
+    repo.write("test/b.test.ts", &charges(&CHARGES));
+    repo.commit("Test charges");
+    repo.git(&["mv", "test/b.test.ts", "test/c.test.ts"]);
+    repo.write("test/c.test.ts", &charges(&CHARGES[1..]));
+    repo.commit("Rename it and drop c");
+    repo.git(&["mv", "test/c.test.ts", "test/d.test.ts"]);
+    repo.commit("Rename it again");
+    assert_eq!(
+        check(&repo, &["--range", "main...HEAD"]).1,
+        "no findings · 1 on code this PR added hidden (--show-pr-added shows them)\n"
+    );
+    // Or deleted at the head: worse still.
+    repo.remove("test/d.test.ts");
+    repo.commit("Drop it");
+    assert_eq!(
+        check(&repo, &["--range", "main...HEAD"]).1,
+        "no findings · 2 on code this PR added hidden (--show-pr-added shows them)\n"
+    );
+}
+
+#[test]
+fn a_new_test_weakened_and_moved_into_another_file_is_still_added_by_the_pr() {
+    // c2 drops a check from the new test; c3 moves the loose test into a.test.ts.
+    let mut repo = feature_branch();
+    repo.write("test/b.test.ts", &charges(&CHARGES));
+    repo.commit("Test charges");
+    repo.write("test/b.test.ts", &charges(&CHARGES[1..]));
+    let dropped = repo.commit("Drop c");
+    repo.remove("test/b.test.ts");
+    repo.write(
+        "test/a.test.ts",
+        &format!("{TWO_CHECKS}{}", charges(&CHARGES[1..])),
+    );
+    repo.commit("Test charges next to refunds");
+    assert_eq!(
+        check(&repo, &["--range", "main...HEAD", "--show-pr-added"]).1,
+        format!(
+            "test/b.test.ts:1  HIGH  check-removed  (added by this PR)\n\
+             \x20 removed expect(c).toBe(3) · {}\n\
+             \n\
+             no findings · 1 on code this PR added (can't fail)\n",
+            &dropped[..7]
+        )
+    );
+}
+
+#[test]
+fn the_same_line_lost_by_another_test_does_not_keep_an_undone_weakening() {
+    // x loses its status check and gets it back; later y loses the same line.
+    let test = |name: &str, status: bool, other: &str| {
+        let status = if status {
+            "  expect(res.status).toBe(200)\n"
+        } else {
+            ""
+        };
+        format!(
+            "it('{name}', () => {{\n{status}  expect({other}).toBe(1)\n  expect({other}2).toBe(2)\n}})\n"
+        )
+    };
+    let mut repo = feature_branch();
+    repo.write(
+        "test/b.test.ts",
+        &(test("x", true, "a") + &test("y", true, "b")),
+    );
+    repo.commit("Test x and y");
+    repo.write(
+        "test/b.test.ts",
+        &(test("x", false, "a") + &test("y", true, "b")),
+    );
+    repo.commit("Drop x's status check");
+    repo.write(
+        "test/b.test.ts",
+        &(test("x", true, "a") + &test("y", true, "b")),
+    );
+    repo.commit("Put it back");
+    repo.write(
+        "test/b.test.ts",
+        &(test("x", true, "a") + &test("y", false, "b")),
+    );
+    repo.commit("Drop y's status check");
+    assert_eq!(
+        check(&repo, &["--range", "main...HEAD"]).1,
+        "no findings · 1 on code this PR added hidden (--show-pr-added shows them) · \
+         1 undone later hidden (--show-transient shows them)\n"
+    );
+}
+
 #[test]
 fn a_test_the_pr_added_deleted_and_put_back_is_undone_later() {
     // The PR adds a test, deletes it, then restores it: it lands whole.
@@ -639,7 +743,7 @@ fn a_grouped_deletion_names_the_commits_that_deleted_its_tests() {
 }
 
 #[test]
-fn weakening_undone_in_a_renamed_file_or_test_is_not_before_landing() {
+fn weakening_undone_in_a_renamed_file_or_test_is_not_added_by_the_pr() {
     // The file, or the test, was there before the PR under another name.
     for (path, renamed) in [
         ("test/b.test.ts", TWO_CHECKS.to_owned()),

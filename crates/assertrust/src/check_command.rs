@@ -125,9 +125,8 @@ fn summary(report: &Report, config: &Config, verbose: bool) -> String {
             .filter(|reported| verbose || !judged(reported, config))
             .count()
     };
-    if let Some(part) = pr_added(counted(|status| *status == Status::PrAdded), config, true) {
-        parts.push(part);
-    }
+    let added = counted(|status| *status == Status::PrAdded);
+    parts.extend(pr_added(added, config.show_pr_added, "this PR", true));
     let allowed = counted(|status| matches!(status, Status::Allowed { .. }));
     if allowed > 0 {
         parts.push(format!("{allowed} allowed"));
@@ -156,16 +155,16 @@ pub fn visible(reported: &Reported, config: &Config, verbose: bool) -> bool {
     shown && (verbose || !judged(reported, config))
 }
 
-/// The summary's part about weakening of code the PR added, if there's any:
-/// `2 on code this PR added (can't fail)` when shown, else `… hidden`, naming the flag that
-/// shows them when there is one (`flag`).
-pub fn pr_added(count: usize, config: &Config, flag: bool) -> Option<String> {
-    (count > 0).then(|| match (config.show_pr_added, flag) {
-        (true, _) => format!("{count} on code this PR added (can't fail)"),
+/// The summary's part about weakening of code a PR added, if there's any: `2 on code this
+/// PR added (can't fail)` when `shown`, else `… hidden`, naming the flag that shows them
+/// when the output has one (`flag`). `whose` is `this PR`, or `its PR` over many.
+pub fn pr_added(count: usize, shown: bool, whose: &str, flag: bool) -> Option<String> {
+    (count > 0).then(|| match (shown, flag) {
+        (true, _) => format!("{count} on code {whose} added (can't fail)"),
         (false, true) => {
-            format!("{count} on code this PR added hidden (--show-pr-added shows them)")
+            format!("{count} on code {whose} added hidden (--show-pr-added shows them)")
         }
-        (false, false) => format!("{count} on code this PR added hidden"),
+        (false, false) => format!("{count} on code {whose} added hidden"),
     })
 }
 

@@ -669,6 +669,18 @@ pr = 7952
 rule = "check-cant-fail"
 path = "www/src/og/version.test.ts"
 test = "/og/* > redirects the sponsor cloud at another version, as the READMEs' old ?v= URL, before drawing it"
+before = ["expect(response.status).toBe(307)"]
+after = ["expect(response.status).toBe(307) (in loop)"]
+message = "expect(response.status).toBe(307) is now inside a loop: it doesn't run if the loop runs zero times"
+label = "wrong"
+note = "The loop is over a literal non-empty array, so the check always runs."
+
+[[finding]]
+unit = "410b7f352f3e"
+pr = 7952
+rule = "check-cant-fail"
+path = "www/src/og/version.test.ts"
+test = "/og/* > redirects the sponsor cloud at another version, as the READMEs' old ?v= URL, before drawing it"
 before = ["expect(response.headers.get('location')).toBe(`${sponsorCloudPath}?v=${version}`)"]
 after = ["expect(response.headers.get('location')).toBe('/og/cloud1/sponsor-cloud.png') (in loop)"]
 message = "expect(response.headers.get('location')).toBe('/og/cloud1/s… is now inside a loop: it doesn't run if the loop runs zero times"

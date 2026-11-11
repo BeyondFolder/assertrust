@@ -347,18 +347,6 @@ note = "Ctrl/cmd now opts out of labeling on purpose; renamed to \"should create
 [[finding]]
 unit = "c10499eebb62"
 pr = 12082
-rule = "check-removed"
-path = "packages/excalidraw/wysiwyg/textWysiwyg.test.tsx"
-test = "textWysiwyg > Test container-bound text > should drop a pending center click when the browser cancels the pointer"
-before = ["expect(h.elements.map((el) => el.type)).toEqual(['rectangle'])", "expect(h.state.editingTextElement).toBe(null)"]
-after = ["expect(h.state.activeTool.type).toBe('text')", "await expect(query()).not.toBe(null) (in if) via getTextEditor()", "expect((h.elements[1] as ExcalidrawTextElement).containerId).toBe(rectangle.id)"]
-message = "removed 2 checks, including expect(h.elements.map((el) => el.type)).toEqual(['rectangle…"
-label = "wrong"
-note = "The same two checks still run right after the cancel; only their repeat after a synthetic mouse-up (which the commit says hid the bug) went, and stronger checks were added."
-
-[[finding]]
-unit = "c10499eebb62"
-pr = 12082
 rule = "test-disabled"
 path = "packages/excalidraw/wysiwyg/textWysiwyg.test.tsx"
 test = "textWysiwyg > Test container-bound text > should hover arrow anchors as the text tool's target"
@@ -793,18 +781,6 @@ unit = "d3a9c2a19518"
 pr = 11997
 rule = "check-removed"
 path = "packages/element/tests/renderEnvironmentCaches.test.ts"
-test = "render environment cache invalidation > installs a fresh identity per swap, dropping identity-keyed caches"
-before = ["expect(swapped.createCanvas()).toEqual({})"]
-after = ["expect(getRenderEnvironment()).toBe(before)", "expect(cache.get(swapped)).toBeUndefined()", "expect(getRenderEnvironment()).not.toBe(swapped)"]
-message = "removed expect(swapped.createCanvas()).toEqual({}); the test name dropped \"environment object\""
-label = "intended"
-note = "Commit \"cut non-critical\" tests; the check that the swapped env's createCanvas is used was dropped when the test moved files."
-
-[[finding]]
-unit = "d3a9c2a19518"
-pr = 11997
-rule = "check-removed"
-path = "packages/element/tests/renderEnvironmentCaches.test.ts"
 test = "render environment cache invalidation > never serves one environment's char widths to another"
 before = ["expect(charWidth.getCache(FONT)).toBeUndefined()", "expect(charWidth.calculate('A', FONT)).toBe(10)"]
 after = ["expect(getMaxCharWidth(FONT, env)).toBe(0)", "expect(getMaxCharWidth(FONT)).toBe(0)"]
@@ -823,30 +799,6 @@ after = []
 message = "deleted 8 tests, including Tooltip > shows the tooltip again after re-enabling"
 label = "wrong"
 note = "The 8 tests were merged into two combined tests (\"clears the shared tooltip when the trigger goes away mid-hover\", \"drops the tooltip when its owning window goes away\"); the hover-delay checks run in \"lets a new owner take over\"."
-
-[[finding]]
-unit = "d3a9c2a19518"
-pr = 11997
-rule = "check-cant-fail"
-path = "packages/excalidraw/tests/tooltip.test.tsx"
-test = "Tooltip > clears the shared tooltip when the trigger goes away mid-hover"
-before = ["expect(wrapper).not.toBeNull()"]
-after = ["expect(wrapper).not.toBeNull() (in callback)"]
-message = "expect(wrapper).not.toBeNull() is now inside a callback: it may run after the test ends, or not at all"
-label = "wrong"
-note = "The callback is a synchronous local helper (hover) called directly in the test, so the check always runs."
-
-[[finding]]
-unit = "d3a9c2a19518"
-pr = 11997
-rule = "check-cant-fail"
-path = "packages/excalidraw/tests/tooltip.test.tsx"
-test = "Tooltip > clears the shared tooltip when the trigger goes away mid-hover"
-before = ["expect(tooltip).toHaveClass(TOOLTIP_VISIBLE_CLASS)"]
-after = ["expect(tooltip).toHaveClass(TOOLTIP_VISIBLE_CLASS) (in callback)"]
-message = "expect(tooltip).toHaveClass(TOOLTIP_VISIBLE_CLASS) is now inside a callback: it may run after the test ends, or not at all"
-label = "wrong"
-note = "The callback is a synchronous local helper (hover) called directly in the test, so the check always runs."
 
 [[finding]]
 unit = "d3a9c2a19518"
@@ -883,18 +835,6 @@ after = ["expect(canvas).toBe(target) (in callback)"]
 message = "expect(canvas).toBe(target) is now inside a callback: it may run after the test ends, or not at all"
 label = "wrong"
 note = "The callback is an async helper awaited directly in the test (twice), so the check always runs."
-
-[[finding]]
-unit = "d3a9c2a19518"
-pr = 11997
-rule = "matcher-swapped"
-path = "packages/excalidraw/tests/tooltip.test.tsx"
-test = "Tooltip > clears the shared tooltip when the trigger goes away mid-hover"
-before = ["expect(tooltip).not.toBeNull()"]
-after = ["expect(tooltip).not.toHaveClass(TOOLTIP_VISIBLE_CLASS)"]
-message = "swapped .not.toBe(null) for .not.toHaveClass(TOOLTIP_VISIBLE_CLASS)"
-label = "wrong"
-note = "Not a matcher swap: the not-null check is subsumed by toHaveClass(TOOLTIP_VISIBLE_CLASS) in the hover helper; the not.toHaveClass line is a different, later check."
 
 [[finding]]
 unit = "bee01e3a1281"
@@ -991,30 +931,6 @@ after = []
 message = "deleted: flow chart navigation > take the most obvious link when possible"
 label = "intended"
 note = "Commit rewrote Alt+arrow navigation from link-following to visual; this link-following scenario went, and the new tests use different layouts."
-
-[[finding]]
-unit = "2610ebae0cbd"
-pr = 12502
-rule = "check-removed"
-path = "packages/element/tests/flowchart.test.tsx"
-test = "flow chart navigation > breaks ties by links and reading order"
-before = ["expect(Object.keys(h.state.selectedElementIds)).toEqual([element.id]) via expectSelected(a)"]
-after = []
-message = "removed expectSelected(a), which ran 1 check"
-label = "wrong"
-note = "The way back was dropped on purpose; the same A, right, left input now expects X instead of A."
-
-[[finding]]
-unit = "2610ebae0cbd"
-pr = 12502
-rule = "check-removed"
-path = "packages/element/tests/flowchart.test.tsx"
-test = "flow chart navigation > prefers nodes in line, then linked, then in the cone, then any ahead"
-before = ["expect(Object.keys(h.state.selectedElementIds)).toEqual([element.id]) via expectSelected(s)"]
-after = []
-message = "removed expectSelected(s), which ran 1 check"
-label = "intended"
-note = "Commit drops the Alt+arrow way back; the check was removed and nothing checks where that move goes now."
 
 [[finding]]
 unit = "7ded689cad49"

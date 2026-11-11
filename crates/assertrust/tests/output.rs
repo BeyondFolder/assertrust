@@ -423,12 +423,14 @@ fn github_format_annotates_and_writes_the_job_summary() {
     );
 }
 
-#[test]
-fn a_new_test_loosened_before_landing_is_shown_but_cannot_fail() {
-    // An agent writes a test, it fails, the next commit loosens it. Main never had the strong
-    // version, so nothing it had got weaker, but the reviewer only sees the loose one.
+/// A repo whose `feature` branch adds `test/total.test.ts` and then loosens it, with `config`
+/// as `assertrust.toml` on `main`. Returns the loosening commit.
+fn new_test_loosened(config: Option<&str>) -> (TestRepo, String) {
     let mut repo = TestRepo::new();
     repo.write("test/a.test.ts", ONE_CHECK);
+    if let Some(config) = config {
+        repo.write("assertrust.toml", config);
+    }
     repo.commit("Add a test");
     repo.branch("feature");
     repo.write(
@@ -441,17 +443,137 @@ fn a_new_test_loosened_before_landing_is_shown_but_cannot_fail() {
         "it('totals', () => {\n  expect(total()).toBeGreaterThan(0)\n})\n",
     );
     let loosened = repo.commit("Make the total test pass");
+    (repo, loosened)
+}
+
+#[test]
+fn a_new_test_loosened_by_its_pr_is_hidden_and_cannot_fail() {
+    // An agent writes a test, it fails, the next commit loosens it. Main never had the strong
+    // version, so nothing it had got weaker: hidden, unless asked for, and never failing.
+    let (repo, loosened) = new_test_loosened(None);
     let (code, out) = check(&repo, &["--range", "main...HEAD", "--fail-on", "low"]);
     assert_eq!(code, 0);
     assert_eq!(
         out,
+        "no findings · 1 on code this PR added hidden (--show-pr-added shows them)\n"
+    );
+    let shown = format!(
+        "test/total.test.ts:2  MEDIUM  matcher-loosened  (added by this PR)\n\
+         \x20 toBe(30) → toBeGreaterThan(0): now a range of values passes · {}\n\
+         \n\
+         no findings · 1 on code this PR added (can't fail)\n",
+        &loosened[..7]
+    );
+    let flags = [
+        "--range",
+        "main...HEAD",
+        "--fail-on",
+        "low",
+        "--show-pr-added",
+    ];
+    assert_eq!(check(&repo, &flags), (0, shown.clone()));
+    // Or in assertrust.toml.
+    let (repo, other) = new_test_loosened(Some("show-pr-added = true\n"));
+    assert_eq!(
+        check(&repo, &["--range", "main...HEAD", "--fail-on", "low"]),
+        (0, shown.replace(&loosened[..7], &other[..7]))
+    );
+}
+
+#[test]
+fn weakening_of_a_new_test_the_pr_then_deletes_is_still_added_by_it() {
+    // The PR adds a test, loosens it, then deletes its file: worse, not undone.
+    let (mut repo, loosened) = new_test_loosened(None);
+    repo.remove("test/total.test.ts");
+    let deleted = repo.commit("Drop the total test");
+    assert_eq!(
+        check(&repo, &["--range", "main...HEAD", "--show-pr-added"]).1,
         format!(
-            "test/total.test.ts:2  MEDIUM  matcher-loosened  (before landing)\n\
+            "test/total.test.ts  HIGH  test-disabled  (added by this PR)\n\
+             \x20 file deleted: its test no longer runs · {}\n\
+             test/total.test.ts:2  MEDIUM  matcher-loosened  (added by this PR)\n\
              \x20 toBe(30) → toBeGreaterThan(0): now a range of values passes · {}\n\
              \n\
-             no findings · 1 before landing (can't fail)\n",
+             no findings · 2 on code this PR added (can't fail)\n",
+            &deleted[..7],
             &loosened[..7]
         )
+    );
+}
+
+#[test]
+fn a_new_test_renamed_as_it_was_weakened_and_then_deleted_is_still_added_by_the_pr() {
+    // The loosening commit also renames the test, so the deletion names it differently.
+    let mut repo = feature_branch();
+    let checks = [
+        "  expect(total()).toBe(30)\n",
+        "  expect(tax()).toBe(3)\n",
+        "  expect(fee()).toBe(1)\n",
+        "  expect(net()).toBe(26)\n",
+    ];
+    repo.write(
+        "test/total.test.ts",
+        &format!("it('totals', () => {{\n{}}})\n", checks.concat()),
+    );
+    repo.commit("Test the total");
+    repo.write(
+        "test/total.test.ts",
+        &format!(
+            "it('totals add up', () => {{\n{}{}{}}})\n",
+            checks[0], checks[2], checks[3]
+        ),
+    );
+    repo.commit("Rename it and drop the tax check");
+    repo.remove("test/total.test.ts");
+    repo.commit("Drop the total test");
+    let out = check(&repo, &["--range", "main...HEAD", "--show-pr-added"]).1;
+    assert!(
+        out.ends_with("no findings · 2 on code this PR added (can't fail)\n"),
+        "{out}"
+    );
+}
+
+#[test]
+fn a_test_the_pr_added_deleted_and_put_back_is_undone_later() {
+    // The PR adds a test, deletes it, then restores it: it lands whole.
+    let mut repo = feature_branch();
+    repo.write("test/b.test.ts", ONE_CHECK);
+    repo.commit("Add another test");
+    repo.remove("test/b.test.ts");
+    let deleted = repo.commit("Drop it for now");
+    repo.write("test/b.test.ts", ONE_CHECK);
+    repo.commit("Bring it back");
+    assert_eq!(
+        check(&repo, &["--range", "main...HEAD"]).1,
+        "no findings · 1 undone later hidden (--show-transient shows them)\n"
+    );
+    assert_eq!(
+        check(&repo, &["--range", "main...HEAD", "--show-transient"]).1,
+        format!(
+            "test/b.test.ts  HIGH  test-disabled  (undone later)\n\
+             \x20 file deleted: its test no longer runs · {}\n\
+             \n\
+             no findings\n",
+            &deleted[..7]
+        )
+    );
+}
+
+#[test]
+fn tests_the_pr_added_and_moved_to_another_file_are_undone_later() {
+    // The PR adds test/b.test.ts, deletes it, then puts its test into test/a.test.ts, which
+    // main already had: the test still runs when the PR lands.
+    let mut repo = feature_branch();
+    let moved = "it('charges', () => {\n  expect(c).toBe(3)\n  expect(d).toBe(4)\n})\n";
+    repo.write("test/b.test.ts", moved);
+    repo.commit("Test charges");
+    repo.remove("test/b.test.ts");
+    repo.commit("Drop the charges file");
+    repo.write("test/a.test.ts", &format!("{TWO_CHECKS}{moved}"));
+    repo.commit("Test charges next to refunds");
+    assert_eq!(
+        check(&repo, &["--range", "main...HEAD"]).1,
+        "no findings · 1 undone later hidden (--show-transient shows them)\n"
     );
 }
 
@@ -661,19 +783,31 @@ fn github_format_counts_findings_as_the_terminal_does() {
         &[("GITHUB_STEP_SUMMARY", summary.path())],
     );
     assert_eq!(run.code, 0, "{}", run.stderr);
-    assert!(
-        run.stdout.ends_with(
-            "\nassertrust: no findings · 1 before landing (can't fail) · warn-only (exit 0)\n"
-        ),
-        "{}",
-        run.stdout
+    // Weakening of a test the PR added is counted, but not annotated.
+    assert_eq!(
+        run.stdout,
+        "assertrust: no findings · 1 on code this PR added hidden · warn-only (exit 0)\n"
     );
     let written = std::fs::read_to_string(summary.path()).expect("read summary");
-    assert!(
-        written.starts_with(
-            "<!-- assertrust -->\n### assertrust: no findings · 1 before landing (can't fail)\n"
-        ),
-        "{written}"
+    assert_eq!(
+        written,
+        "<!-- assertrust -->\n### assertrust: no findings · 1 on code this PR added hidden\n"
+    );
+}
+
+#[test]
+fn github_format_annotates_weakening_of_new_code_when_asked() {
+    let (repo, loosened) = new_test_loosened(Some("show-pr-added = true\n"));
+    let run = repo.assertrust(&["check", "--range", "main...HEAD", "--format", "github"]);
+    assert_eq!(run.code, 0, "{}", run.stderr);
+    assert_eq!(
+        run.stdout,
+        format!(
+            "::warning file=test/total.test.ts,line=2,title=assertrust%3A matcher-loosened (medium)::\
+             toBe(30) → toBeGreaterThan(0): now a range of values passes ({}), added by this PR\n\
+             assertrust: no findings · 1 on code this PR added (can't fail) · warn-only (exit 0)\n",
+            &loosened[..7]
+        )
     );
 }
 

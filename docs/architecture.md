@@ -673,7 +673,7 @@ There's at least one fixture that must be flagged and one that must not, per rul
 
 **In one sentence:** show each finding where the person or agent will see it, in the terminal, on the PR, or as JSON for tools, and never block anything unless the repo opts in.
 
-**Built so far:** all of it except SARIF and the PR comment, which the GitHub Action posts. The terminal, JSON and GitHub formats; each finding named after the commits that made it, also in a PR-style check; weakening undone later in the PR hidden; allow comments and trailers; `fail-on` and its exit codes; `assertrust.toml`, which a PR can't loosen for its own check; and `assertrust backtest`, which replays a branch's history PR by PR and, with labels, measures how often findings are right. Changed outcomes are hidden without `-v`, and the summary line says how many: `no findings · 2 changed outcomes hidden (-v shows them)`. Files that couldn't be checked are listed as notes before the summary, e.g. `note: test/a.test.ts (1a2b3c4): skipped, doesn't parse (…)`, and so are merge commits a per-commit check skipped. In a PR-style check, a file one commit couldn't parse is noted only when the whole PR can't parse it either: a work-in-progress commit that a later one fixed never lands.
+**Built so far:** all of it except SARIF and the PR comment, which the GitHub Action posts. The terminal, JSON and GitHub formats; each finding named after the commits that made it, also in a PR-style check; weakening undone later in the PR hidden, and so is weakening of code the PR itself added; allow comments and trailers; `fail-on` and its exit codes; `assertrust.toml`, which a PR can't loosen for its own check; and `assertrust backtest`, which replays a branch's history PR by PR and, with labels, measures how often findings are right. Changed outcomes are hidden without `-v`, and the summary line says how many: `no findings · 2 changed outcomes hidden (-v shows them)`. Files that couldn't be checked are listed as notes before the summary, e.g. `note: test/a.test.ts (1a2b3c4): skipped, doesn't parse (…)`, and so are merge commits a per-commit check skipped. In a PR-style check, a file one commit couldn't parse is noted only when the whole PR can't parse it either: a work-in-progress commit that a later one fixed never lands.
 
 ### Which commit, and weakening undone later
 
@@ -688,7 +688,7 @@ whole PR                 → now skipped (skip) · c3
 
 - **A finding in the whole PR names every commit with a finding about the same thing:** the same file (or the one the PR renamed it to), the same test when both name theirs (or the one the PR renamed it to), and then the same rule, the same message, or the same code lost. So a matcher loosened in one commit and the check removed in the next still pair, but one commit skipping `charges` doesn't pair with another skipping `refunds`, though both say `now skipped`. A finding about many tests (`deleted 4 tests`) pairs with each commit's finding about one of them. At most three are named, then `+2 more`; `-v` lists each with its subject.
 - **A commit's finding the whole PR doesn't have was undone later** (transient): c1's above. It's hidden, and the summary says how many: `1 undone later hidden (--show-transient shows them)`. With `--show-transient` it's marked `(undone later)`.
-- **Unless it's about code the PR itself added.** A new test written in one commit and loosened in the next (`toBe(30)` → `toBeGreaterThan(0)`) lands as just a new test, so nothing the main branch had got weaker. But the reviewer only ever sees the loose version, and it's how an agent gets its own new test green. It's shown, marked `(before landing)`, and can't fail the check: `1 before landing (can't fail)`. "Added" means the file wasn't there before the PR, or the test wasn't in it; a file or test the PR only renamed was there. On 100-commit ranges of the public repos, most of what the whole PR doesn't have is this kind (tRPC 19, Excalidraw 12, Mailyond 11, where it includes the reference cases `71110c0`, `038cf0b` and `8454255` in files that range created); weakening truly undone later is rarer (hono 4, zod 3, Mailyond 2).
+- **Unless it's about code the PR itself added, and still weaker at the PR's head.** A new test written in one commit and loosened in the next (`toBe(30)` → `toBeGreaterThan(0)`) lands as just a new test, so nothing the main branch had got weaker. It's how an agent gets its own new test green, but in the backtest such findings are rarely worth a reviewer's time (7 of 202 unexplained), and they were half of everything reported. So they're **added by this PR**: hidden, counted in the summary (`1 on code this PR added hidden (--show-pr-added shows them)`), and never failing the check. `--show-pr-added`, or `show-pr-added = true` in `assertrust.toml`, shows them, marked `(added by this PR)`. "Added" means the file wasn't there before the PR, or the test wasn't in it; a file or test the PR only renamed was there. "Still weaker" is decided by running the rules again from before that commit to the PR's head, across every file between them: the same weakening, the same code lost, the test deleted or skipped, or its file gone with its tests. Otherwise it was undone: a test the PR added, deleted and put back, or moved into another file, lands whole. On 100-commit ranges of the public repos, most of what the whole PR doesn't have is this kind (tRPC 19, Excalidraw 12, Mailyond 11, where it includes the reference cases `71110c0`, `038cf0b` and `8454255` in files that range created); weakening truly undone later is rarer (hono 4, zod 3, Mailyond 2).
 - Staged and unsaved changes have no commits, so their findings name none.
 
 ### Terminal (default): short, two lines per finding
@@ -712,7 +712,7 @@ test/api/forwarding.test.ts:27  HIGH  expectation-loosened
   ```
 - A finding about something that's gone (a deleted test or file) has no line: `test/a.test.ts  HIGH  test-disabled` / `deleted: billing > refunds`.
 - Findings are sorted most severe first. Allowed findings come last, marked `ALLOWED`, with a line saying why: `allowed: preview is tested in MCP now (comment)`. Transient findings appear only with `--show-transient`, marked `(undone later)`. A finding whose rule is left to the judge (`outcome-changed`) needs `-v` whatever its status, allowed or undone later too, and isn't counted without it.
-- **On the PR**, an inline annotation already sits on the line, so it says only the finding itself: title `assertrust: expectation-loosened (high)`, message `toMatchObject no longer checks domainIds, status (10d8742)`. A finding that reaches `fail-on` is an `error`, the rest are warnings; allowed, hidden and undone-later ones aren't annotated. The last line and the summary count findings as the terminal does: `assertrust: no findings · 1 before landing (can't fail) · warn-only (exit 0)`. The summary is a short table (file:line, rule, message, then the allowed ones with their reasons), written to the job summary (`$GITHUB_STEP_SUMMARY`) and starting with `<!-- assertrust -->`, so the GitHub Action can post it as one PR comment and edit it in place on every push.
+- **On the PR**, an inline annotation already sits on the line, so it says only the finding itself: title `assertrust: expectation-loosened (high)`, message `toMatchObject no longer checks domainIds, status (10d8742)`. A finding that reaches `fail-on` is an `error`, the rest are warnings; allowed, hidden, undone-later and added-by-the-PR ones aren't annotated (the last only with `show-pr-added`). The last line and the summary count findings as the terminal does: `assertrust: no findings · 1 on code this PR added hidden · warn-only (exit 0)`. The summary is a short table (file:line, rule, message, then the allowed ones with their reasons), written to the job summary (`$GITHUB_STEP_SUMMARY`) and starting with `<!-- assertrust -->`, so the GitHub Action can post it as one PR comment and edit it in place on every push.
 
 Messages are short by design: one line that says what got weaker. Detail goes behind `-v`, never in the default view.
 
@@ -721,14 +721,14 @@ Messages are short by design: one line that says what got weaker. Detail goes be
 | Format | For | v0.1 |
 |---|---|---|
 | `terminal` | people, Claude Code hook output | yes |
-| `json` | the backtest, the benchmark, other tools. Versioned (`"schema": 1`). Every finding is there with its `status` (`shown`, `hidden`, `allowed`, `transient`, `before-landing`), its commits, and for an allowed one the reason | yes |
+| `json` | the backtest, the benchmark, other tools. Versioned (`"schema": 1`; until v0.1 is released, it can still change). Every finding is there with its `status` (`shown`, `hidden`, `allowed`, `transient`, `pr-added`), its commits, and for an allowed one the reason | yes |
 | `github` | inline annotations on the PR diff (`::warning file=…,line=…::`) and a summary table in the job summary; the Action posts that as one PR comment, edited in place on every push | yes |
 | `sarif` | GitHub code scanning (the Security tab) | later |
 
 ### Exit codes
 
 - `0`: no findings, or findings below `fail-on`. The default is `fail-on = "never"` (warn-only). `--fail-on high` (or `medium`, `low`) sets it for one run.
-- `1`: at least one finding at or above `fail-on`, or, with the judge on, a verdict listed in `[judge] fail-on` (step 7). Hidden, allowed, undone-later and before-landing findings never count. The summary line says it: `2 findings · 1 finding at high or above (exit 1)`.
+- `1`: at least one finding at or above `fail-on`, or, with the judge on, a verdict listed in `[judge] fail-on` (step 7). Hidden, allowed, undone-later and added-by-the-PR findings never count. The summary line says it: `2 findings · 1 finding at high or above (exit 1)`.
 - `2`: assertrust itself failed (no git, bad config, bad range). This is never confused with "found something".
 
 **Blocking.** Deterministic findings warn by default. Set `fail-on` to block. This default may change once the backtests prove precision: they don't yet (42% right, 61% at high; see "Backtest" below).
@@ -749,6 +749,7 @@ Allowed findings still appear, marked `ALLOWED`, so a reviewer sees what was wai
 ```toml
 fail-on = "never"            # never | high | medium | low
 show-transient = false
+show-pr-added = false        # weakening of code the PR itself added
 
 [files]                      # defaults from step 1; a kind given replaces its defaults
 test         = ["**/*.{test,spec}.{ts,tsx,js,jsx,mts,cts}", "**/__tests__/**"]
@@ -784,14 +785,14 @@ Like a loosened CI config, a deliberate change says why with `# assertrust-allow
 
 ```
 PR #44  8fd84d8  Free tool: /tools/dmarc-checker (DMARC, SPF and MX for up to 10 domains) · 11 commits
-test/unit/rate-limit.test.ts  HIGH  test-disabled  (before landing)
+test/unit/rate-limit.test.ts  HIGH  test-disabled  (added by this PR)
   file deleted: its 4 tests no longer run · 11c140f
 
 push  71110c0  Pipeline fix.
 test/unit/mx-checker.test.ts:290  HIGH  expectation-loosened
   .not.toMatch no longer rules out resend · 71110c0
 
-181 commits: 100 PRs, 81 pushes · 1 finding · 40 changed outcomes hidden (-v shows them) · 23 before landing (can't fail) · …
+181 commits: 90 PRs, 10 other merges, 81 pushes · 1 finding · 40 changed outcomes hidden (-v shows them) · 23 on code its PR added hidden (--show-pr-added shows them) · …
 ```
 
 Each commit on the branch's first-parent line got there one way, and is checked the way CI would have checked it then, with the `assertrust.toml` it had (at the PR's base):
@@ -801,7 +802,7 @@ Each commit on the branch's first-parent line got there one way, and is checked 
 
 The repo's first commit isn't checked: there's nothing before it. A commit that can't be checked (say, a PR whose commits share no history with a shallow clone) is listed with the reason. assertrust never touches the network: fetching is up to whoever runs it, and `backtest/run.sh` does it for the repos below (`docs/development.md`, "Backtests").
 
-**Labels** (`--labels FILE`) are a person's verdict on each finding a PR check would report (shown, before landing, or allowed):
+**Labels** (`--labels FILE`) are a person's verdict on each finding a PR check would report (shown, allowed, or added by its PR, though that's hidden by default):
 - `wrong`: nothing got weaker; assertrust misread the change (the check moved, the new matcher accepts no more, …). A test rewritten for a deliberate behaviour change, still checking the same input against the new result, is `wrong` too: that's a changed outcome, not a weaker test.
 - `intended`: weaker on purpose: the change also removed or rewrote the code the test covered (and the test now checks less of what's left), or a commit message or the PR's title says why.
 - `unexplained`: weaker, and nothing in the change says why. These are the findings a reviewer should look at.
@@ -826,7 +827,7 @@ With labels, a run exits with 1 when a finding isn't labelled yet, a finding lab
 | TanStack Query | 25 | 8 (32%) | 5 of 8 |
 | tRPC | 95 | 28 (29%) | 23 of 39 |
 
-By rule: `test-disabled` 117 of 197 (59%), `expectation-loosened` 17 of 29, `check-removed` 40 of 164 (24%), `gate-loosened` 4 of 20, `check-cant-fail` 0 of 11, `matcher-swapped` 0 of 2, `matcher-loosened` 1 of 1. Almost half the findings (202) are about tests the PR itself added and weakened before landing, and they're right about as often as the rest (42%, against 41% for findings about what the main branch had).
+By rule: `test-disabled` 117 of 197 (59%), `expectation-loosened` 17 of 29, `check-removed` 40 of 164 (24%), `gate-loosened` 4 of 20, `check-cant-fail` 0 of 11, `matcher-swapped` 0 of 2, `matcher-loosened` 1 of 1. Almost half the findings (202) were about tests the PR itself added and then weakened, and they were right about as often as the rest (42%, against 41% for findings about what the main branch had).
 
 Most right findings are `intended` (137): tests deleted or cut down along with the code they covered. 42 are `unexplained`, most of them in one immich PR ("refactor: web tests") that dropped tests for components that still exist, and Mailyond's `71110c0`.
 
@@ -837,19 +838,26 @@ The 245 wrong ones, most common first:
 - **Smaller mistakes, each with a clear fix:**
   - `await expect.element(…)` (vitest browser mode) isn't read as a check (7 in immich).
   - `check-cant-fail` fires on a loop over a literal non-empty array, a loop with a constant bound, and a local helper the test always calls: all 11 of its findings.
-  - "Before landing" is decided without looking at the PR's head: a test the PR added, deleted and put back, or moved to another file, is still reported.
+  - Weakening of code the PR added was decided without looking at the PR's head: a test the PR added, deleted and put back, or moved to another file, was still reported. Fixed since (below).
   - `.each` rows are counted from the outer `describe.each` when the table is an expression (`name === 'Checkbox' ? […] : […]`).
   - A field taken out of `toMatchObject` but asserted on its own line (`toBeCloseTo(239, 1)`) is reported as no longer checked.
   - An added `--project` in a vitest command is read as replacing the others.
   - Stacked PRs: after the PR below is squash-merged, the PR above still holds its commits, so their findings are reported again (7 in tRPC). GitHub's own diff shows those commits too until a rebase, so the Action would as well. The backtest checks a stacked PR on its own only when its commits no longer merge cleanly into what landed.
-  - A few removals are reported twice, once against the main branch and once before landing under the file's old name.
+  - A few removals are reported twice, once against the main branch and once as added by the PR under the file's old name.
 
 The next PRs fix these, one group at a time, each measured with the backtest.
+
+**Since then.** Weakening of code the PR added is hidden by default and decided against the PR's head. 14 such findings turned out undone (11 of them false alarms), and the labels now hold 410 findings:
+- shown by default: 222, **41% right** (53% at high confidence, 68 of 128);
+- added by their PR, hidden: 188, 44% right.
+
+What a PR check shows by default halved; its precision didn't move, since that comes from the rule fixes. Still missed: a PR that puts the same tests in two files and later deletes one copy (vueuse) is reported, because the other file didn't change after that commit; and a test renamed and rewritten across several commits can lose its trail (Excalidraw's `renderEnvironmentCaches`).
 
 ### Tests
 
 In `crates/assertrust/tests/output.rs`, on temporary repos:
-- a PR-style finding naming each commit, weakening undone later shown only with `--show-transient`, and a new test loosened before landing shown but not failing
+- a PR-style finding naming each commit, weakening undone later shown only with `--show-transient`, and a new test loosened by its PR hidden, shown with `--show-pr-added` or `show-pr-added`, and never failing
+- a test the PR added, deleted and put back, or moved into another file, undone later; one it loosened and then deleted, or renamed as it weakened it and then deleted, still added by it
 - allow comments in a test, a helper and a CI workflow, a trailer for a deleted test, an allow without a reason, and an allow left from an earlier change
 - a PR-style finding naming only commits about its own test, a grouped deletion naming the commits that deleted its tests, weakening undone in a renamed file or test, and a file broken in a middle commit left without a note
 - grouped deletions, exit codes for each `fail-on` level, and `assertrust.toml` (`fail-on`, `[rules]`, `[files]`, a typo, a PR loosening it, an allow comment in it)

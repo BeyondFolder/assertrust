@@ -476,18 +476,6 @@ unit = "d7f0ddb53b0e"
 pr = 7727
 rule = "check-removed"
 path = "packages/tests/server/websockets.test.ts"
-test = "a server-requested reconnect hands subscriptions off > the old socket's data and stopped for a moved subscription are dropped"
-before = ["expect(valuesStarted).toHaveBeenCalledTimes(2)"]
-after = ["expect(eventsSubscribed).toHaveBeenCalledTimes(1)", "expect(eventsSubscribed).toHaveBeenCalledTimes(2)"]
-message = "removed expect(valuesStarted).toHaveBeenCalledTimes(2)"
-label = "wrong"
-note = "The test moved from the untracked values subscription to the tracked events one (untracked ones now behave differently); the same count is checked on eventsSubscribed."
-
-[[finding]]
-unit = "d7f0ddb53b0e"
-pr = 7727
-rule = "check-removed"
-path = "packages/tests/server/websockets.test.ts"
 test = "a server-requested reconnect hands subscriptions off > a new socket that can't open leaves everything on the old one until the server closes it"
 before = ["expect(shown.filter(({ state }) => state === 'connecting')).toEqual([{ error: expect.objectContaining({ cause: expect.objectContaining({ cause: expect.objectContaining({ message: expect.stringMatching(/^token unavailable/) }) }), message: 'Initialization error' }), state: 'connecting' }])"]
 after = ["expect(oldClientSocket.readyState).toBe(WebSocket.CLOSED)"]
@@ -654,18 +642,6 @@ note = "The home card's URL now carries the day; it's checked in the new 'names 
 [[finding]]
 unit = "410b7f352f3e"
 pr = 7952
-rule = "check-removed"
-path = "www/src/og/version.test.ts"
-test = "/og/* > redirects a card at no version, another version, or with a query, before drawing it"
-before = ["await expect(get('/og/index.png?v=abc')).rejects.toThrow('drew a card')"]
-after = ["await expect(get('/og/abc/docs/server/procedures.png')).rejects.toThrow('drew a card')", "await expect(get('/og/abc/index.png')).rejects.toThrow('drew a card')"]
-message = "removed await expect(get('/og/index.png?v=abc')).rejects.toThrow('d…; the test name dropped \"card's request\""
-label = "wrong"
-note = "Rewritten for path versions: the current URL is now /og/abc/index.png, which the test checks still draws."
-
-[[finding]]
-unit = "410b7f352f3e"
-pr = 7952
 rule = "test-disabled"
 path = "www/src/og/version.test.ts"
 test = "versionedPath > puts the version after /og/"
@@ -686,18 +662,6 @@ after = []
 message = "deleted: requestedImage > reads an image and its version from the path"
 label = "wrong"
 note = "Replaced by requestedPage for the new path scheme, with more cases (with and without .png and a version)."
-
-[[finding]]
-unit = "410b7f352f3e"
-pr = 7952
-rule = "check-cant-fail"
-path = "www/src/og/version.test.ts"
-test = "/og/* > redirects the sponsor cloud at another version, as the READMEs' old ?v= URL, before drawing it"
-before = ["expect(response.status).toBe(307)"]
-after = ["expect(response.status).toBe(307) (in loop)"]
-message = "expect(response.status).toBe(307) is now inside a loop: it doesn't run if the loop runs zero times"
-label = "wrong"
-note = "The loop is over a literal non-empty array, so the check always runs."
 
 [[finding]]
 unit = "410b7f352f3e"

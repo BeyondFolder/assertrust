@@ -34,6 +34,7 @@ pub fn run(args: &CheckArgs) -> Result<ExitCode, String> {
         config.fail_on = fail_on;
     }
     config.show_transient |= args.show_transient;
+    config.show_pr_added |= args.show_pr_added;
     let analysis = repo
         .analyze(&mode, &config.classifier)
         .map_err(|err| err.to_string())?;
@@ -87,8 +88,8 @@ fn render(analysis: &Analysis, report: &Report, config: &Config, verbose: bool) 
     out
 }
 
-/// `3 findings · 2 changed outcomes hidden (-v shows them) · 1 before landing (can't fail) ·
-/// 1 allowed · warn-only (exit 0)`
+/// `3 findings · 2 changed outcomes hidden (-v shows them) · 1 on code this PR added hidden
+/// (--show-pr-added shows them) · 1 allowed · warn-only (exit 0)`
 fn summary(report: &Report, config: &Config, verbose: bool) -> String {
     let hidden: Vec<&Reported> = report
         .findings
@@ -115,10 +116,6 @@ fn summary(report: &Report, config: &Config, verbose: bool) -> String {
             format!("{} for the judge hidden (-v shows them)", hidden.len())
         });
     }
-    let before_landing = report.with_status(|status| *status == Status::BeforeLanding);
-    if before_landing > 0 {
-        parts.push(format!("{before_landing} before landing (can't fail)"));
-    }
     // Findings left to the judge stay out of the counts too, unless `-v` shows them.
     let counted = |wanted: fn(&Status) -> bool| {
         report
@@ -128,6 +125,9 @@ fn summary(report: &Report, config: &Config, verbose: bool) -> String {
             .filter(|reported| verbose || !judged(reported, config))
             .count()
     };
+    if let Some(part) = pr_added(counted(|status| *status == Status::PrAdded), config, true) {
+        parts.push(part);
+    }
     let allowed = counted(|status| matches!(status, Status::Allowed { .. }));
     if allowed > 0 {
         parts.push(format!("{allowed} allowed"));
@@ -148,11 +148,25 @@ fn summary(report: &Report, config: &Config, verbose: bool) -> String {
 /// Whether the terminal output shows the finding.
 pub fn visible(reported: &Reported, config: &Config, verbose: bool) -> bool {
     let shown = match reported.status {
-        Status::Shown | Status::BeforeLanding | Status::Allowed { .. } => true,
+        Status::Shown | Status::Allowed { .. } => true,
         Status::Hidden => verbose,
         Status::Transient => config.show_transient,
+        Status::PrAdded => config.show_pr_added,
     };
     shown && (verbose || !judged(reported, config))
+}
+
+/// The summary's part about weakening of code the PR added, if there's any:
+/// `2 on code this PR added (can't fail)` when shown, else `… hidden`, naming the flag that
+/// shows them when there is one (`flag`).
+pub fn pr_added(count: usize, config: &Config, flag: bool) -> Option<String> {
+    (count > 0).then(|| match (config.show_pr_added, flag) {
+        (true, _) => format!("{count} on code this PR added (can't fail)"),
+        (false, true) => {
+            format!("{count} on code this PR added hidden (--show-pr-added shows them)")
+        }
+        (false, false) => format!("{count} on code this PR added hidden"),
+    })
 }
 
 /// Whether the finding's rule is left to the judge, so only `-v` shows it.
@@ -210,7 +224,7 @@ pub(crate) fn finding(out: &mut String, reported: &Reported, verbose: bool, tag:
     match &reported.status {
         Status::Allowed { .. } => header.push_str("  ALLOWED"),
         Status::Transient => header.push_str("  (undone later)"),
-        Status::BeforeLanding => header.push_str("  (before landing)"),
+        Status::PrAdded => header.push_str("  (added by this PR)"),
         Status::Shown | Status::Hidden => {}
     }
     if let Some(tag) = tag {

@@ -5,8 +5,9 @@
 //! ::warning file=test/a.test.ts,line=12,title=assertrust%3A check-removed (high)::removed expect(b).toBe(2) (1a2b3c4)
 //! ```
 //!
-//! A finding that reaches `fail-on` is an `error`, the rest are warnings (weakening before
-//! landing never fails). Allowed, hidden and undone-later findings aren't annotated. The
+//! A finding that reaches `fail-on` is an `error`, the rest are warnings (weakening of code
+//! the PR added never fails, and is annotated only with `show-pr-added`). Allowed, hidden
+//! and undone-later findings aren't annotated. The
 //! summary goes to the file GitHub names in `$GITHUB_STEP_SUMMARY`, starting with a marker
 //! (`<!-- assertrust -->`) so the Action can find the PR comment that repeats it and edit it
 //! in place. Both count findings the way the terminal does.
@@ -15,24 +16,20 @@ use std::env;
 use std::fs::OpenOptions;
 use std::io::Write as _;
 
-use crate::check_command::{commit_list, judged, verdict};
+use crate::check_command::{self, commit_list, judged, verdict};
 use crate::config::Config;
 use crate::output::{count, line, place};
-use crate::report::{Report, Status};
+use crate::report::{Report, Reported, Status};
 
 /// Marks the summary, so a PR comment holding it can be found and edited.
 pub const MARKER: &str = "<!-- assertrust -->";
 
 pub fn render(report: &Report, config: &Config) -> Result<String, String> {
     let mut out = String::new();
-    let shown: Vec<_> = report
-        .findings
-        .iter()
-        .filter(|reported| matches!(reported.status, Status::Shown | Status::BeforeLanding))
-        .collect();
+    let shown = annotated(report, config);
     for reported in &shown {
         let finding = &reported.finding;
-        // Weakening before landing can't fail the check.
+        // Weakening of code the PR added can't fail the check.
         let fails = reported.status == Status::Shown && config.fail_on.fails(finding.confidence);
         let kind = if fails { "error" } else { "warning" };
         let mut properties = format!("file={}", property(&finding.path));
@@ -50,8 +47,8 @@ pub fn render(report: &Report, config: &Config) -> Result<String, String> {
         if !reported.commits.is_empty() {
             message.push_str(&format!(" ({})", commit_list(&reported.commits)));
         }
-        if reported.status == Status::BeforeLanding {
-            message.push_str(", before landing");
+        if reported.status == Status::PrAdded {
+            message.push_str(", added by this PR");
         }
         line(
             &mut out,
@@ -68,7 +65,7 @@ pub fn render(report: &Report, config: &Config) -> Result<String, String> {
         &mut out,
         &format!(
             "assertrust: {} · {}",
-            headline(report),
+            headline(report, config),
             verdict(report, config)
         ),
     );
@@ -84,17 +81,31 @@ pub fn render(report: &Report, config: &Config) -> Result<String, String> {
     Ok(out)
 }
 
-/// `2 findings`, or `no findings · 1 before landing (can't fail)`.
-fn headline(report: &Report) -> String {
+/// The findings annotated on the diff and listed in the summary's table: those shown, and
+/// those about code the PR added when `show-pr-added` is on.
+fn annotated<'r, 'a>(report: &'r Report<'a>, config: &Config) -> Vec<&'r Reported<'a>> {
+    report
+        .findings
+        .iter()
+        .filter(|reported| match reported.status {
+            Status::Shown => true,
+            Status::PrAdded => config.show_pr_added,
+            _ => false,
+        })
+        .collect()
+}
+
+/// `2 findings`, or `no findings · 1 on code this PR added hidden`.
+fn headline(report: &Report, config: &Config) -> String {
     let shown = report.with_status(|status| *status == Status::Shown);
     let mut text = if shown == 0 {
         "no findings".to_owned()
     } else {
         count(shown, "finding")
     };
-    let before_landing = report.with_status(|status| *status == Status::BeforeLanding);
-    if before_landing > 0 {
-        text.push_str(&format!(" · {before_landing} before landing (can't fail)"));
+    let pr_added = report.with_status(|status| *status == Status::PrAdded);
+    if let Some(part) = check_command::pr_added(pr_added, config, false) {
+        text.push_str(&format!(" · {part}"));
     }
     text
 }
@@ -103,12 +114,11 @@ fn headline(report: &Report) -> String {
 pub fn summary(report: &Report, config: &Config) -> String {
     let mut out = String::new();
     line(&mut out, MARKER);
-    let shown: Vec<_> = report
-        .findings
-        .iter()
-        .filter(|reported| matches!(reported.status, Status::Shown | Status::BeforeLanding))
-        .collect();
-    line(&mut out, &format!("### assertrust: {}", headline(report)));
+    let shown = annotated(report, config);
+    line(
+        &mut out,
+        &format!("### assertrust: {}", headline(report, config)),
+    );
     if !shown.is_empty() {
         line(&mut out, "");
         line(&mut out, "| Where | Rule | What got weaker |");
@@ -119,8 +129,8 @@ pub fn summary(report: &Report, config: &Config) -> String {
             if !reported.commits.is_empty() {
                 message.push_str(&format!(" · {}", commit_list(&reported.commits)));
             }
-            if reported.status == Status::BeforeLanding {
-                message.push_str(" (before landing)");
+            if reported.status == Status::PrAdded {
+                message.push_str(" (added by this PR)");
             }
             line(
                 &mut out,

@@ -60,7 +60,7 @@ pub fn run(args: &BacktestArgs) -> Result<ExitCode, String> {
         .map(|path| Labels::read(path, args.update_labels))
         .transpose()?;
     let (range, commits) = walk(&repo, args, labels.as_ref())?;
-    let units = check_all(&repo, &commits, args.show_transient);
+    let units = check_all(&repo, &commits, args);
     let scored = labels.as_ref().map(|labels| Scored::new(labels, &units));
     let output = match args.format {
         BacktestFormat::Terminal => render(&units, scored.as_ref(), args, started),
@@ -130,7 +130,7 @@ fn walk(
 }
 
 /// Checks each commit, several at once (each check only reads the repo), in their order.
-fn check_all(repo: &Repo, commits: &[Commit], show_transient: bool) -> Vec<Unit> {
+fn check_all(repo: &Repo, commits: &[Commit], args: &BacktestArgs) -> Vec<Unit> {
     let workers = thread::available_parallelism()
         .map_or(1, NonZeroUsize::get)
         .clamp(1, commits.len().max(1));
@@ -145,7 +145,7 @@ fn check_all(repo: &Repo, commits: &[Commit], show_transient: bool) -> Vec<Unit>
                         let Some(commit) = commits.get(i) else {
                             break done;
                         };
-                        done.push((i, Unit::check(repo, commit.clone(), show_transient)));
+                        done.push((i, Unit::check(repo, commit.clone(), args)));
                     }
                 })
             })
@@ -260,8 +260,8 @@ struct Owned {
     commits: Vec<Commit>,
     /// Its rule is left to the judge, so only `-v` shows it.
     judged: bool,
-    /// A PR check would report it: shown, before landing or allowed, and not left to the
-    /// judge. Labels are about these.
+    /// A PR check would report it: shown, added by the PR (with `--show-pr-added`) or
+    /// allowed, and not left to the judge. Labels are about these.
     reported: bool,
     /// Shown without `-v`, and with it.
     quiet: bool,
@@ -283,7 +283,7 @@ impl Owned {
 }
 
 impl Unit {
-    fn check(repo: &Repo, commit: Commit, show_transient: bool) -> Self {
+    fn check(repo: &Repo, commit: Commit, args: &BacktestArgs) -> Self {
         let (landing, note) = Landing::of(repo, &commit);
         let parent = &commit.parents[0];
         // What CI checked, and the commit it ran on.
@@ -307,7 +307,7 @@ impl Unit {
             notes: Vec::new(),
             error: None,
         };
-        match run_check(repo, &Mode::Range(range), &head, show_transient) {
+        match run_check(repo, &Mode::Range(range), &head, args) {
             Ok((walked, findings, notes)) => {
                 unit.walked = walked;
                 unit.findings = findings;
@@ -366,10 +366,11 @@ fn run_check(
     repo: &Repo,
     mode: &Mode,
     head: &str,
-    show_transient: bool,
+    args: &BacktestArgs,
 ) -> Result<(usize, Vec<Owned>, Vec<String>), String> {
     let (mut config, mut notes) = Config::as_ci_ran(repo, mode, head)?;
-    config.show_transient |= show_transient;
+    config.show_transient |= args.show_transient;
+    config.show_pr_added |= args.show_pr_added;
     let analysis = repo
         .analyze(mode, &config.classifier)
         .map_err(|err| err.to_string())?;
@@ -389,7 +390,7 @@ fn run_check(
             judged: judged(reported, &config),
             reported: matches!(
                 reported.status,
-                Status::Shown | Status::BeforeLanding | Status::Allowed { .. }
+                Status::Shown | Status::PrAdded | Status::Allowed { .. }
             ) && !judged(reported, &config),
             quiet: check_command::visible(reported, &config, false),
             verbose: check_command::visible(reported, &config, true),
@@ -626,12 +627,23 @@ fn summary(units: &[Unit], args: &BacktestArgs, seconds: f64) -> String {
             format!("{} for the judge hidden (-v shows them)", hidden.len())
         });
     }
-    let before_landing = with(|owned| owned.status == Status::BeforeLanding && owned.quiet);
-    if before_landing > 0 {
-        parts.push(format!("{before_landing} before landing (can't fail)"));
-    }
     // Findings left to the judge stay out of the counts too, unless `-v` shows them.
     let counted = |owned: &Owned| args.verbose || !owned.judged;
+    let (pr_added, hidden): (Vec<&Owned>, Vec<&Owned>) = findings()
+        .filter(|owned| owned.status == Status::PrAdded && counted(owned))
+        .partition(|owned| owned.shown(args.verbose));
+    if !pr_added.is_empty() {
+        parts.push(format!(
+            "{} on code its PR added (can't fail)",
+            pr_added.len()
+        ));
+    }
+    if !hidden.is_empty() {
+        parts.push(format!(
+            "{} on code its PR added hidden (--show-pr-added shows them)",
+            hidden.len()
+        ));
+    }
     let allowed = findings()
         .filter(|owned| matches!(owned.status, Status::Allowed { .. }) && counted(owned))
         .count();
@@ -666,69 +678,50 @@ fn pushes(n: usize) -> String {
 }
 
 /// What the labels say: how often assertrust is right, and what isn't labelled or is gone.
+/// Findings on code a PR added, hidden by default, are counted apart.
 fn label_summary(out: &mut String, units: &[Unit], scored: &Scored) {
-    let labelled: Vec<(&Tag, Confidence, RuleId)> = units
+    let labelled: Vec<(Label, &Owned)> = units
         .iter()
         .zip(&scored.tags)
         .flat_map(|(unit, row)| unit.findings.iter().zip(row))
-        .filter_map(|(owned, tag)| {
-            Some((tag.as_ref()?, owned.finding.confidence, owned.finding.rule))
-        })
-        .filter(|(tag, _, _)| tag.label().is_some())
+        .filter_map(|(owned, tag)| Some((tag.as_ref()?.label()?, owned)))
         .collect();
-    let with = |label: Label| {
-        labelled
-            .iter()
-            .filter(|(tag, _, _)| tag.label() == Some(label))
-            .count()
-    };
-    let mut parts = Vec::new();
-    for label in [Label::Unexplained, Label::Intended, Label::Wrong] {
-        let n = with(label);
-        if n > 0 {
-            parts.push(format!("{n} {}", label.as_str()));
-        }
-    }
-    if labelled.is_empty() {
+    let (pr_added, shown): (Vec<_>, Vec<_>) = labelled
+        .into_iter()
+        .partition(|(_, owned)| owned.status == Status::PrAdded);
+    if shown.is_empty() && pr_added.is_empty() {
         line(out, "labels: none of the findings are labelled yet");
-    } else {
-        let right = labelled
-            .iter()
-            .filter(|(tag, _, _)| tag.label().is_some_and(Label::right))
-            .count();
+    }
+    if !shown.is_empty() {
         let by_level: Vec<String> = [Confidence::High, Confidence::Medium, Confidence::Low]
             .into_iter()
             .filter_map(|level| {
-                let of: Vec<_> = labelled.iter().filter(|(_, c, _)| *c == level).collect();
-                let right = of
-                    .iter()
-                    .filter(|(tag, _, _)| tag.label().is_some_and(Label::right))
-                    .count();
-                (!of.is_empty()).then(|| format!("{level} {right} of {}", of.len()))
+                let (right, of) =
+                    score(shown.iter().filter(|(_, o)| o.finding.confidence == level));
+                (of > 0).then(|| format!("{level} {right} of {of}"))
             })
             .collect();
         line(
             out,
-            &format!(
-                "labels: {} · precision {}% ({right} of {} right) · {}",
-                parts.join(", "),
-                right * 100 / labelled.len(),
-                labelled.len(),
-                by_level.join(", ")
-            ),
+            &format!("labels: {} · {}", precision(&shown), by_level.join(", ")),
         );
         let by_rule: Vec<String> = RuleId::ALL
             .into_iter()
             .filter_map(|rule| {
-                let of: Vec<_> = labelled.iter().filter(|(_, _, r)| *r == rule).collect();
-                let right = of
-                    .iter()
-                    .filter(|(tag, _, _)| tag.label().is_some_and(Label::right))
-                    .count();
-                (!of.is_empty()).then(|| format!("{rule} {right} of {}", of.len()))
+                let (right, of) = score(shown.iter().filter(|(_, o)| o.finding.rule == rule));
+                (of > 0).then(|| format!("{rule} {right} of {of}"))
             })
             .collect();
         line(out, &format!("by rule: {}", by_rule.join(", ")));
+    }
+    if !pr_added.is_empty() {
+        line(
+            out,
+            &format!(
+                "on code its PR added (hidden by default): {}",
+                precision(&pr_added)
+            ),
+        );
     }
     let not_labelled = scored.not_labelled();
     if not_labelled > 0 {
@@ -751,6 +744,30 @@ fn label_summary(out: &mut String, units: &[Unit], scored: &Scored) {
             lost_entry(out, entry);
         }
     }
+}
+
+/// How many of these labels say the finding is right, out of how many.
+fn score<'a>(labelled: impl Iterator<Item = &'a (Label, &'a Owned)>) -> (usize, usize) {
+    labelled.fold((0, 0), |(right, of), (label, _)| {
+        (right + usize::from(label.right()), of + 1)
+    })
+}
+
+/// `2 unexplained, 1 wrong · precision 66% (2 of 3 right)`
+fn precision(labelled: &[(Label, &Owned)]) -> String {
+    let counts: Vec<String> = [Label::Unexplained, Label::Intended, Label::Wrong]
+        .into_iter()
+        .filter_map(|label| {
+            let n = labelled.iter().filter(|(l, _)| *l == label).count();
+            (n > 0).then(|| format!("{n} {}", label.as_str()))
+        })
+        .collect();
+    let (right, of) = score(labelled.iter());
+    format!(
+        "{} · precision {}% ({right} of {of} right)",
+        counts.join(", "),
+        right * 100 / of
+    )
 }
 
 /// `  1a2b3c4d5e6f (PR #12)  test/a.test.ts  check-removed  removed expect(b).toBe(2)  [unexplained]`
@@ -827,16 +844,27 @@ fn render_json(range: &str, units: &[Unit], scored: Option<&Scored>) -> String {
                 })
                 .collect()
         };
-        let with = |label: Label| {
-            scored
-                .all()
-                .filter(|tag| tag.label() == Some(label))
+        // Labels of findings on code their PR added (hidden by default) are counted apart.
+        let with = |label: Label, pr_added: bool| {
+            units
+                .iter()
+                .zip(&scored.tags)
+                .flat_map(|(unit, row)| unit.findings.iter().zip(row))
+                .filter(|(owned, tag)| {
+                    (owned.status == Status::PrAdded) == pr_added
+                        && tag.as_ref().and_then(Tag::label) == Some(label)
+                })
                 .count()
         };
         document["labels"] = json!({
-            "wrong": with(Label::Wrong),
-            "intended": with(Label::Intended),
-            "unexplained": with(Label::Unexplained),
+            "wrong": with(Label::Wrong, false),
+            "intended": with(Label::Intended, false),
+            "unexplained": with(Label::Unexplained, false),
+            "pr_added": {
+                "wrong": with(Label::Wrong, true),
+                "intended": with(Label::Intended, true),
+                "unexplained": with(Label::Unexplained, true),
+            },
             "not_labelled": scored.not_labelled(),
             "missed": entries(scored.missed().collect()),
             "fixed": entries(scored.fixed().collect()),

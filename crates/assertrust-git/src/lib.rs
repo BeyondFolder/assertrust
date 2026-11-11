@@ -110,6 +110,21 @@ impl Repo {
         self.git.origin_url()
     }
 
+    /// The comparison between two commits, with every file that differs, classified. For
+    /// checking whether a weakening one commit made is still there at another.
+    pub fn compare(
+        &self,
+        before: &str,
+        after: &str,
+        classifier: &Classifier,
+    ) -> Result<Comparison, Error> {
+        Ok(Comparison {
+            before: Rev::Commit(before.to_owned()),
+            after: Rev::Commit(after.to_owned()),
+            files: diff::classify(self.git.diff_trees(before, after)?, classifier),
+        })
+    }
+
     /// The repo's top-level directory (where `assertrust.toml` lives).
     pub fn root(&self) -> &Path {
         self.git.root()

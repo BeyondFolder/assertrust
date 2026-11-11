@@ -56,6 +56,10 @@ pub struct CheckArgs {
     #[arg(long)]
     pub show_transient: bool,
 
+    /// Also show weakening of tests the PR itself added (it can't fail the check)
+    #[arg(long)]
+    pub show_pr_added: bool,
+
     /// Exit with 1 when a finding is at least this sure (default: never, or `fail-on` in
     /// assertrust.toml)
     #[arg(long, value_enum, value_name = "LEVEL")]
@@ -95,6 +99,10 @@ pub struct BacktestArgs {
     /// Also show weakening that was undone later in the same PR
     #[arg(long)]
     pub show_transient: bool,
+
+    /// Also show weakening of tests the PR itself added (it can't fail the check)
+    #[arg(long)]
+    pub show_pr_added: bool,
 
     /// Show the test name, before/after snippets, the full commit message, and changed outcomes
     #[arg(short, long)]

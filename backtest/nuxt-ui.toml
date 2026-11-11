@@ -93,18 +93,6 @@ label = "wrong"
 note = "Replaced by a stronger it.each that runs the real ipx, ipxStatic, none and netlifyImageCdn providers and checks app.baseURL is applied exactly once."
 
 [[finding]]
-unit = "8a34bc164872"
-pr = 7299
-rule = "check-removed"
-path = "test/components/ChatPrompt.spec.ts"
-test = "ChatPrompt > adds the accepted files on paste"
-before = ["expect(event.defaultPrevented).toBe(true)"]
-after = []
-message = "removed expect(event.defaultPrevented).toBe(true)"
-label = "intended"
-note = "The same commit stopped calling preventDefault on a paste with files so its text still gets inserted; the old expectation no longer applies."
-
-[[finding]]
 unit = "63737025651f"
 pr = 7225
 rule = "test-disabled"
@@ -119,18 +107,6 @@ note = "Tests the PR itself added were cut down to one label-hover test per cont
 [[finding]]
 unit = "63737025651f"
 pr = 7225
-rule = "expectation-loosened"
-path = "test/components/Tooltip.spec.ts"
-test = "Tooltip > with $name > opens over the label with variant %s"
-before = ["undefined", "'list'", "'card'"]
-after = ["{ component: Checkbox, name: 'Checkbox' }", "{ component: Switch, name: 'Switch' }"]
-message = ".each now runs 2 rows instead of 3"
-label = "wrong"
-note = "The it.each became name === 'Checkbox' ? [undefined, 'list', 'card'] : [undefined], so Checkbox still runs 3 rows and Switch adds one; assertrust took the outer describe.each rows as this test's rows."
-
-[[finding]]
-unit = "63737025651f"
-pr = 7225
 rule = "test-disabled"
 path = "test/components/Popover.spec.ts"
 tests = ["Popover > with $name > opens when entering the label boundary without duplicating pointer listeners", "Popover > with $name > stays open across the control, label and content and closes outside", "Popover > with $name > cancels delayed opening when leaving the label boundary", "Popover > with $name > ignores touch hover and preserves opt-in touch activation on the control", "Popover > with $name > preserves focus, control attributes and label-click toggling", "Popover > with $name > preserves click-mode popovers and control toggling"]
@@ -139,15 +115,3 @@ after = []
 message = "deleted 6 tests, including Popover > with $name > opens when entering the label bounda…"
 label = "intended"
 note = "Tests the PR itself added were cut down to one label-hover test per control in a commit titled 'apply review suggestions'."
-
-[[finding]]
-unit = "6f1cdd805a54"
-pr = 7304
-rule = "test-disabled"
-path = "test/utils/templates.spec.ts"
-test = "regeneration on file changes > leaves regeneration to Nuxt when a file changes"
-before = ["expect(requests).toEqual([])"]
-after = []
-message = "deleted: regeneration on file changes > leaves regeneration to Nuxt when a file changes"
-label = "wrong"
-note = "A later commit in the same PR (0e17053, 'restore `builder:watch` hook test') put the test back unchanged, and it is in the landed squash."

@@ -11,15 +11,16 @@
 //! whole PR                 → now skipped (skip) · c3;   c1's finding is transient
 //! ```
 //!
-//! A commit's finding about code the PR itself added (a new test loosened before it
-//! landed) isn't undone, just never on the main branch: it's shown, marked, and can't fail.
+//! A commit's finding about code the PR itself added (a new test loosened in a later commit)
+//! that the PR's head still has isn't undone, just never on the main branch: it's added by
+//! the PR, hidden unless asked for, and can't fail.
 
 use std::collections::{HashMap, HashSet};
 
-use assertrust_git::{Analysis, Commit, Comparison, Repo};
+use assertrust_git::{Analysis, Commit, Comparison, Repo, Rev};
 use assertrust_ir::Test;
 use assertrust_match::match_files;
-use assertrust_rules::Finding;
+use assertrust_rules::{Finding, RuleId};
 
 use crate::allow::{self, Blocks, Verdict};
 use crate::config::{self, Config, Setting};
@@ -53,10 +54,10 @@ pub enum Status {
     },
     /// Undone later in the same PR: shown with `--show-transient`.
     Transient,
-    /// About code the PR itself added and weakened before it landed (a new test loosened
-    /// in a later commit): shown, but it can't fail the check, since the main branch lost
-    /// nothing.
-    BeforeLanding,
+    /// About code the PR itself added and weakened in a later commit (a new test loosened),
+    /// and still weaker at the PR's head: shown with `--show-pr-added`, and it can't fail the
+    /// check, since the main branch lost nothing.
+    PrAdded,
 }
 
 impl Status {
@@ -64,7 +65,7 @@ impl Status {
     fn rank(&self) -> u8 {
         match self {
             Self::Shown | Self::Hidden => 0,
-            Self::BeforeLanding => 1,
+            Self::PrAdded => 1,
             Self::Allowed { .. } => 2,
             Self::Transient => 3,
         }
@@ -209,18 +210,20 @@ pub fn build<'a>(
                 })
                 .collect();
             findings.extend(decide(repo, &net, commits, config)?);
-            // What the whole PR doesn't have: undone, or about code the PR added.
+            // What the whole PR doesn't have: undone, or about code the PR added and still
+            // weaker at its head.
             for (commit, mut step) in steps {
                 step.findings
                     .retain(|finding| !net.findings.iter().any(|f| related(f, finding, &pr)));
                 let added = added_in(repo, &net, &pr, &step.findings)?;
+                let kept = still_weaker(repo, &step, &net, config, &added)?;
                 let commits = vec![vec![commit]; step.findings.len()];
-                for (mut reported, added) in
-                    decide(repo, &step, commits, config)?.into_iter().zip(added)
+                for (mut reported, kept) in
+                    decide(repo, &step, commits, config)?.into_iter().zip(kept)
                 {
                     reported.status = match reported.status {
-                        Status::Shown if added => Status::BeforeLanding,
-                        Status::Allowed { .. } | Status::Hidden if added => reported.status,
+                        Status::Shown if kept => Status::PrAdded,
+                        Status::Allowed { .. } | Status::Hidden if kept => reported.status,
                         _ => Status::Transient,
                     };
                     findings.push(reported);
@@ -279,6 +282,70 @@ fn check<'a>(
         blocks: loaded.blocks,
     };
     Ok((checked, pr))
+}
+
+/// For each of a commit's findings about code the PR added (`added`), whether the PR's head
+/// is still weaker than the code before that commit: the rules, run from there to the head
+/// across every file between them, find the same weakening. A test the PR added, deleted
+/// and put back, or moved to another file, isn't: it was undone.
+fn still_weaker(
+    repo: &Repo,
+    step: &Checked,
+    net: &Checked,
+    config: &Config,
+    added: &[bool],
+) -> Result<Vec<bool>, String> {
+    if !added.contains(&true) {
+        return Ok(vec![false; added.len()]);
+    }
+    let (Rev::Commit(before), Rev::Commit(head)) = (&step.comparison.before, &net.comparison.after)
+    else {
+        return Ok(added.to_vec());
+    };
+    let comparison = repo
+        .compare(before, head, &config.classifier)
+        .map_err(|err| err.to_string())?;
+    // Notes about it were already given for the commit or the whole PR.
+    let (now, pr) = check(repo, &comparison, config, true, &mut None, &mut Vec::new())?;
+    // Files gone at the head whose tests no longer run (they didn't move): whatever was
+    // weakened in them is gone too, under whichever name the commit gave its test.
+    let gone: HashSet<&str> = comparison
+        .files
+        .iter()
+        .filter(|file| file.path_after.is_none())
+        .filter_map(|file| file.path_before.as_deref())
+        .filter(|path| {
+            now.findings
+                .iter()
+                .any(|f| f.rule == RuleId::TestDisabled && f.path == *path)
+        })
+        .collect();
+    Ok(step
+        .findings
+        .iter()
+        .zip(added)
+        .map(|(finding, &added)| {
+            added
+                && (gone.contains(finding.path.as_str())
+                    || now.findings.iter().any(|f| persists(f, finding, &pr)))
+        })
+        .collect())
+}
+
+/// Whether `now`, a finding from before a commit to the PR's head, is the weakening `step`
+/// found in that commit, still there. Like `related`, with two more ways:
+/// - code both say was lost: a test the PR kept rewriting may no longer pair with its old
+///   self at the head, and then comes out deleted rather than changed;
+/// - the test deleted or skipped at the head: that covers whatever was weakened in it.
+fn persists(now: &Finding, step: &Finding, pr: &PrTests) -> bool {
+    let same_file = now.path == step.path || pr.moved.get(&step.path) == Some(&now.path);
+    let lost = now.before.iter().any(|line| step.before.contains(line));
+    let gone = now.rule == RuleId::TestDisabled
+        && now.all_tests().any(|new| {
+            step.all_tests()
+                .any(|old| pr.same_test(&now.path, old, new))
+        });
+    same_file && (related(now, step, pr) || lost || gone)
 }
 
 /// What a change to `assertrust.toml` itself loosened (`gate-loosened`).

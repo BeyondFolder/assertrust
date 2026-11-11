@@ -73,6 +73,9 @@ pub struct Finding {
     /// front when that isn't `path` (a finding in a helper file). `None` when the finding
     /// covers several tests.
     pub test: Option<String>,
+    /// The tests a finding about several covers, when it knows them: those deleted with
+    /// their file, deleted at once, or skipped at once. Empty when `test` names the one.
+    pub tests: Vec<String>,
     /// One line saying what got weaker.
     pub message: String,
     /// The code before the change, one item per line: removed checks, a test's modifiers, …
@@ -82,6 +85,11 @@ pub struct Finding {
 }
 
 impl Finding {
+    /// Every test the finding is about: its test, or the tests it covers.
+    pub fn all_tests(&self) -> impl Iterator<Item = &str> {
+        self.test.iter().chain(&self.tests).map(String::as_str)
+    }
+
     /// Points the finding at another file (a helper's): the test then says which file it's
     /// in, `test/a.test.ts: refunds`.
     fn move_to(&mut self, path: &str) {
@@ -327,6 +335,7 @@ impl<'a> Change<'_, 'a> {
             path: self.after_side(pair.after.file).path.to_owned(),
             line: Some(line),
             test: Some(self.after(pair.after).id()),
+            tests: Vec::new(),
             message: String::new(),
             before: Vec::new(),
             after: Vec::new(),

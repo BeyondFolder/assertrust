@@ -242,3 +242,21 @@ fn a_workflow_github_does_not_run_is_not_a_gate() {
         run.stdout
     );
 }
+
+#[test]
+fn the_config_file_says_which_files_are_gates() {
+    let repo = TestRepo::new();
+    repo.write("assertrust.toml", "[files]\ngate = [\"ci/*.yml\"]\n");
+    repo.write(
+        "ci/main.yml",
+        "jobs:\n  test:\n    steps:\n      - run: npm test || true\n",
+    );
+    let run = repo.assertrust(&["tests", "ci/main.yml"]);
+    assert_eq!(run.code, 0, "{}", run.stderr);
+    assert_eq!(
+        run.stdout,
+        "ci/main.yml: 1 job runs tests\n\
+         \x20  2  job test\n\
+         \x20  4    npm test || true  (swallows failures)\n"
+    );
+}

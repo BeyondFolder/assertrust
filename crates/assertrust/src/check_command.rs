@@ -16,8 +16,8 @@ use assertrust_git::{Analysis, Commit, Repo};
 use assertrust_rules::RuleId;
 
 use crate::cli::{CheckArgs, FailOn, Format};
-use crate::config::Config;
-use crate::output::{count, line};
+use crate::config::{Config, Setting};
+use crate::output::{count, line, place};
 use crate::report::{self, Report, Reported, Status};
 use crate::{github, json};
 
@@ -29,7 +29,7 @@ pub fn run(args: &CheckArgs) -> Result<ExitCode, String> {
     let dir = std::env::current_dir().map_err(|err| format!("can't read current dir: {err}"))?;
     let repo = Repo::open(&dir).map_err(|err| err.to_string())?;
     // Flags win over the file.
-    let mut config = Config::load(&repo)?;
+    let (mut config, config_notes) = Config::for_check(&repo, &mode)?;
     if let Some(fail_on) = args.fail_on {
         config.fail_on = fail_on;
     }
@@ -37,7 +37,8 @@ pub fn run(args: &CheckArgs) -> Result<ExitCode, String> {
     let analysis = repo
         .analyze(&mode, &config.classifier)
         .map_err(|err| err.to_string())?;
-    let report = report::build(&repo, &analysis, &config)?;
+    let mut report = report::build(&repo, &analysis, &config)?;
+    report.notes.splice(0..0, config_notes);
     let output = match args.format {
         Format::Terminal => render(&analysis, &report, &config, args.verbose),
         Format::Json => json::render(&analysis, &report, &config),
@@ -62,14 +63,18 @@ fn render(analysis: &Analysis, report: &Report, config: &Config, verbose: bool) 
         return out;
     }
     // Changed outcomes are usually legitimate behaviour changes: noise until the judge can
-    // tell them apart, so only `-v` shows them. Allowed findings come last.
+    // tell them apart, so only `-v` shows them, allowed or undone later too. Allowed
+    // findings come last.
     let visible: Vec<&Reported> = report
         .findings
         .iter()
-        .filter(|reported| match reported.status {
-            Status::Shown | Status::BeforeLanding | Status::Allowed { .. } => true,
-            Status::Hidden => verbose,
-            Status::Transient => config.show_transient,
+        .filter(|reported| {
+            let shown = match reported.status {
+                Status::Shown | Status::BeforeLanding | Status::Allowed { .. } => true,
+                Status::Hidden => verbose,
+                Status::Transient => config.show_transient,
+            };
+            shown && (verbose || !judged(reported, config))
         })
         .collect();
     for (i, reported) in visible.iter().enumerate() {
@@ -121,27 +126,48 @@ fn summary(report: &Report, config: &Config, verbose: bool) -> String {
     if before_landing > 0 {
         parts.push(format!("{before_landing} before landing (can't fail)"));
     }
-    let allowed = report.with_status(|status| matches!(status, Status::Allowed { .. }));
+    // Findings left to the judge stay out of the counts too, unless `-v` shows them.
+    let counted = |wanted: fn(&Status) -> bool| {
+        report
+            .findings
+            .iter()
+            .filter(|reported| wanted(&reported.status))
+            .filter(|reported| verbose || !judged(reported, config))
+            .count()
+    };
+    let allowed = counted(|status| matches!(status, Status::Allowed { .. }));
     if allowed > 0 {
         parts.push(format!("{allowed} allowed"));
     }
-    let transient = report.with_status(|status| *status == Status::Transient);
+    let transient = counted(|status| *status == Status::Transient);
     if transient > 0 && !config.show_transient {
         parts.push(format!(
             "{transient} undone later hidden (--show-transient shows them)"
         ));
     }
-    let failing = report.failing(config);
-    match level(config.fail_on) {
-        Some(level) if failing > 0 => parts.push(format!(
-            "{} at {level} or above (exit 1)",
-            count(failing, "finding")
-        )),
-        Some(level) if shown > 0 => parts.push(format!("none at {level} or above (exit 0)")),
-        None if shown > 0 => parts.push("warn-only (exit 0)".to_owned()),
-        _ => {}
+    // Something was found, so say whether it fails the check.
+    if shown > 0 {
+        parts.push(verdict(report, config));
     }
     parts.join(" · ")
+}
+
+/// Whether the finding's rule is left to the judge, so only `-v` shows it.
+pub fn judged(reported: &Reported, config: &Config) -> bool {
+    config.setting(reported.finding.rule) == Setting::Judge
+}
+
+/// `1 finding at high or above (exit 1)`, `none at high or above (exit 0)` or
+/// `warn-only (exit 0)`.
+pub fn verdict(report: &Report, config: &Config) -> String {
+    let failing = report.failing(config);
+    match level(config.fail_on) {
+        Some(level) if failing > 0 => {
+            format!("{} at {level} or above (exit 1)", count(failing, "finding"))
+        }
+        Some(level) => format!("none at {level} or above (exit 0)"),
+        None => "warn-only (exit 0)".to_owned(),
+    }
 }
 
 /// The `fail-on` level's name, or `None` for never.
@@ -171,12 +197,9 @@ pub fn commit_list(commits: &[&Commit]) -> String {
 /// the reason. `-v` adds the test, the code before and after, and the commit message.
 fn finding(out: &mut String, reported: &Reported, verbose: bool) {
     let finding = &reported.finding;
-    let place = match finding.line {
-        Some(n) => format!("{}:{n}", finding.path),
-        None => finding.path.clone(),
-    };
     let mut header = format!(
-        "{place}  {}  {}",
+        "{}  {}  {}",
+        place(finding),
         finding.confidence.as_str().to_uppercase(),
         finding.rule
     );

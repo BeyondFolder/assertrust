@@ -97,6 +97,11 @@ fn modifiers(change: &Change, findings: &mut Vec<Finding>) {
             path: change.after_side(file).path.to_owned(),
             line: Some(first.line),
             test: (tests.len() == 1).then(|| first.id()),
+            tests: if tests.len() > 1 {
+                tests.iter().map(|(_, after)| after.id()).collect()
+            } else {
+                Vec::new()
+            },
             message,
             before: tests
                 .iter()
@@ -188,6 +193,7 @@ fn only(file: &TestFile, findings: &mut Vec<Finding>) {
         path: after.path.to_owned(),
         line: Some(first.line),
         test: (focused.len() == 1).then(|| first.id()),
+        tests: Vec::new(),
         message,
         before: Vec::new(),
         after: focused.iter().map(|test| with_modifiers(test)).collect(),
@@ -233,6 +239,7 @@ fn deleted(change: &Change, index: usize, file: &TestFile, findings: &mut Vec<Fi
             path: before.path.to_owned(),
             line: None,
             test: None,
+            tests: lost.iter().map(|deleted| test(deleted).id()).collect(),
             message,
             before: lost.iter().map(|deleted| test(deleted).id()).collect(),
             after: Vec::new(),
@@ -261,6 +268,7 @@ fn deleted(change: &Change, index: usize, file: &TestFile, findings: &mut Vec<Fi
             path: after.path.to_owned(),
             line: None,
             test: None,
+            tests: lost.iter().map(|deleted| test(deleted).id()).collect(),
             message: format!("deleted {} tests, including {}", lost.len(), short(&first)),
             before: lost.iter().map(|deleted| test(deleted).id()).collect(),
             after: Vec::new(),
@@ -288,6 +296,7 @@ fn deleted(change: &Change, index: usize, file: &TestFile, findings: &mut Vec<Fi
             path: after.path.to_owned(),
             line: None,
             test: Some(id),
+            tests: Vec::new(),
             message,
             before: deleted
                 .checks

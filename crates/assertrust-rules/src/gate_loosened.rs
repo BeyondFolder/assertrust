@@ -90,6 +90,7 @@ impl Found<'_> {
             path: self.path.to_owned(),
             line,
             test: None,
+            tests: Vec::new(),
             message,
             before,
             after,

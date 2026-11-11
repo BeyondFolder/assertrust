@@ -20,8 +20,8 @@ pub fn run(args: &ChangesArgs) -> Result<(), String> {
     let mode = args.mode.to_input()?;
     let dir = std::env::current_dir().map_err(|err| format!("can't read current dir: {err}"))?;
     let repo = Repo::open(&dir).map_err(|err| err.to_string())?;
-    // The file patterns in assertrust.toml decide which files are tests.
-    let classifier = Config::load(&repo)?.classifier;
+    // The file patterns in assertrust.toml decide which files are tests, as in `check`.
+    let classifier = Config::for_check(&repo, &mode)?.0.classifier;
     let analysis = repo
         .analyze(&mode, &classifier)
         .map_err(|err| err.to_string())?;

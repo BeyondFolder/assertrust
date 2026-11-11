@@ -11,23 +11,27 @@
 //!     allowed: preview is tested in MCP now
 //! ```
 //!
-//! A comment counts only in the change that adds it, so one left from an old change can't
-//! waive a new weakening. It sits anywhere in the test, hook or helper the finding is in (or
+//! A comment counts only in the change that adds it (a line the change added, not one it
+//! moved), so one left from an old change can't waive a new weakening. It sits anywhere in the test, hook or helper the finding is in (or
 //! the line above it), or on the finding's line or the comment lines just above it (a CI
 //! step, a config setting). A trailer (`Assertrust-Allow: test-disabled flaky, see #123`)
 //! counts for the findings its commit made.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use assertrust_git::{Commit, Comparison, Repo};
 use assertrust_ir::FileIr;
 use assertrust_rules::{Finding, RuleId};
 
-/// The marker in a comment.
+/// The marker in a comment, and the trailer in a commit message (in any case there).
 const MARKER: &str = "assertrust-allow:";
 
-/// The trailer in a commit message.
-const TRAILER: &str = "assertrust-allow:";
+/// How a comment starts, in code and in CI and test config files.
+const COMMENT_STARTS: [&str; 4] = ["//", "#", "/*", "*"];
+
+/// Above this many line pairs, two versions of a file aren't lined up line by line (it
+/// takes 4 bytes each): a line is then new when its text wasn't there before.
+const MAX_LINE_PAIRS: usize = 4_000_000;
 
 /// One allow comment or trailer.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -36,6 +40,12 @@ struct Allow {
     reason: Option<String>,
     /// Its line in the file (0 for a trailer).
     line: u32,
+}
+
+impl Allow {
+    fn says_same(&self, other: &Self) -> bool {
+        (&self.rules, &self.reason) == (&other.rules, &other.reason)
+    }
 }
 
 /// How a finding was waived.
@@ -89,15 +99,22 @@ pub fn verdicts(
     findings: &[(&Finding, &[&Commit])],
 ) -> Result<Vec<Verdict>, String> {
     let comments = new_comments(repo, comparison, findings)?;
+    // Each commit's trailers, read once.
+    let mut by_commit: HashMap<&str, Vec<Allow>> = HashMap::new();
+    for commit in findings.iter().flat_map(|(_, commits)| commits.iter()) {
+        by_commit
+            .entry(commit.sha.as_str())
+            .or_insert_with(|| trailers(&commit.message));
+    }
     Ok(findings
         .iter()
         .map(|(finding, commits)| {
             let mut allows: Vec<(Allow, String)> = commits
                 .iter()
                 .flat_map(|commit| {
-                    trailers(&commit.message)
-                        .into_iter()
-                        .map(|allow| (allow, format!("trailer in {}", commit.short_sha())))
+                    by_commit[commit.sha.as_str()]
+                        .iter()
+                        .map(|allow| (allow.clone(), format!("trailer in {}", commit.short_sha())))
                 })
                 .collect();
             if let (Some(line), Some(file)) = (finding.line, comments.get(&finding.path)) {
@@ -200,21 +217,95 @@ fn new_comments(
         let Some(after) = text(after) else {
             continue;
         };
-        let old: Vec<Allow> = text(before).map(|text| comments(&text)).unwrap_or_default();
-        let allows: Vec<Allow> = comments(&after)
+        let allows = comments(&after);
+        if allows.is_empty() {
+            continue;
+        }
+        let before = text(before).unwrap_or_default();
+        let lines: Vec<&str> = after.lines().collect();
+        let (gone, added) = diff(&before.lines().collect::<Vec<_>>(), &lines);
+        // A comment that only moved (its code moved, or was indented) is still the old one.
+        let moved: Vec<Allow> = comments(&before)
+            .into_iter()
+            .filter(|allow| gone[allow.line as usize - 1])
+            .collect();
+        let allows: Vec<Allow> = allows
             .into_iter()
             .filter(|allow| {
-                !old.iter()
-                    .any(|old| (&old.rules, &old.reason) == (&allow.rules, &allow.reason))
+                added[allow.line as usize - 1] && !moved.iter().any(|old| old.says_same(allow))
             })
             .collect();
         if allows.is_empty() {
             continue;
         }
-        let lines = after.lines().map(str::to_owned).collect();
+        let lines = lines.into_iter().map(str::to_owned).collect();
         found.insert(path, Comments { allows, lines });
     }
     Ok(found)
+}
+
+/// Which lines of `before` are gone and which of `after` are new: those outside a longest
+/// common subsequence of the two, as `git diff` would show them.
+fn diff(before: &[&str], after: &[&str]) -> (Vec<bool>, Vec<bool>) {
+    let mut gone = vec![false; before.len()];
+    let mut added = vec![false; after.len()];
+    // Most of a file is usually the same at both ends.
+    let start = before
+        .iter()
+        .zip(after)
+        .take_while(|(old, new)| old == new)
+        .count();
+    let end = before[start..]
+        .iter()
+        .rev()
+        .zip(after[start..].iter().rev())
+        .take_while(|(old, new)| old == new)
+        .count();
+    let old = &before[start..before.len() - end];
+    let new = &after[start..after.len() - end];
+    if old.len().saturating_mul(new.len()) > MAX_LINE_PAIRS {
+        let (olds, news): (HashSet<&str>, HashSet<&str>) =
+            (old.iter().copied().collect(), new.iter().copied().collect());
+        for (i, line) in old.iter().enumerate() {
+            gone[start + i] = !news.contains(line);
+        }
+        for (j, line) in new.iter().enumerate() {
+            added[start + j] = !olds.contains(line);
+        }
+        return (gone, added);
+    }
+    // `common[i * width + j]`: how many lines `old[i..]` and `new[j..]` have in common.
+    let width = new.len() + 1;
+    let mut common = vec![0u32; (old.len() + 1) * width];
+    for i in (0..old.len()).rev() {
+        for j in (0..new.len()).rev() {
+            common[i * width + j] = if old[i] == new[j] {
+                common[(i + 1) * width + j + 1] + 1
+            } else {
+                common[(i + 1) * width + j].max(common[i * width + j + 1])
+            };
+        }
+    }
+    let (mut i, mut j) = (0, 0);
+    while i < old.len() && j < new.len() {
+        if old[i] == new[j] {
+            i += 1;
+            j += 1;
+        } else if common[(i + 1) * width + j] >= common[i * width + j + 1] {
+            gone[start + i] = true;
+            i += 1;
+        } else {
+            added[start + j] = true;
+            j += 1;
+        }
+    }
+    for i in i..old.len() {
+        gone[start + i] = true;
+    }
+    for j in j..new.len() {
+        added[start + j] = true;
+    }
+    (gone, added)
 }
 
 /// The allow comments in a file: `// assertrust-allow: rule[,rule] reason`, also after `#`
@@ -225,9 +316,7 @@ fn comments(text: &str) -> Vec<Allow> {
         .filter_map(|(line, number)| {
             let at = line.find(MARKER)?;
             let before = line[..at].trim_end();
-            let in_comment = ["//", "#", "/*", "*"]
-                .iter()
-                .any(|marker| before.ends_with(marker));
+            let in_comment = COMMENT_STARTS.iter().any(|start| before.ends_with(start));
             if !in_comment {
                 return None;
             }
@@ -244,8 +333,8 @@ fn trailers(message: &str) -> Vec<Allow> {
         .lines()
         .filter_map(|line| {
             let line = line.trim();
-            let (key, rest) = line.split_at_checked(TRAILER.len())?;
-            key.eq_ignore_ascii_case(TRAILER)
+            let (key, rest) = line.split_at_checked(MARKER.len())?;
+            key.eq_ignore_ascii_case(MARKER)
                 .then(|| parse(rest, 0))
                 .flatten()
         })
@@ -271,9 +360,7 @@ fn parse(text: &str, line: u32) -> Option<Allow> {
 /// A line that's only a comment.
 fn is_comment(line: &str) -> bool {
     let line = line.trim_start();
-    ["//", "#", "/*", "*"]
-        .iter()
-        .any(|marker| line.starts_with(marker))
+    COMMENT_STARTS.iter().any(|start| line.starts_with(start))
 }
 
 #[cfg(test)]
@@ -317,6 +404,19 @@ mod tests {
             }]
         );
         assert!(trailers("assertrust-allow: no-such-rule because").is_empty());
+    }
+
+    #[test]
+    fn diff_finds_lines_added_and_gone() {
+        let (gone, added) = diff(&["a", "x", "b", "c"], &["a", "b", "y", "c", "x"]);
+        assert_eq!(gone, [false, true, false, false]);
+        assert_eq!(added, [false, false, true, false, true]);
+        // Two copies of a line: only the one added counts as new.
+        let (_, added) = diff(
+            &["a", "// allow", "b", "c"],
+            &["a", "// allow", "b", "// allow", "c"],
+        );
+        assert_eq!(added, [false, false, false, true, false]);
     }
 
     #[test]

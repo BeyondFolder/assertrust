@@ -6,17 +6,18 @@
 //! ```
 //!
 //! A finding that reaches `fail-on` is an `error`, the rest are warnings (weakening before
-//! landing never fails). Allowed, hidden and undone-later findings aren't annotated. The summary goes to the file GitHub names in
-//! `$GITHUB_STEP_SUMMARY`, starting with a marker (`<!-- assertrust -->`) so the Action can
-//! find the PR comment that repeats it and edit it in place.
+//! landing never fails). Allowed, hidden and undone-later findings aren't annotated. The
+//! summary goes to the file GitHub names in `$GITHUB_STEP_SUMMARY`, starting with a marker
+//! (`<!-- assertrust -->`) so the Action can find the PR comment that repeats it and edit it
+//! in place. Both count findings the way the terminal does.
 
 use std::env;
 use std::fs::OpenOptions;
 use std::io::Write as _;
 
-use crate::check_command::{commit_list, level};
+use crate::check_command::{commit_list, judged, verdict};
 use crate::config::Config;
-use crate::output::{count, line};
+use crate::output::{count, line, place};
 use crate::report::{Report, Status};
 
 /// Marks the summary, so a PR comment holding it can be found and edited.
@@ -63,17 +64,13 @@ pub fn render(report: &Report, config: &Config) -> Result<String, String> {
             &format!("::notice title=assertrust::{}", data(note)),
         );
     }
-    let failing = report.failing(config);
-    let verdict = match level(config.fail_on) {
-        Some(level) if failing > 0 => {
-            format!("{} at {level} or above (exit 1)", count(failing, "finding"))
-        }
-        Some(level) => format!("none at {level} or above (exit 0)"),
-        None => "warn-only (exit 0)".to_owned(),
-    };
     line(
         &mut out,
-        &format!("assertrust: {} · {verdict}", count(shown.len(), "finding")),
+        &format!(
+            "assertrust: {} · {}",
+            headline(report),
+            verdict(report, config)
+        ),
     );
     if let Some(path) = env::var_os("GITHUB_STEP_SUMMARY") {
         let mut file = OpenOptions::new()
@@ -81,14 +78,29 @@ pub fn render(report: &Report, config: &Config) -> Result<String, String> {
             .append(true)
             .open(&path)
             .map_err(|err| format!("couldn't open the job summary: {err}"))?;
-        file.write_all(summary(report).as_bytes())
+        file.write_all(summary(report, config).as_bytes())
             .map_err(|err| format!("couldn't write the job summary: {err}"))?;
     }
     Ok(out)
 }
 
-/// The job summary: a heading, then a table of findings and one of allowed ones.
-pub fn summary(report: &Report) -> String {
+/// `2 findings`, or `no findings · 1 before landing (can't fail)`.
+fn headline(report: &Report) -> String {
+    let shown = report.with_status(|status| *status == Status::Shown);
+    let mut text = if shown == 0 {
+        "no findings".to_owned()
+    } else {
+        count(shown, "finding")
+    };
+    let before_landing = report.with_status(|status| *status == Status::BeforeLanding);
+    if before_landing > 0 {
+        text.push_str(&format!(" · {before_landing} before landing (can't fail)"));
+    }
+    text
+}
+
+/// The job summary: a heading, then a table of findings and a list of allowed ones.
+pub fn summary(report: &Report, config: &Config) -> String {
     let mut out = String::new();
     line(&mut out, MARKER);
     let shown: Vec<_> = report
@@ -96,22 +108,13 @@ pub fn summary(report: &Report) -> String {
         .iter()
         .filter(|reported| matches!(reported.status, Status::Shown | Status::BeforeLanding))
         .collect();
-    if shown.is_empty() {
-        line(&mut out, "### assertrust: no findings");
-    } else {
-        line(
-            &mut out,
-            &format!("### assertrust: {}", count(shown.len(), "finding")),
-        );
+    line(&mut out, &format!("### assertrust: {}", headline(report)));
+    if !shown.is_empty() {
         line(&mut out, "");
         line(&mut out, "| Where | Rule | What got weaker |");
         line(&mut out, "|---|---|---|");
         for reported in &shown {
             let finding = &reported.finding;
-            let place = match finding.line {
-                Some(n) => format!("{}:{n}", finding.path),
-                None => finding.path.clone(),
-            };
             let mut message = cell(&finding.message);
             if !reported.commits.is_empty() {
                 message.push_str(&format!(" · {}", commit_list(&reported.commits)));
@@ -123,7 +126,7 @@ pub fn summary(report: &Report) -> String {
                 &mut out,
                 &format!(
                     "| `{}` | {} ({}) | {message} |",
-                    cell(&place),
+                    cell(&place(finding)),
                     finding.rule,
                     finding.confidence
                 ),
@@ -133,6 +136,8 @@ pub fn summary(report: &Report) -> String {
     let allowed: Vec<_> = report
         .findings
         .iter()
+        // Changed outcomes stay out unless asked for, as in the terminal.
+        .filter(|reported| !judged(reported, config))
         .filter_map(|reported| match &reported.status {
             Status::Allowed { reason, .. } => Some((reported, reason)),
             _ => None,

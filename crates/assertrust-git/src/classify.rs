@@ -79,20 +79,28 @@ impl Classifier {
 
 impl Default for Classifier {
     fn default() -> Self {
-        let test = [
+        let (test, gate, test_support) = Self::default_patterns();
+        Self::new(&test, &gate, &test_support).expect("built-in patterns are valid")
+    }
+}
+
+impl Classifier {
+    /// The built-in patterns: `(test, gate, test support)`.
+    pub fn default_patterns() -> (Vec<String>, Vec<String>, Vec<String>) {
+        let test = vec![
             format!("**/*.{{test,spec}}.{TEST_EXTENSIONS}"),
             format!("**/__tests__/**/*.{TEST_EXTENSIONS}"),
         ];
-        let gate = [
+        let gate = vec![
             ".github/workflows/*.{yml,yaml}".to_owned(),
             "**/{vitest,jest,playwright}.config.*".to_owned(),
             "**/vitest.workspace.*".to_owned(),
             "**/package.json".to_owned(),
         ];
-        let test_support = [format!(
+        let test_support = vec![format!(
             "**/{{test,tests,__tests__,__mocks__,e2e}}/**/*.{TEST_EXTENSIONS}"
         )];
-        Self::new(&test, &gate, &test_support).expect("built-in patterns are valid")
+        (test, gate, test_support)
     }
 }
 

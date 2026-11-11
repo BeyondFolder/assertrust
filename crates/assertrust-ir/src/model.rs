@@ -41,6 +41,8 @@ pub struct Helper {
     /// `export default`.
     pub default_export: bool,
     pub line: u32,
+    /// Its last line: an allow comment anywhere from `line - 1` to here is about it.
+    pub end_line: u32,
     pub body: Body,
 }
 
@@ -69,6 +71,8 @@ pub struct Test {
     /// (outermost first), so a test inside `describe.skip` has `skip`.
     pub modifiers: Vec<Modifier>,
     pub line: u32,
+    /// Its last line: an allow comment anywhere from `line - 1` to here is about it.
+    pub end_line: u32,
     pub body: Body,
     /// The distinct words in the test's source (names, literals, matchers), sorted. Used to
     /// pair a test that was renamed: its body usually stays similar.
@@ -110,6 +114,8 @@ pub struct Hook {
     /// Names of the enclosing `describe` blocks, outermost first.
     pub suites: Vec<String>,
     pub line: u32,
+    /// Its last line.
+    pub end_line: u32,
     pub body: Body,
 }
 

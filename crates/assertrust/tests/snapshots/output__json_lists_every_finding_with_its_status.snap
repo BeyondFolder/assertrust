@@ -1,0 +1,54 @@
+---
+source: crates/assertrust/tests/output.rs
+expression: run.stdout
+---
+{
+  "exit": 0,
+  "fail_on": "never",
+  "findings": [
+    {
+      "after": [],
+      "before": [
+        "expect(b).toBe(2)"
+      ],
+      "commits": [
+        {
+          "sha": "f1fcbe0479455ee1bfb11bcede32ede13774583f",
+          "subject": "Change a, drop b"
+        }
+      ],
+      "confidence": "high",
+      "line": 1,
+      "message": "removed expect(b).toBe(2)",
+      "path": "test/a.test.ts",
+      "rule": "check-removed",
+      "status": "shown",
+      "test": "refunds"
+    },
+    {
+      "after": [
+        "expect(a).toBe(2)"
+      ],
+      "before": [
+        "expect(a).toBe(1)"
+      ],
+      "commits": [
+        {
+          "sha": "f1fcbe0479455ee1bfb11bcede32ede13774583f",
+          "subject": "Change a, drop b"
+        }
+      ],
+      "confidence": "low",
+      "line": 2,
+      "message": "toBe(1) → toBe(2)",
+      "path": "test/a.test.ts",
+      "rule": "outcome-changed",
+      "status": "hidden",
+      "test": "refunds"
+    }
+  ],
+  "mode": "pr-style",
+  "notes": [],
+  "range": "main...HEAD",
+  "schema": 1
+}

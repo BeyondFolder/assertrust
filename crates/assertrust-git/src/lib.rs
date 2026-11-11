@@ -58,6 +58,24 @@ impl Repo {
         analyze(&self.git, mode, classifier)
     }
 
+    /// The commit a check of `mode` starts from: the start of a `BASE..HEAD` range, or where
+    /// the branch split off for a PR-style check (the merge-base). `None` for staged and
+    /// worktree checks.
+    pub fn base(&self, mode: &Mode) -> Result<Option<Rev>, Error> {
+        Ok(match mode::resolve(&self.git, mode)? {
+            Resolved::PerCommit { base, .. } => Some(Rev::Commit(base)),
+            Resolved::PrStyle { base, head, .. } => {
+                Some(Rev::Commit(self.git.merge_base(&base, &head)?))
+            }
+            Resolved::Staged | Resolved::WorkTree => None,
+        })
+    }
+
+    /// The repo's top-level directory (where `assertrust.toml` lives).
+    pub fn root(&self) -> &Path {
+        self.git.root()
+    }
+
     /// The full SHA of the commit `rev` points to (a branch, tag, `HEAD~1`, …).
     pub fn resolve(&self, rev: &str) -> Result<String, Error> {
         self.git.rev_parse(rev)

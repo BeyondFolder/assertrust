@@ -54,6 +54,11 @@ pub struct CheckArgs {
     #[arg(long)]
     pub show_transient: bool,
 
+    /// Exit with 1 when a finding is at least this sure (default: never, or `fail-on` in
+    /// assertrust.toml)
+    #[arg(long, value_enum, value_name = "LEVEL")]
+    pub fail_on: Option<FailOn>,
+
     /// Show the test name, before/after snippets, the full commit message, and changed outcomes
     #[arg(short, long)]
     pub verbose: bool,
@@ -125,4 +130,17 @@ pub struct TestsArgs {
     /// Read the staged version of the file (from the git index)
     #[arg(long)]
     pub staged: bool,
+}
+
+/// The least sure finding that makes `assertrust check` fail (exit 1).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum FailOn {
+    /// Never fail: findings only warn
+    Never,
+    /// Fail on high-confidence findings
+    High,
+    /// Fail on high- and medium-confidence findings
+    Medium,
+    /// Fail on any finding
+    Low,
 }

@@ -12,21 +12,23 @@
 
 use std::fmt::Write as _;
 
-use assertrust_git::{Analysis, Classifier, Comparison, ModeKind, Repo};
+use assertrust_git::{Analysis, Classifier, Comparison, Repo};
 use assertrust_ir::{ItemKind, Test};
 use assertrust_match::{
     CheckMatch, FilePair, Matching, TestMatch, TestPair, TestRef, dropped_words, match_files,
 };
 
 use crate::cli::PairsArgs;
+use crate::config::Config;
 use crate::load::{self, Loaded};
-use crate::output::{count, line};
+use crate::output::{count, line, mode_name};
 
 pub fn run(args: &PairsArgs) -> Result<(), String> {
     let mode = args.mode.to_input()?;
     let dir = std::env::current_dir().map_err(|err| format!("can't read current dir: {err}"))?;
     let repo = Repo::open(&dir).map_err(|err| err.to_string())?;
-    let classifier = Classifier::default();
+    // The file patterns in assertrust.toml decide which files are tests, as in `check`.
+    let classifier = Config::for_check(&repo, &mode)?.0.classifier;
     let analysis = repo
         .analyze(&mode, &classifier)
         .map_err(|err| err.to_string())?;
@@ -36,12 +38,7 @@ pub fn run(args: &PairsArgs) -> Result<(), String> {
 
 fn render(repo: &Repo, analysis: &Analysis, classifier: &Classifier) -> Result<String, String> {
     let mut out = String::new();
-    let mode = match analysis.kind {
-        ModeKind::PerCommit => "per-commit",
-        ModeKind::PrStyle => "pr-style",
-        ModeKind::Staged => "staged",
-        ModeKind::WorkTree => "worktree",
-    };
+    let mode = mode_name(analysis.kind);
     if analysis.label.is_empty() {
         line(&mut out, mode);
     } else {

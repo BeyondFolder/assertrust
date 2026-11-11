@@ -3,13 +3,18 @@
 //! How it works is described in `docs/architecture.md`. This binary is the entry point:
 //! it parses the command line and maps the outcome to an exit code.
 
+mod allow;
 mod changes;
 mod check_command;
 mod cli;
+mod config;
+mod github;
+mod json;
 mod load;
 mod modules;
 mod output;
 mod pairs_command;
+mod report;
 mod tests_command;
 
 use std::io::{self, Write as _};
@@ -29,13 +34,13 @@ fn main() -> ExitCode {
 
     let result = match cli.command {
         Command::Check(args) => check_command::run(&args),
-        Command::Changes(args) => changes::run(&args),
-        Command::Tests(args) => tests_command::run(&args),
-        Command::Pairs(args) => pairs_command::run(&args),
+        Command::Changes(args) => changes::run(&args).map(|()| ExitCode::SUCCESS),
+        Command::Tests(args) => tests_command::run(&args).map(|()| ExitCode::SUCCESS),
+        Command::Pairs(args) => pairs_command::run(&args).map(|()| ExitCode::SUCCESS),
     };
 
     match result {
-        Ok(()) => ExitCode::SUCCESS,
+        Ok(code) => code,
         Err(message) => {
             eprintln!("assertrust: {message}");
             ExitCode::from(EXIT_TOOL_ERROR)

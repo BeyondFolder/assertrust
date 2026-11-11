@@ -21,11 +21,12 @@ use assertrust_git::{Classifier, FileKind, Repo, Rev};
 use assertrust_ir::{Body, Command, FileIr, Gate, ItemKind, ParseError};
 
 use crate::cli::TestsArgs;
+use crate::config::Config;
 use crate::output::{count, line};
 
 pub fn run(args: &TestsArgs) -> Result<(), String> {
     let file = read(args)?;
-    if Classifier::default().classify(&file.path) == FileKind::Gate {
+    if classifier()?.classify(&file.path) == FileKind::Gate {
         let output = match assertrust_ir::parse_gate(&file.path, &file.source) {
             Ok(gate) => render_gate(&file.label, &gate),
             Err(err) => format!("{}: skipped, {err}\n", file.label),
@@ -40,6 +41,15 @@ pub fn run(args: &TestsArgs) -> Result<(), String> {
         Err(err @ ParseError::Syntax { .. }) => format!("{}: skipped, {err}\n", file.label),
     };
     crate::print_stdout(&output)
+}
+
+/// The file patterns in `assertrust.toml` inside a repo, else the built-in ones.
+fn classifier() -> Result<Classifier, String> {
+    let dir = std::env::current_dir().map_err(|err| format!("can't read current dir: {err}"))?;
+    match Repo::open(&dir) {
+        Ok(repo) => Ok(Config::load(&repo)?.classifier),
+        Err(_) => Ok(Classifier::default()),
+    }
 }
 
 struct File {

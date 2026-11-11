@@ -284,6 +284,7 @@ impl<'a> Collector<'_> {
             is_async,
             default_export: false,
             line: self.line(span),
+            end_line: self.lines.line(span.end),
             body: Body::default(),
         });
         let saved = (
@@ -426,6 +427,7 @@ impl<'a> Collector<'_> {
                     name: self.name(name),
                     modifiers: all,
                     line: self.line(call.span),
+                    end_line: self.lines.line(call.span.end),
                     body: Body::default(),
                     fingerprint: callback.map_or_else(Vec::new, |callback| {
                         fingerprint(self.values.source, callback.span())
@@ -439,6 +441,7 @@ impl<'a> Collector<'_> {
                     kind,
                     suites: self.suite_names(),
                     line: self.line(call.span),
+                    end_line: self.lines.line(call.span.end),
                     body: Body::default(),
                 });
                 let owner = Owner::Hook(self.file.hooks.len() - 1);

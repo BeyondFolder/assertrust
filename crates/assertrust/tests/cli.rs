@@ -47,22 +47,3 @@ fn missing_command_is_a_usage_error() {
     let run = assertrust(&[]);
     assert_eq!(run.code, 2);
 }
-
-#[test]
-fn flags_not_built_yet_exit_with_2() {
-    let run = assertrust(&["check", "--format", "json"]);
-    assert_eq!(run.code, 2);
-    assert!(
-        run.stderr
-            .contains("only --format terminal is supported so far"),
-        "{}",
-        run.stderr
-    );
-    let run = assertrust(&["check", "--show-transient"]);
-    assert_eq!(run.code, 2);
-    assert!(
-        run.stderr.contains("--show-transient isn't supported yet"),
-        "{}",
-        run.stderr
-    );
-}

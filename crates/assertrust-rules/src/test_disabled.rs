@@ -97,6 +97,11 @@ fn modifiers(change: &Change, findings: &mut Vec<Finding>) {
             path: change.after_side(file).path.to_owned(),
             line: Some(first.line),
             test: (tests.len() == 1).then(|| first.id()),
+            tests: if tests.len() > 1 {
+                tests.iter().map(|(_, after)| after.id()).collect()
+            } else {
+                Vec::new()
+            },
             message,
             before: tests
                 .iter()
@@ -188,14 +193,19 @@ fn only(file: &TestFile, findings: &mut Vec<Finding>) {
         path: after.path.to_owned(),
         line: Some(first.line),
         test: (focused.len() == 1).then(|| first.id()),
+        tests: Vec::new(),
         message,
         before: Vec::new(),
         after: focused.iter().map(|test| with_modifiers(test)).collect(),
     });
 }
 
+/// How many tests deleted from one file in one change make one finding instead of one each.
+const GROUP_DELETED: usize = 4;
+
 /// Tests deleted from a file without all their checks reappearing elsewhere. A file that's
-/// gone (deleted, or renamed out of the suite) makes one finding; otherwise each test does.
+/// gone (deleted, or renamed out of the suite) makes one finding, and so do 4 or more tests
+/// deleted from one file; otherwise each test does.
 fn deleted(change: &Change, index: usize, file: &TestFile, findings: &mut Vec<Finding>) {
     let Some(before) = file.before else {
         return;
@@ -229,6 +239,7 @@ fn deleted(change: &Change, index: usize, file: &TestFile, findings: &mut Vec<Fi
             path: before.path.to_owned(),
             line: None,
             test: None,
+            tests: lost.iter().map(|deleted| test(deleted).id()).collect(),
             message,
             before: lost.iter().map(|deleted| test(deleted).id()).collect(),
             after: Vec::new(),
@@ -248,6 +259,22 @@ fn deleted(change: &Change, index: usize, file: &TestFile, findings: &mut Vec<Fi
     } else {
         Confidence::High
     };
+    // Many tests deleted at once (a feature removed with its tests) are one finding.
+    if lost.len() >= GROUP_DELETED {
+        let first = test(lost[0]).id();
+        findings.push(Finding {
+            rule: RuleId::TestDisabled,
+            confidence,
+            path: after.path.to_owned(),
+            line: None,
+            test: None,
+            tests: lost.iter().map(|deleted| test(deleted).id()).collect(),
+            message: format!("deleted {} tests, including {}", lost.len(), short(&first)),
+            before: lost.iter().map(|deleted| test(deleted).id()).collect(),
+            after: Vec::new(),
+        });
+        return;
+    }
     for deleted in lost {
         let id = test(deleted).id();
         let moved = deleted
@@ -269,6 +296,7 @@ fn deleted(change: &Change, index: usize, file: &TestFile, findings: &mut Vec<Fi
             path: after.path.to_owned(),
             line: None,
             test: Some(id),
+            tests: Vec::new(),
             message,
             before: deleted
                 .checks

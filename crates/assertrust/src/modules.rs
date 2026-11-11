@@ -92,6 +92,11 @@ impl<'a> Modules<'a> {
         }
     }
 
+    /// The helper files read, with their paths.
+    pub fn files(&self) -> impl Iterator<Item = (&str, &FileIr)> {
+        self.files.iter().map(|(path, ir)| (path.as_str(), &**ir))
+    }
+
     /// The revision it reads.
     pub fn rev(&self) -> &Rev {
         self.rev

@@ -10,28 +10,27 @@
 //!     M test         test/a.test.ts
 //! ```
 
-use assertrust_git::{Analysis, Classifier, FileChange, ModeKind, Repo};
+use assertrust_git::{Analysis, FileChange, ModeKind, Repo};
 
 use crate::cli::ChangesArgs;
-use crate::output::line;
+use crate::config::Config;
+use crate::output::{line, mode_name};
 
 pub fn run(args: &ChangesArgs) -> Result<(), String> {
     let mode = args.mode.to_input()?;
     let dir = std::env::current_dir().map_err(|err| format!("can't read current dir: {err}"))?;
-    let analysis = Repo::open(&dir)
-        .and_then(|repo| repo.analyze(&mode, &Classifier::default()))
+    let repo = Repo::open(&dir).map_err(|err| err.to_string())?;
+    // The file patterns in assertrust.toml decide which files are tests.
+    let classifier = Config::load(&repo)?.classifier;
+    let analysis = repo
+        .analyze(&mode, &classifier)
         .map_err(|err| err.to_string())?;
     crate::print_stdout(&render(&analysis))
 }
 
 fn render(analysis: &Analysis) -> String {
     let mut out = String::new();
-    let mode = match analysis.kind {
-        ModeKind::PerCommit => "per-commit",
-        ModeKind::PrStyle => "pr-style",
-        ModeKind::Staged => "staged",
-        ModeKind::WorkTree => "worktree",
-    };
+    let mode = mode_name(analysis.kind);
     if analysis.label.is_empty() {
         line(&mut out, mode);
     } else {

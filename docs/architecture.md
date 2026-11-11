@@ -506,7 +506,7 @@ test/unit/inbound-body.test.ts:41  HIGH  check-removed
 - **A modifier that stops the test:** `skip`, `fixme`, `todo`, and `fails` / `fail` (the test passes only if it fails) are high. `skipIf(cond)`, `runIf(cond)` and Playwright's `test.skip(cond)` in a `describe` skip only sometimes, so they're medium. Tests in one file that gain the same one (a `describe.skip`) make one finding.
 - **A skip added inside the test** (`test.skip(cond)`, `ctx.skip()`): high when unconditional, medium with a condition or inside an `if`.
 - **A `.only`** in a file that had none: one finding saying how many other tests stop running. A new file doesn't count, since none of its tests ran before.
-- **A deleted test** whose checks didn't all move to other tests. A deleted test without checks counts too: a smoke test still fails when the code throws. **Medium** when the file gained tests that didn't pair, since the test may have been rewritten under another name (Mailyond `49a44d2`).
+- **A deleted test** whose checks didn't all move to other tests. Four or more deleted from one file in one change make one finding (`deleted 32 tests, including parses dates`, all of them listed with `-v`): a feature removed with its tests is one event, not 32 lines. A deleted test without checks counts too: a smoke test still fails when the code throws. **Medium** when the file gained tests that didn't pair, since the test may have been rewritten under another name (Mailyond `49a44d2`).
 - **A test that didn't run before** (skipped, or skipping itself) stops nothing: deleting it, or swapping one skip for another (`skip` → `todo`), isn't flagged.
 - **A deleted test file**, or one renamed to a name that isn't a test file name (`dca.test.ts` → `dca.ts`, `a.test.ts` → `a.test.ts.disabled`): one finding for the file. Step 1 keeps a renamed file's stronger kind, so the file is still loaded, and its tests count as gone after the change.
 
@@ -647,7 +647,7 @@ The last 600 commits of hono, h3, zod, nuxt/ui and vueuse, one by one: 3 to 5 se
 
 What's left is 23 findings. 19 are correct: a CI job dropped with its tests (hono's lambda jobs), a reverted workflow that ran tests, conditions added to test jobs, a coverage script now running one project, and coverage now ignoring more files. The other 4 come from vueuse splitting or merging CI steps whose scripts point to other scripts. Seeing those needs following `npm run X` into `package.json`, which is listed under "Not covered yet".
 
-In the test rules, 90 of h3's 94 `expectation-loosened` are bundle-size budgets raised (`toBeLessThanOrEqual(5200)` → `5300`). They're correct and stay at medium; a repo that finds them noisy can ignore the path once config lands (step 6). 2 came from fields renamed along with an API, now `outcome-changed`. zod's biggest group of `test-disabled`, 32 of 73, is one revert that deleted a feature with its tests: correct, but 32 lines for one commit. Grouping them is for the output (step 6).
+In the test rules, 90 of h3's 94 `expectation-loosened` are bundle-size budgets raised (`toBeLessThanOrEqual(5200)` → `5300`). They're correct and stay at medium; a repo that finds them noisy can ignore the path once config lands (step 6). 2 came from fields renamed along with an API, now `outcome-changed`. zod's biggest group of `test-disabled`, 32 of 73, is one revert that deleted a feature with its tests: correct, and now one finding (4 or more tests deleted from one file in one change are grouped). On the 10 public repos and Mailyond, grouping turns 499 deleted-test lines into 234 (immich 116 → 25, cal.com 153 → 72, zod 70 → 28) and changes nothing else.
 
 **With helpers linked**, checked on 10 public repos (the five above plus TanStack Query, tRPC, Excalidraw, cal.com and immich, 600 commits each) and on Mailyond:
 - **False findings gone:** 37 in cal.com, where one commit moved 37 tests' checks into two new helpers (`expectResponsesToBe`, `expectParsingToFail`), so each test seemed to have no checks left. One in tRPC (a check moved into `renderThrowing()`). Duplicate lines for the same deleted test in immich and Excalidraw.
@@ -672,7 +672,23 @@ There's at least one fixture that must be flagged and one that must not, per rul
 
 **In one sentence:** show each finding where the person or agent will see it, in the terminal, on the PR, or as JSON for tools, and never block anything unless the repo opts in.
 
-**Built so far:** the terminal format and `-v`, always warn-only (exit 0). Changed outcomes are hidden without `-v`, and the summary line says how many: `no findings · 2 changed outcomes hidden (-v shows them)`. A per-commit check names each finding's commit. A PR-style check doesn't yet: tracing a finding back to its commit, hiding transient findings, the other formats, allow comments and config come with the output PR. Until then `--format json`, `--format github` and `--show-transient` exit with 2. Files that couldn't be checked are listed as notes before the summary, e.g. `note: test/a.test.ts (1a2b3c4): skipped, doesn't parse (…)`, and so are merge commits a per-commit check skipped.
+**Built so far:** all of it except SARIF and the PR comment, which the GitHub Action posts. The terminal, JSON and GitHub formats; each finding named after the commits that made it, also in a PR-style check; weakening undone later in the PR hidden; allow comments and trailers; `fail-on` and its exit codes; `assertrust.toml`. Changed outcomes are hidden without `-v`, and the summary line says how many: `no findings · 2 changed outcomes hidden (-v shows them)`. Files that couldn't be checked are listed as notes before the summary, e.g. `note: test/a.test.ts (1a2b3c4): skipped, doesn't parse (…)`, and so are merge commits a per-commit check skipped.
+
+### Which commit, and weakening undone later
+
+A per-commit check runs the rules on each commit, so each finding has its commit. A PR-style check runs them on the whole PR (what lands) and on each commit, then pairs them up:
+
+```
+c1  remove flaky check   → removed expect(res.body).toEqual({…})
+c2  restore check        → puts it back
+c3  skip slow test       → now skipped (skip)
+whole PR                 → now skipped (skip) · c3
+```
+
+- **A finding in the whole PR names every commit with a finding about the same thing:** the same file, and the same rule on the same test, the same message, or the same code lost (so a test renamed between commits, or a matcher loosened in one commit and the check removed in the next, still pair). At most three are named, then `+2 more`; `-v` lists each with its subject.
+- **A commit's finding the whole PR doesn't have was undone later** (transient): c1's above. It's hidden, and the summary says how many: `1 undone later hidden (--show-transient shows them)`. With `--show-transient` it's marked `(undone later)`.
+- **Unless it's about code the PR itself added.** A new test written in one commit and loosened in the next (`toBe(30)` → `toBeGreaterThan(0)`) lands as just a new test, so nothing the main branch had got weaker. But the reviewer only ever sees the loose version, and it's how an agent gets its own new test green. It's shown, marked `(before landing)`, and can't fail the check: `1 before landing (can't fail)`. "Added" means the file wasn't there before the PR, or the test wasn't in it. On 100-commit ranges of the public repos, most of what the whole PR doesn't have is this kind (tRPC 19, Excalidraw 12, Mailyond 11, where it includes the reference cases `71110c0`, `038cf0b` and `8454255` in files that range created); weakening truly undone later is rarer (hono 4, zod 3, Mailyond 2).
+- Staged and unsaved changes have no commits, so their findings name none.
 
 ### Terminal (default): short, two lines per finding
 
@@ -694,8 +710,8 @@ test/api/forwarding.test.ts:27  HIGH  expectation-loosened
       commit  Trim the refund test
   ```
 - A finding about something that's gone (a deleted test or file) has no line: `test/a.test.ts  HIGH  test-disabled` / `deleted: billing > refunds`.
-- Findings are sorted most severe first. Allowed findings come last, marked `ALLOWED` with their reason. Transient findings appear only with `--show-transient`.
-- **On the PR**, an inline annotation already sits on the line, so it says only the finding itself: title `assertrust: expectation-loosened (high)`, message `toMatchObject no longer checks domainIds, status (10d8742)`. The summary comment is a short table: file:line, rule, message.
+- Findings are sorted most severe first. Allowed findings come last, marked `ALLOWED`, with a line saying why: `allowed: preview is tested in MCP now (comment)`. Transient findings appear only with `--show-transient`, marked `(undone later)`.
+- **On the PR**, an inline annotation already sits on the line, so it says only the finding itself: title `assertrust: expectation-loosened (high)`, message `toMatchObject no longer checks domainIds, status (10d8742)`. A finding that reaches `fail-on` is an `error`, the rest are warnings; allowed, hidden and undone-later ones aren't annotated. The summary is a short table (file:line, rule, message, then the allowed ones with their reasons), written to the job summary (`$GITHUB_STEP_SUMMARY`) and starting with `<!-- assertrust -->`, so the GitHub Action can post it as one PR comment and edit it in place on every push.
 
 Messages are short by design: one line that says what got weaker. Detail goes behind `-v`, never in the default view.
 
@@ -704,14 +720,14 @@ Messages are short by design: one line that says what got weaker. Detail goes be
 | Format | For | v0.1 |
 |---|---|---|
 | `terminal` | people, Claude Code hook output | yes |
-| `json` | the backtest, the benchmark, other tools. Versioned (`"schema": 1`) | yes |
-| `github` | inline annotations on the PR diff (`::warning file=…,line=…::`), plus one summary comment per PR, edited in place on every push instead of re-posted | yes |
+| `json` | the backtest, the benchmark, other tools. Versioned (`"schema": 1`). Every finding is there with its `status` (`shown`, `hidden`, `allowed`, `transient`, `before-landing`), its commits, and for an allowed one the reason | yes |
+| `github` | inline annotations on the PR diff (`::warning file=…,line=…::`) and a summary table in the job summary; the Action posts that as one PR comment, edited in place on every push | yes |
 | `sarif` | GitHub code scanning (the Security tab) | later |
 
 ### Exit codes
 
-- `0`: no findings, or findings below `fail-on`. The default is `fail-on = "never"` (warn-only).
-- `1`: at least one finding at or above `fail-on`, or, with the judge on, a verdict listed in `[judge] fail-on` (step 7).
+- `0`: no findings, or findings below `fail-on`. The default is `fail-on = "never"` (warn-only). `--fail-on high` (or `medium`, `low`) sets it for one run.
+- `1`: at least one finding at or above `fail-on`, or, with the judge on, a verdict listed in `[judge] fail-on` (step 7). Hidden, allowed, undone-later and before-landing findings never count. The summary line says it: `2 findings · 1 finding at high or above (exit 1)`.
 - `2`: assertrust itself failed (no git, bad config, bad range). This is never confused with "found something".
 
 **Blocking.** Deterministic findings warn by default. Set `fail-on` to block. This default may change once the backtests have proven precision.
@@ -720,10 +736,12 @@ Messages are short by design: one line that says what got weaker. Detail goes be
 
 Sometimes weakening a test is the right call. There are two ways to say so, and both need a reason:
 
-- **In the test:** `// assertrust-allow: check-removed preview is tested in MCP now`, anywhere inside the test or on the line above it. This works for changes to checks that survive or were removed from a test that still exists.
-- **In the commit message:** a trailer, `Assertrust-Allow: test-disabled flaky on CI, tracked in #123`. This works when there's no test left to put a comment in, e.g. a deleted test.
+- **In the code:** `// assertrust-allow: check-removed preview is tested in MCP now`, anywhere inside the test, hook or helper the finding is in, or on the line above it. Several rules go comma-separated: `check-removed,matcher-loosened`. In CI and test config, `# assertrust-allow: gate-loosened …` (or `//` in a JS config) on the line of the step or setting that changed, or in the comment lines right above it.
+- **In the commit message:** a trailer, `Assertrust-Allow: test-disabled flaky on CI, tracked in #123`. It counts for the findings its commit made, which is the way when there's nothing left to put a comment in (a deleted test) or no comments at all (`package.json`).
 
-Allowed findings still appear, marked `ALLOWED`, so a reviewer sees what was waived and why. An allow with no reason is itself a finding.
+**A comment counts only in the change that adds it** (the commit, or the PR in a PR-style check). One left from an earlier change can't waive a new weakening of the same test: someone allowed a removed check in March, another check is removed in June, and June's is reported.
+
+Allowed findings still appear, marked `ALLOWED`, so a reviewer sees what was waived and why. An allow with no reason doesn't count: the finding stays, ending `; allow ignored: it gives no reason`.
 
 ### Config: `assertrust.toml` (optional)
 
@@ -731,7 +749,7 @@ Allowed findings still appear, marked `ALLOWED`, so a reviewer sees what was wai
 fail-on = "never"            # never | high | medium | low
 show-transient = false
 
-[files]                      # defaults from step 1; override only if needed
+[files]                      # defaults from step 1; a kind given replaces its defaults
 test         = ["**/*.{test,spec}.{ts,tsx,js,jsx,mts,cts}", "**/__tests__/**"]
 test-support = ["test/**", "tests/**", "e2e/**"]
 gate         = [".github/workflows/*.yml", "{vitest,jest,playwright}.config.*", "package.json"]
@@ -741,14 +759,15 @@ outcome-changed = "judge"    # off | on | judge
 matcher-swapped = "on"
 ```
 
-assertrust works with no config file. CLI flags override the file.
+assertrust works with no config file. It's read from the repo root on disk. CLI flags override the file. An unknown key, rule or value is an error (exit 2), so a typo (`fail_on`) doesn't silently do nothing. `off` drops a rule's findings; `judge` leaves them to the judge (step 7), which for now means they're shown only with `-v`, as `outcome-changed` is by default.
 
 ### Tests
 
-- Snapshot tests of the terminal and JSON output for a fixed fixture repo.
-- Exit-code tests for each `fail-on` level.
-- Allow comment and commit trailer, each with and without a reason.
-- The GitHub format parsed back to check annotation syntax and that the summary comment is edited in place (its marker comment is found).
+In `crates/assertrust/tests/output.rs`, on temporary repos:
+- a PR-style finding naming each commit, weakening undone later shown only with `--show-transient`, and a new test loosened before landing shown but not failing
+- allow comments in a test, a helper and a CI workflow, a trailer for a deleted test, an allow without a reason, and an allow left from an earlier change
+- grouped deletions, exit codes for each `fail-on` level, and `assertrust.toml` (`fail-on`, `[rules]`, `[files]`, a typo)
+- a snapshot of the JSON output, and the GitHub annotations and job summary
 
 ## 7. LLM judge (planned after v0.1)
 

@@ -89,16 +89,20 @@ fn a_pr_style_check_reports_what_lands() {
         "test/a.test.ts",
         "it.skip('a', () => { expect(a).toBe(1); expect(b).toBe(2) });\n",
     );
-    repo.commit("Put the check back, skip the test");
+    let skip = repo.commit("Put the check back, skip the test");
     let run = repo.assertrust(&["check", "--range", "main...HEAD"]);
     assert_eq!(run.code, 0, "{}", run.stderr);
-    // The check came back, so only the skip lands. Which commit did it comes later.
+    // The check came back, so only the skip lands, named after the commit that made it. The
+    // dropped check was undone later.
     assert_eq!(
         run.stdout,
-        "test/a.test.ts:1  HIGH  test-disabled\n\
-         \x20 now skipped (skip)\n\
-         \n\
-         1 finding · warn-only (exit 0)\n"
+        format!(
+            "test/a.test.ts:1  HIGH  test-disabled\n\
+             \x20 now skipped (skip) · {}\n\
+             \n\
+             1 finding · 1 undone later hidden (--show-transient shows them) · warn-only (exit 0)\n",
+            &skip[..7]
+        )
     );
 }
 

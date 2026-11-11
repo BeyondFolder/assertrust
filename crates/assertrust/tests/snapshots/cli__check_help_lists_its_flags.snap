@@ -32,6 +32,15 @@ Options:
       --show-transient
           Also show weakening that was undone later in the same PR
 
+      --fail-on <LEVEL>
+          Exit with 1 when a finding is at least this sure (default: never, or `fail-on` in assertrust.toml)
+
+          Possible values:
+          - never:  Never fail: findings only warn
+          - high:   Fail on high-confidence findings
+          - medium: Fail on high- and medium-confidence findings
+          - low:    Fail on any finding
+
   -v, --verbose
           Show the test name, before/after snippets, the full commit message, and changed outcomes
 

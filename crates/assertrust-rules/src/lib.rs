@@ -117,6 +117,23 @@ pub enum RuleId {
 }
 
 impl RuleId {
+    /// Every rule, in the order the docs list them.
+    pub const ALL: [Self; 8] = [
+        Self::CheckRemoved,
+        Self::MatcherLoosened,
+        Self::MatcherSwapped,
+        Self::ExpectationLoosened,
+        Self::TestDisabled,
+        Self::CheckCantFail,
+        Self::GateLoosened,
+        Self::OutcomeChanged,
+    ];
+
+    /// The rule with this id (`check-removed`), as written in config and allow comments.
+    pub fn from_name(name: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|rule| rule.as_str() == name)
+    }
+
     pub fn as_str(self) -> &'static str {
         match self {
             Self::CheckRemoved => "check-removed",

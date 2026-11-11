@@ -146,6 +146,14 @@ impl TestRepo {
         run(self.isolated(Command::new(BINARY).args(args)))
     }
 
+    /// Runs `assertrust` in the repo with extra environment variables.
+    pub fn assertrust_with_env(&self, args: &[&str], env: &[(&str, &std::path::Path)]) -> Run {
+        let mut command = Command::new(BINARY);
+        command.args(args);
+        self.isolated(&mut command);
+        run(command.envs(env.iter().copied()))
+    }
+
     /// Runs `assertrust` from a subdirectory of the repo (relative to the repo root).
     pub fn assertrust_in(&self, subdir: &str, args: &[&str]) -> Run {
         run(self
@@ -182,6 +190,8 @@ impl TestRepo {
         for var in LEAKY_GIT_VARS {
             cmd.env_remove(var);
         }
+        // On GitHub Actions, a test must not write to the real job summary.
+        cmd.env_remove("GITHUB_STEP_SUMMARY");
         cmd.current_dir(self.path())
             .env("HOME", &home)
             .env("GIT_CONFIG_GLOBAL", home.join(".gitconfig"))

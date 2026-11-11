@@ -58,6 +58,11 @@ impl Repo {
         analyze(&self.git, mode, classifier)
     }
 
+    /// The repo's top-level directory (where `assertrust.toml` lives).
+    pub fn root(&self) -> &Path {
+        self.git.root()
+    }
+
     /// The full SHA of the commit `rev` points to (a branch, tag, `HEAD~1`, …).
     pub fn resolve(&self, rev: &str) -> Result<String, Error> {
         self.git.rev_parse(rev)

@@ -16,6 +16,7 @@ use assertrust_ir::{FileIr, Gate, Item, ItemKind, ParseError, Via};
 use assertrust_match::{FilePair, Side};
 use assertrust_rules::{GateFile, GateSide, TestFile};
 
+use crate::allow::Blocks;
 use crate::modules::Modules;
 
 /// The test files of one comparison, parsed on both sides, and its CI and test config
@@ -25,6 +26,8 @@ pub struct Loaded {
     pub gates: Vec<LoadedGate>,
     /// Files that were skipped, e.g. "test/a.test.ts (1a2b3c4): skipped, doesn't parse (…)".
     pub notes: Vec<String>,
+    /// Where the tests, hooks and helpers are after the change, for allow comments.
+    pub blocks: Blocks,
 }
 
 pub struct LoadedFile {
@@ -113,6 +116,7 @@ pub fn load<'a>(
         files: Vec::new(),
         gates: Vec::new(),
         notes: Vec::new(),
+        blocks: Blocks::default(),
     };
     let before = match carry.take() {
         Some(previous) if previous.rev() == &comparison.before => previous,
@@ -222,6 +226,14 @@ pub fn load<'a>(
         }
     }
     load_importers(comparison, &changed_helpers, &mut modules, &mut loaded)?;
+    for file in &loaded.files {
+        if let Some(after) = &file.after {
+            loaded.blocks.add(&after.path, &after.ir);
+        }
+    }
+    for (path, ir) in modules.1.files() {
+        loaded.blocks.add(path, ir);
+    }
     *carry = Some(modules.1);
     Ok(loaded)
 }

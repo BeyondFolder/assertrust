@@ -27,7 +27,7 @@ use std::fmt;
 
 pub use crate::gate::{Command, Gate, Job, Package, Script, Setting, TestStep, Workflow};
 pub use crate::link::{Modules, link};
-pub use crate::matcher::MatcherKind;
+pub use crate::matcher::{MatcherKind, close_to};
 pub use crate::model::{
     Assertion, Body, Call, Context, Defined, ExpectKind, Fact, FactTest, FileIr, Helper, Hook,
     HookKind, Import, Item, ItemKind, Matcher, Modifier, Promise, Test, Via,

@@ -8,7 +8,7 @@
 //! → expectation-loosened: .not.toMatch no longer rules out resend
 //! ```
 
-use assertrust_ir::{Assertion, Fact, MatcherKind, Test, Value};
+use assertrust_ir::{Assertion, Fact, ItemKind, MatcherKind, Test, Value, close_to};
 use assertrust_match::{CheckMatch, CheckPair, TestPair};
 
 use crate::looser;
@@ -64,14 +64,36 @@ fn verdict(before: &Test, after: &Test, check: &CheckPair) -> Option<Verdict> {
         .iter()
         .map(|&item| assertion(after, item))
         .collect();
+    let elsewhere = stated_elsewhere(after, &check.after);
     match (olds.as_slice(), news.as_slice()) {
-        ([old], [new]) => one(old, new),
-        _ => folded(&olds, &news),
+        ([old], [new]) => one(old, new, &elsewhere),
+        _ => folded(&olds, &news, &elsewhere),
     }
 }
 
+/// What the test's other checks state, where they run whenever the new checks do (in the
+/// same place, or where nothing can stop them). A fact one of them states isn't lost when
+/// the paired check drops it: `y: 239` taken out of a `toMatchObject` and checked on its own
+/// line, `expect(arrow.y).toBe(239)`.
+fn stated_elsewhere<'t>(after: &'t Test, news: &[usize]) -> Vec<&'t Fact> {
+    let items = &after.body.items;
+    let runs_with_them = |context| news.iter().all(|&new| items[new].context == context);
+    items
+        .iter()
+        .enumerate()
+        .filter(|(at, item)| {
+            !news.contains(at) && (item.context.is_plain() || runs_with_them(item.context))
+        })
+        .filter_map(|(_, item)| match &item.kind {
+            ItemKind::Assertion(assertion) => Some(&assertion.facts),
+            _ => None,
+        })
+        .flatten()
+        .collect()
+}
+
 /// One check and what it became.
-fn one(old: &Assertion, new: &Assertion) -> Option<Verdict> {
+fn one(old: &Assertion, new: &Assertion, elsewhere: &[&Fact]) -> Option<Verdict> {
     // A bare `expect(x)` is `check-cant-fail`'s.
     let (o, n) = (Canonical::of(old)?, Canonical::of(new)?);
     // Written another way: `toBeNull()` → `toBe(null)`.
@@ -81,21 +103,25 @@ fn one(old: &Assertion, new: &Assertion) -> Option<Verdict> {
     // Part of the check moved into the subject or out of it, `expect(r.text).toBe(v)` →
     // `expect(r).toMatchObject({ text: v })`, `await expect(p).resolves.toBe(v)` →
     // `expect(await p).toBe(v)`: what it states is what counts.
+    let missing: Vec<&Fact> = old
+        .facts
+        .iter()
+        .filter(|fact| !new.facts.contains(fact))
+        .collect();
     if old.subject != new.subject {
-        let missing: Vec<&Fact> = old
-            .facts
-            .iter()
-            .filter(|fact| !new.facts.contains(fact))
-            .collect();
         let kept = missing.len() < old.facts.len();
-        if !old.facts.is_empty() && missing.is_empty() {
+        let lost: Vec<String> = missing
+            .iter()
+            .filter(|fact| !elsewhere.contains(fact))
+            .map(ToString::to_string)
+            .collect();
+        if !old.facts.is_empty() && lost.is_empty() {
             return None;
         }
         // Some of it is still stated, the rest isn't: `toMatchObject({ a: 1, b: 2 })` on `r`
         // → `toBe(1)` on `r.a`.
         if kept {
-            let missing: Vec<String> = missing.iter().map(ToString::to_string).collect();
-            return Some(no_longer_checks(&missing));
+            return Some(no_longer_checks(&lost));
         }
     }
     if o.negated != n.negated {
@@ -112,7 +138,11 @@ fn one(old: &Assertion, new: &Assertion) -> Option<Verdict> {
     if o.name != n.name {
         return matcher_changed(&o, &n);
     }
-    let diff = looser::compare(&o, &n);
+    let mut diff = looser::compare(&o, &n);
+    if !o.negated {
+        diff.dropped
+            .retain(|key| !key_stated_elsewhere(key, &missing, elsewhere));
+    }
     if diff.is_looser() {
         Some((
             RuleId::ExpectationLoosened,
@@ -143,6 +173,14 @@ fn matcher_changed(o: &Canonical, n: &Canonical) -> Option<Verdict> {
     // changes there aren't ranked.
     if o.negated {
         return swapped();
+    }
+    // The same number, compared closely: `toBe(239)` → `toBeCloseTo(239, 1)`.
+    if o.kind() == MatcherKind::Equal
+        && n.name == "toBeCloseTo"
+        && o.args.len() == 1
+        && close_to(&n.args) == o.args.first()
+    {
+        return None;
     }
     if o.kind() == MatcherKind::Compare && n.kind() == MatcherKind::Compare {
         return comparison_changed(o, n);
@@ -178,13 +216,35 @@ fn matcher_changed(o: &Canonical, n: &Canonical) -> Option<Verdict> {
     }
 }
 
+/// A key a check no longer has (`y`, `user.name`) that the test's other checks still
+/// state, with every fact under it. `missing` is what the check itself stopped stating.
+/// Items of an array (`3 in tags`) aren't looked for.
+fn key_stated_elsewhere(key: &str, missing: &[&Fact], elsewhere: &[&Fact]) -> bool {
+    if key.contains(' ') {
+        return false;
+    }
+    let segments: Vec<&str> = key.split('.').collect();
+    let mut under = missing
+        .iter()
+        .filter(|fact| {
+            fact.path.windows(segments.len()).any(|window| {
+                window
+                    .iter()
+                    .map(String::as_str)
+                    .eq(segments.iter().copied())
+            })
+        })
+        .peekable();
+    under.peek().is_some() && under.all(|fact| elsewhere.contains(fact))
+}
+
 /// Several checks folded into one, or one split into several: what they state together.
-fn folded(olds: &[&Assertion], news: &[&Assertion]) -> Option<Verdict> {
+fn folded(olds: &[&Assertion], news: &[&Assertion], elsewhere: &[&Fact]) -> Option<Verdict> {
     let new_facts: Vec<&Fact> = news.iter().flat_map(|new| &new.facts).collect();
     let missing: Vec<String> = olds
         .iter()
         .flat_map(|old| &old.facts)
-        .filter(|fact| !new_facts.contains(fact))
+        .filter(|fact| !new_facts.contains(fact) && !elsewhere.contains(fact))
         .map(ToString::to_string)
         .collect();
     if missing.is_empty() {
@@ -275,11 +335,30 @@ fn each_rows(
     after: &Test,
     findings: &mut Vec<Finding>,
 ) {
-    let (Some((name, Value::Array(old))), Some((_, Value::Array(new)))) =
-        (each_table(before), each_table(after))
-    else {
+    // A test in a `describe.each` with an `it.each` of its own runs every row of one with
+    // every row of the other, so the tables are compared level by level, and only when both
+    // sides have as many levels.
+    let (olds, news) = (each_tables(before), each_tables(after));
+    if olds.len() != news.len() {
         return;
-    };
+    }
+    for ((name, old), (_, new)) in olds.into_iter().zip(news) {
+        if let (Some(Value::Array(old)), Some(Value::Array(new))) = (old, new) {
+            each_level(change, pair, after, name, old, new, findings);
+        }
+    }
+}
+
+/// One level of `.each` tables: the rows dropped or changed.
+fn each_level(
+    change: &Change,
+    pair: &TestPair,
+    after: &Test,
+    name: &str,
+    old: &[Value],
+    new: &[Value],
+    findings: &mut Vec<Finding>,
+) {
     // Rows on one side and not the other, one for one, so a dropped duplicate counts.
     let dropped = minus(old, new);
     let added = minus(new, old);
@@ -321,12 +400,13 @@ fn each_rows(
     findings.push(finding);
 }
 
-/// The test's `.each` / `.for` modifier name and table.
-fn each_table(test: &Test) -> Option<(&str, &Value)> {
+/// The test's `.each` / `.for` modifiers, its suites' first: their names and tables.
+fn each_tables(test: &Test) -> Vec<(&str, Option<&Value>)> {
     test.modifiers
         .iter()
-        .find(|modifier| matches!(modifier.name.as_str(), "each" | "for"))
-        .and_then(|modifier| Some((modifier.name.as_str(), modifier.arg.as_ref()?)))
+        .filter(|modifier| matches!(modifier.name.as_str(), "each" | "for"))
+        .map(|modifier| (modifier.name.as_str(), modifier.arg.as_ref()))
+        .collect()
 }
 
 /// The rows of `from` that `to` doesn't have, one for one: `[a, a, b]` minus `[a, b]` is

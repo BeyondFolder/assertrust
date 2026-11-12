@@ -124,6 +124,53 @@ fn a_reformat_finds_nothing() {
     assert_eq!(run.stdout, "no findings\n");
 }
 
+/// Rewrites the backtest read as weakening (`docs/architecture.md`, step 6, "Backtest"): a
+/// loop over a written-out array, a local function the test calls, a key checked on its own
+/// line, vitest browser mode's `expect.element`, and a script that calls another one.
+#[test]
+fn rewrites_that_keep_every_check_find_nothing() {
+    let mut repo = TestRepo::new();
+    repo.write(
+        "test/a.test.ts",
+        "it('a', () => {
+  expect(get('/a').status).toBe(404);
+  expect(tooltip()).not.toBeNull();
+  expect(arrow).toMatchObject({ type: 'arrow', y: 239 });
+  expect(screen.getByText('Hello')).toBeInTheDocument();
+});
+",
+    );
+    repo.write(
+        "package.json",
+        r#"{ "scripts": { "test": "nr test:unit", "test:unit": "vitest --project unit" } }"#,
+    );
+    let base = repo.commit("Add a test");
+    repo.write(
+        "test/a.test.ts",
+        "it('a', async () => {
+  for (const path of ['/a', '/b']) {
+    expect(get(path).status).toBe(404);
+  }
+  const hover = () => {
+    expect(tooltip()).not.toBeNull();
+  };
+  hover();
+  expect(arrow.y).toBeCloseTo(239, 1);
+  expect(arrow).toMatchObject({ type: 'arrow' });
+  await expect.element(screen.getByText('Hello')).toBeInTheDocument();
+});
+",
+    );
+    repo.write(
+        "package.json",
+        r#"{ "scripts": { "test": "nr test:unit --project=server", "test:unit": "vitest --project unit" } }"#,
+    );
+    repo.commit("Rewrite the test");
+    let run = repo.assertrust(&["check", "--range", &format!("{base}..HEAD")]);
+    assert_eq!(run.code, 0, "{}", run.stderr);
+    assert_eq!(run.stdout, "no findings\n");
+}
+
 #[test]
 fn a_test_moved_to_another_file_is_not_deleted() {
     let mut repo = TestRepo::new();

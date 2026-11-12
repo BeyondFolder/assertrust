@@ -9,30 +9,6 @@ repo = "https://github.com/colinhacks/zod.git"
 range = "51caf01038d3339d7b9db94b959482c549aba2e3..19c40d2072288b4cafec851e9d056a72a88e5973"
 
 [[finding]]
-unit = "eca968715366"
-pr = 6535
-rule = "check-cant-fail"
-path = "packages/zod/src/v4/classic/tests/from-json-schema.test.ts"
-test = "a carried subschema that references $defs is dropped rather than emitted dangling"
-before = ["expect(annotated.safeParse(['x']).success).toBe(false)"]
-after = ["expect(annotated.safeParse(['x']).success).toBe(false) (in loop)"]
-message = "expect(annotated.safeParse(['x']).success).toBe(false) is now inside a loop: it doesn't run if the loop runs zero times"
-label = "wrong"
-note = "The loop runs over a literal two-item array, so the checks always run (now twice)."
-
-[[finding]]
-unit = "eca968715366"
-pr = 6535
-rule = "check-cant-fail"
-path = "packages/zod/src/v4/classic/tests/from-json-schema.test.ts"
-test = "a carried subschema that references $defs is dropped rather than emitted dangling"
-before = ["expect(z.toJSONSchema(annotated)).toMatchObject({ contains: { type: 'integer' } })"]
-after = ["expect(z.toJSONSchema(annotated)).toMatchObject({ contains: { type: 'integer' } }) (in loop)"]
-message = "expect(z.toJSONSchema(annotated)).toMatchObject({ contains:… is now inside a loop: it doesn't run if the loop runs zero times"
-label = "wrong"
-note = "The loop runs over a literal two-item array, so the checks always run (now twice)."
-
-[[finding]]
 unit = "cafbee4772ef"
 pr = 6530
 rule = "check-removed"
@@ -203,7 +179,7 @@ pr = 6594
 rule = "check-removed"
 path = "packages/zod/src/v4/classic/tests/properties.test.ts"
 test = "z.properties is a check"
-before = ["expect(p.parse(ok)).toBe(ok)", "expect(p.safeParse(input).error!.issues.map((i) => [i.code, i.path])).toEqual([['invalid_type', []]]) (in loop)"]
+before = ["expect(p.parse(ok)).toBe(ok)", "expect(p.safeParse(input).error!.issues.map((i) => [i.code, i.path])).toEqual([['invalid_type', []]])"]
 after = []
 message = "removed 2 checks, including expect(p.parse(ok)).toBe(ok); the test name dropped \"schema\""
 label = "intended"
@@ -355,7 +331,7 @@ unit = "ca0229a40481"
 rule = "test-disabled"
 path = "packages/zod/src/v4/classic/tests/string.test.ts"
 test = "currency code"
-before = ["expect(currency.parse(code)).toBe(code) (in loop)", "expect(currency.safeParse(input).success).toBe(false) (in loop)", "expect(currency.safeParse('usd').error!.issues[0]).toMatchObject({ code: 'invalid_format', format: 'currency_code', message: 'Invalid currency code' })"]
+before = ["expect(currency.parse(code)).toBe(code)", "expect(currency.safeParse(input).success).toBe(false)", "expect(currency.safeParse('usd').error!.issues[0]).toMatchObject({ code: 'invalid_format', format: 'currency_code', message: 'Invalid currency code' })"]
 after = []
 message = "deleted: currency code"
 label = "intended"
@@ -406,24 +382,12 @@ label = "intended"
 note = "The commit reverts 'ci: publish to npm with NPM_TOKEN', which added this workflow; both are stray commits inherited from a since-rewritten main, which never had the file."
 
 [[finding]]
-unit = "311cd74b2765"
-pr = 6660
-rule = "check-cant-fail"
-path = "packages/zod/src/v4/core/tests/compile.test.ts"
-test = "record key schemas compile: formats, checks, numbers, transforms"
-before = ["expect(fast.success).toBe(original.success) via expectMatch(z.record(z.email(), z.number()), JSON.parse('{\"__proto__\":{\"p\":1},\"a@b.com\":1}'))", "expect(fast.data).toEqual(original.data) (in if) via expectMatch(z.record(z.email(), z.number()), JSON.parse('{\"__proto__\":{\"p\":1},\"a@b.com\":1}'))", "expect(fast.error.issues).toEqual(original.error.issues) (in if) via expectMatch(z.record(z.email(), z.number()), JSON.parse('{\"__proto__\":{\"p\":1},\"a@b.com\":1}'))"]
-after = ["expect(fast.success).toBe(original.success) (in loop) via expectMatch(z.looseRecord(z.email(), z.number()), input)", "expect(fast.data).toEqual(original.data) (in if, in loop) via expectMatch(z.looseRecord(z.email(), z.number()), input)", "expect(fast.error.issues).toEqual(original.error.issues) (in if, in loop) via expectMatch(z.looseRecord(z.email(), z.number()), input)"]
-message = "expectMatch(z.looseRecord(z.email(), z.number()), input) is now inside a loop, with its 3 checks: it doesn't run if the loop runs zero times"
-label = "wrong"
-note = "The loop runs over a literal three-schema array, so the original record case still runs, plus two more."
-
-[[finding]]
 unit = "33494f3a1ee9"
 pr = 6704
 rule = "test-disabled"
 path = "packages/zod/src/v4/classic/tests/intersection.test.ts"
 test = "key reconciliation is linear in the input's key count"
-before = ["expect(records.parse(input)).toEqual(input)", "expect(stricts.safeParse(input).error!.issues).toMatchObject([{ code: 'unrecognized_keys', keys: { length: 50000 } }])", "expect(mixed.safeParse(input).error!.issues).toMatchObject([{ code: 'unrecognized_keys', keys: { length: 50001 } }])", "expect(best(schema)).toBeLessThan(25 * best(record)) (in loop)"]
+before = ["expect(records.parse(input)).toEqual(input)", "expect(stricts.safeParse(input).error!.issues).toMatchObject([{ code: 'unrecognized_keys', keys: { length: 50000 } }])", "expect(mixed.safeParse(input).error!.issues).toMatchObject([{ code: 'unrecognized_keys', keys: { length: 50001 } }])", "expect(best(schema)).toBeLessThan(25 * best(record))"]
 after = []
 message = "deleted: key reconciliation is linear in the input's key count"
 label = "wrong"

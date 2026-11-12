@@ -149,7 +149,7 @@ The `expect(…).toX(…)` style covers essentially all of it.
 
 ### Assertions
 
-- **Shape:** `expect(subject)` (optionally `expect.soft` or `expect.poll`), then optionally `.not` / `.resolves` / `.rejects`, then `.toX(args)`.
+- **Shape:** `expect(subject)` (optionally `expect.soft`, `expect.poll`, or vitest browser mode's `expect.element`), then optionally `.not` / `.resolves` / `.rejects`, then `.toX(args)`.
 - **Recorded for each one:**
   - the subject's source text
   - negation (`.not`)
@@ -239,13 +239,13 @@ test "emails a confirmation … and only forwards once confirmed"
 - **Per assertion:**
   - the subject (normalized source)
   - `negated` (`.not`)
-  - which `expect`: plain, `expect.soft` or `expect.poll`
+  - which `expect`: plain, `expect.soft`, `expect.poll` or `expect.element`
   - promise modifier: `.resolves` or `.rejects`
   - `awaited`: whether the test waits for it: `await`ed, or returned from the test, hook, `test.step` or awaited `vi.waitFor` function (an arrow's body counts as returned). Returning it from another callback doesn't count: `setTimeout` or `forEach` drops what it returns.
   - the matcher: its raw name plus its kind
   - the arguments as values
   - its facts: what it states, in a form that doesn't depend on how it's written (see "Rewritten checks" in step 4)
-  - context: inside an if (or `? :` or `switch` case), loop, try, catch, callback or short-circuit. "Try" means a `try` with a `catch` that doesn't throw again (`catch (err) { tidy(err); throw err }` lets the failure through), or with a `finally` that returns (or `break`s / `continue`s out), which drops the failure. A plain `try { … } finally { cleanup() }` still lets a failure through. A `test.step` callback runs right away, so it isn't a callback. Neither is the function in an awaited `vi.waitFor`, `vi.waitUntil` or Testing Library `waitFor`: they retry it and fail the test if it never passes. Not awaited, the test may end first, so it's a callback.
+  - context: inside an if (or `? :` or `switch` case), loop, try, catch, callback or short-circuit. "Loop" means one that may run zero times: not a `for…of` over an array written out with at least one item (`for (const path of ['/a', '/b'])`), a `for` whose counter starts inside its literal bound (`for (let i = 0; i < 2; i++)`) or that has no condition, a `while (true)`, or a `do … while`, which all run their body at least once. "Try" means a `try` with a `catch` that doesn't throw again (`catch (err) { tidy(err); throw err }` lets the failure through), or with a `finally` that returns (or `break`s / `continue`s out), which drops the failure. A plain `try { … } finally { cleanup() }` still lets a failure through. A `test.step` callback runs right away, so it isn't a callback. Neither is the function in an awaited `vi.waitFor`, `vi.waitUntil` or Testing Library `waitFor`: they retry it and fail the test if it never passes. Not awaited, the test may end first, so it's a callback. Nor is a function declared in the test (or hook, or helper) that it surely calls: `const hover = () => { … }` (or `function hover() { … }`), then `hover()` where the call isn't in an `if`, a loop, a callback, …, and awaited if the function is async. A call from another such function counts when that one is surely called too.
   - a span, used for reporting and never compared
 - **Values:** null, undefined, bool, number, string, template, regex (with its top-level alternatives split by oxc's regex parser), object (keys compared as a set), array, nested matcher (`expect.objectContaining(…)`), or opaque (any other expression, as normalized source).
 
@@ -397,6 +397,7 @@ The same check can be written many ways, and refactors and linters move between 
 | `expect(list.includes(v)).toBe(true)`, `expect(list).toContain(v)` | `list toContain(v)` |
 | `expect(a === b).toBe(true)`, `expect(a).toBe(b)`; `!==` or `toBe(false)` for `.not` | `a == b` |
 | `expect(n > 5).toBe(true)`, `expect(n).toBeGreaterThan(5)` (and `>=`, `<`, `<=`) | `n toBeGreaterThan(5)` |
+| `expect(y).toBe(239)`, `expect(y).toBeCloseTo(239, 1)`: close to at least one decimal digit (the default is two). Exact equality on a computed number is brittle, so the switch is usually a fix; `toBeCloseTo(239, 0)` passes anything from 238.5 to 239.5, so it doesn't count | `y == 239` |
 | `expect(typeof x).toBe('string')`, `expect(x).toBeTypeOf('string')` | `x toBeTypeOf('string')` |
 | `expect(e instanceof E).toBe(true)`, `expect(e).toBeInstanceOf(E)` | `e toBeInstanceOf(E)` |
 | `toBe(true)` / `toBeTruthy()`, `toBe(false)` / `toBeFalsy()` / `expect(!x).toBe(true)`, `toBe(null)` / `toBeNull()`, `toEqual(undefined)` / `toBeUndefined()` | the same fact |
@@ -514,7 +515,7 @@ test/unit/inbound-body.test.ts:41  HIGH  check-removed
 
 - **A check in a new place** where it may not run or fail (when checks are folded into one, any of them that wasn't there before counts): a callback, a `catch`, a `try` with a `catch`, an `if` or `? :`, after `&&`/`||`/`??` (medium), or a loop that may run zero times (low). Places that still fail the test aren't flagged: `try { … } finally { … }`, `test.step`, and an awaited `vi.waitFor` / `waitFor`, which retries and then fails the test (step 3).
 - **A `return` added before checks,** or one moved out of an `if`: high when it's unconditional (they never run), medium inside an `if`.
-- **`await` dropped from a check that returns a promise:** `.resolves` / `.rejects`, `expect.poll`, and Playwright's web-first matchers (`toBeVisible`, `toHaveText`, …). The test may end before it fails. On a plain `toBe`, `await` did nothing, so dropping it is fine.
+- **`await` dropped from a check that returns a promise:** `.resolves` / `.rejects`, `expect.poll`, `expect.element`, and Playwright's web-first matchers (`toBeVisible`, `toHaveText`, …). The test may end before it fails. On a plain `toBe`, `await` did nothing, so dropping it is fine.
 - **A matcher dropped:** `expect(total).toBe(3)` → `expect(total)` checks nothing.
 - **`expect.assertions(n)`** removed, lowered, or replaced with `expect.hasAssertions()` (medium).
 
@@ -542,10 +543,21 @@ test/helpers.ts:1  HIGH  check-removed
 1. **A matcher is first written one way:** aliases folded (`toBeCalled` → `toHaveBeenCalled`), and matchers that behave the same written the same (`toBeNull()` = `toBe(null)`, `.not.toBeUndefined()` = `toBeDefined()`, `toEqual(5)` = `toBe(5)`).
 2. **The subject changed** (a rewrite): what the checks state (their facts, step 4) decides. All of it still stated: fine, as with `expect(r.text).toBe(v)` → `expect(r).toMatchObject({ text: v })` or `await expect(p).resolves.toBe(v)` → `expect(await p).toBe(v)`. Only part of it: `expectation-loosened`, e.g. `no longer checks r.b == 2`. None of it: go on.
 3. **`.not` added or removed,** or `.resolves` ↔ `.rejects`: `outcome-changed`.
-4. **Another matcher:** the ladder below. Down is `matcher-loosened`, across is `matcher-swapped`, up is fine. Within one family, a different value is `outcome-changed`: `toEqual({ preview })` → `toBe('Hi')`, `toBeGreaterThan(t)` → `toBeLessThanOrEqual(t)`.
+4. **Another matcher:** the ladder below. Down is `matcher-loosened`, across is `matcher-swapped`, up is fine. Within one family, a different value is `outcome-changed`: `toEqual({ preview })` → `toBe('Hi')`, `toBeGreaterThan(t)` → `toBeLessThanOrEqual(t)`. A number compared closely (step 4's facts) is the same check: `toBe(239)` → `toBeCloseTo(239, 1)`.
 5. **The same matcher:** the expected values, by the table under "Which direction is looser". Looser is `expectation-loosened`; different but not looser is `outcome-changed`; stricter is fine.
 
-Several checks folded into one, or one split into several, are compared by their facts the same way as in step 2. A test's `.each` table is compared too, row for row: rows dropped are `expectation-loosened` (a duplicate counts). When rows were also edited or reshaped (a column added or removed), only the count is compared, at medium: `.each now runs 4 rows instead of 5`.
+What another check in the test still states isn't lost, if that check runs whenever the pair's new one does (it's in the same place, or nothing can stop it). Placement became computed in Excalidraw, so `y` moved out of an object check into one of its own:
+
+```text
+before: expect(arrow).toMatchObject({ type: 'arrow', x: 261, y: 239 })
+after:  expect(arrow.y).toBeCloseTo(239, 1)
+        expect(arrow).toMatchObject({ type: 'arrow', x: 261 })
+→ nothing: arrow.y == 239 is still stated
+```
+
+That holds for a key dropped from an object (every fact under it must be stated), a rewrite in step 2, and folded checks.
+
+Several checks folded into one, or one split into several, are compared by their facts the same way as in step 2. A test's `.each` table is compared too, row for row: rows dropped are `expectation-loosened` (a duplicate counts). When rows were also edited or reshaped (a column added or removed), only the count is compared, at medium: `.each now runs 4 rows instead of 5`. A test in a `describe.each` with an `it.each` of its own runs every row of one with every row of the other, so the tables are compared level by level (suite's with suite's, test's with test's), and only when both sides have as many levels. A table that isn't written out (`name === 'Checkbox' ? [a, b] : [a]`) isn't compared.
 
 ### What `gate-loosened` checks
 
@@ -571,10 +583,10 @@ It compares the gate facts (step 3) of each CI or test config file before and af
   - patterns are compared for what they mean. A negated include (`'!src/legacy/**'`) is an exclude, and `{a,b}` alternatives are spelled out. In vitest's `exclude`, a pattern vitest excludes anyway (`**/node_modules/**`, `...configDefaults.exclude`) skips nothing new. Any other spread (`...flakyTests`) may skip anything, so it counts. A file excluded from one project that another project now includes moved; it wasn't skipped.
   - a project is removed only if no config in the same folder lists it now: vitest 3 moves `vitest.workspace.ts`'s projects into `vitest.config.ts`'s `test.projects` (or `test.workspace`). A moved project is compared with what it was, so a `retry` raised on the way is flagged. A new project's settings aren't checked, since it only adds tests.
   - `forbidOnly` turned off or `allowOnly: true` (medium: a committed `.only` passes)
-- **package.json:** each test script's command, like a workflow step's, and the `jest` settings. A test script that no longer runs a test runner is high when it does nothing (`echo skip`). It's medium when it runs something else, since `node scripts/ci.js` may still run the tests. A test script removed is medium, because CI calling it would now fail loudly.
+- **package.json:** each test script's command, like a workflow step's, and the `jest` settings. A script that calls another script of the same file is read through it, with its own flags added to that script's: with `"test:unit": "vitest --project unit"`, changing `"test": "nr test:unit"` to `"nr test:unit --project=server"` runs one more project, not only `server`. Only npm, pnpm, yarn, `bun run` and `nr` are followed this way, not tools that run other packages' scripts (`turbo run test`, `pnpm -r test`). A test script that no longer runs a test runner is high when it does nothing (`echo skip`). It's medium when it runs something else, since `node scripts/ci.js` may still run the tests. A test script removed is medium, because CI calling it would now fail loudly.
 - **`assertrust.toml` itself** (step 6, "Config"): a rule turned `off` or left to the `judge`, `fail-on` lowered (high), or a `test` or `gate` file pattern dropped (medium, since it's often rewritten to match the same files).
 
-A deleted workflow or config counts as all of it removed. So does one renamed or moved where it no longer runs (`ci.yml` → `ci.yml.disabled`). Raising a threshold, removing a skip, or adding a step is stricter and never flagged. Not covered yet: triggers (`on:`), matrix entries, a step's own `shell:`, and which script a renamed `npm run …` step now runs.
+A deleted workflow or config counts as all of it removed. So does one renamed or moved where it no longer runs (`ci.yml` → `ci.yml.disabled`). Raising a threshold, removing a skip, or adding a step is stricter and never flagged. Not covered yet: triggers (`on:`), matrix entries, a step's own `shell:`, and which script a workflow step's `npm run …` runs (only scripts calling scripts in the same `package.json` are followed).
 
 ### Matcher strength ladder (positive checks)
 
@@ -664,7 +676,8 @@ There's at least one fixture that must be flagged and one that must not, per rul
 - checks through helpers and hooks, linked (`crates/assertrust-rules/tests/helpers.rs`), and helper files followed in real repos, including staged and unsaved changes, `index` files that pass helpers on or are imported by dots alone, helpers outside test folders and helpers moved there, tsconfig aliases, files that aren't text, and a helper file that stops parsing (`crates/assertrust/tests/helpers.rs`)
 - a fixture with one change of each kind, run through `assertrust check` (`crates/assertrust/tests/fixtures/rules/`)
 - both polarity directions for Pattern and Subset
-- rewrites that state the same thing, and matchers that behave the same, which must produce no findings
+- rewrites that state the same thing, and matchers that behave the same, which must produce no findings, including a number compared closely and a key checked on its own line
+- loops that always run, functions a test surely calls, `expect.element`, `.each` tables at two levels, and a script calling another, each in the shape the backtest found
 - reformat-only changes, which must produce no findings
 - tests and checks that moved to another test or file, which must produce no findings
 - the three Mailyond shapes: `10d8742` (fields dropped), `71110c0` (an alternative dropped under `.not`) and `038cf0b` (a check removed in a renamed, refactored test)
@@ -836,12 +849,12 @@ The 245 wrong ones, most common first:
 - **A check rewritten into an equivalent or stronger form that matching doesn't pair:** an `it.each` table replacing a list of tests, a new API or state field asserting the same value, a check moved into a helper the test calls through an object (immich's `ctx.assertSyncResponse`, 20 findings) or into a fixture (`app.dialog`).
 - **Tests or checks moved to another file**, which matching doesn't look for: immich moved component tests into page specs and Playwright specs, hono moved adapter tests into their own packages and CI workflow.
 - **Smaller mistakes, each with a clear fix:**
-  - `await expect.element(…)` (vitest browser mode) isn't read as a check (7 in immich).
-  - `check-cant-fail` fires on a loop over a literal non-empty array, a loop with a constant bound, and a local helper the test always calls: all 11 of its findings.
+  - `await expect.element(…)` (vitest browser mode) isn't read as a check (7 in immich). Fixed since.
+  - `check-cant-fail` fires on a loop over a literal non-empty array, a loop with a constant bound, and a local helper the test always calls: all 11 of its findings. Fixed since, except for an `if` in a loop that skips one entry (tRPC), which only running the code would tell.
   - Weakening of code the PR added was decided without looking at the PR's head: a test the PR added, deleted and put back, or moved to another file, was still reported. Fixed since (below).
-  - `.each` rows are counted from the outer `describe.each` when the table is an expression (`name === 'Checkbox' ? […] : […]`).
-  - A field taken out of `toMatchObject` but asserted on its own line (`toBeCloseTo(239, 1)`) is reported as no longer checked.
-  - An added `--project` in a vitest command is read as replacing the others.
+  - `.each` rows are counted from the outer `describe.each` when the table is an expression (`name === 'Checkbox' ? […] : […]`). Fixed since.
+  - A field taken out of `toMatchObject` but asserted on its own line (`toBeCloseTo(239, 1)`) is reported as no longer checked. Fixed since; a plain `toBe(239)` on its own line was reported too.
+  - An added `--project` in a vitest command is read as replacing the others. Fixed since: a script calling another script is read through it.
   - Stacked PRs: after the PR below is squash-merged, the PR above still holds its commits, so their findings are reported again (7 in tRPC). GitHub's own diff shows those commits too until a rebase, so the Action would as well. The backtest checks a stacked PR on its own only when its commits no longer merge cleanly into what landed.
   - A few removals are reported twice, once against the main branch and once as added by the PR under the file's old name.
 
@@ -852,6 +865,12 @@ The next PRs fix these, one group at a time, each measured with the backtest.
 - added by their PR, hidden: 194, 43% right.
 
 What a PR check shows by default halved; its precision didn't move, since that comes from the rule fixes. Still reported: a PR that puts the same tests in two files and later deletes one copy (vueuse), because the other file didn't change after that commit. The extra comparisons cost time: Excalidraw's 100 PRs take 6.4s instead of 4.0s. Most of it is parsing the same files again, which caching parsed files by git blob would remove.
+
+Then the smaller mistakes above were fixed: `expect.element`, loops that always run, functions a test declares and calls, keys checked on their own line, `.each` tables level by level, and scripts calling scripts. 21 false alarms went, and nothing right did. The labels now hold 395 findings:
+- shown by default: 211, **44% right** (58% at high confidence, 68 of 118);
+- added by their PR, hidden: 184, 46% right.
+
+Two immich findings stay: checks rewritten into `expect.element` on new locators, which don't pair with the old ones (the rewrites above).
 
 ### Tests
 

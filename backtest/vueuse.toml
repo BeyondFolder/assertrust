@@ -43,17 +43,6 @@ label = "wrong"
 note = "The server project was added to test:cov, so server tests still run in CI."
 
 [[finding]]
-unit = "5b2721ff083b"
-pr = 5509
-rule = "gate-loosened"
-path = "package.json"
-before = ["nr test:unit"]
-after = ["nr test:unit --project=server"]
-message = "script test: now runs only --project server"
-label = "wrong"
-note = "--project=server is appended to 'vitest --project unit', so the script now runs unit plus server, not only server (and CI does not use it)."
-
-[[finding]]
 unit = "653283c07d8c"
 pr = 5523
 rule = "check-removed"

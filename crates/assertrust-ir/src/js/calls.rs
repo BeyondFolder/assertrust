@@ -313,7 +313,8 @@ pub(super) fn expect_call<'b, 'a>(call: &'b CallExpression<'a>) -> Option<Expect
     })
 }
 
-/// `expect(…)`, `expect.soft(…)` or `expect.poll(…)`.
+/// `expect(…)`, `expect.soft(…)`, `expect.poll(…)` or vitest browser mode's
+/// `expect.element(…)`.
 fn expect_kind(call: &CallExpression) -> Option<ExpectKind> {
     match call.callee.get_inner_expression() {
         Expression::Identifier(id) if id.name == "expect" => Some(ExpectKind::Plain),
@@ -321,6 +322,7 @@ fn expect_kind(call: &CallExpression) -> Option<ExpectKind> {
             match member.property.name.as_str() {
                 "soft" => Some(ExpectKind::Soft),
                 "poll" => Some(ExpectKind::Poll),
+                "element" => Some(ExpectKind::Element),
                 _ => None,
             }
         }

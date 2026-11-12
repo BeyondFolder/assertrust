@@ -3,6 +3,25 @@
 //! The IR only labels the kind. Which kind is stricter than which is up to the rules
 //! (step 5), so a pytest `assert a == b` could map to [`MatcherKind::Equal`] too.
 
+use crate::value::Value;
+
+/// The number `toBeCloseTo(args)` checks a value is, when it compares closely enough to
+/// count as checking it: to at least one decimal digit (the default is two).
+/// `toBeCloseTo(239, 1)` passes 238.96 to 239.04, which for a computed number (whose exact
+/// value is brittle) is checking it's 239. `toBeCloseTo(239, 0)` passes 238.5 to 239.5, so
+/// it doesn't count.
+pub fn close_to(args: &[Value]) -> Option<&Value> {
+    let digits: f64 = match args.get(1) {
+        None => 2.0,
+        Some(Value::Number(digits)) => digits.parse().ok()?,
+        Some(_) => return None,
+    };
+    match args.first()? {
+        number @ Value::Number(_) if digits >= 1.0 && args.len() <= 2 => Some(number),
+        _ => None,
+    }
+}
+
 /// What kind of check a matcher makes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MatcherKind {

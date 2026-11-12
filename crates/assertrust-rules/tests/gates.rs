@@ -530,6 +530,36 @@ fn a_test_script_emptied_or_removed() {
 }
 
 #[test]
+fn a_script_calling_another_is_read_through_it() {
+    // The shape of vueuse's 5b2721f: a project appended to a script that already picks one.
+    let before = r#"{ "scripts": {
+  "test": "nr test:unit",
+  "test:unit": "vitest --project unit"
+} }"#;
+    assert_eq!(
+        findings(
+            "package.json",
+            before,
+            r#"{ "scripts": {
+  "test": "nr test:unit --project=server",
+  "test:unit": "vitest --project unit"
+} }"#
+        ),
+        [""; 0]
+    );
+    // A script that ran every project now runs one.
+    let before = r#"{ "scripts": { "test": "npm run test:all", "test:all": "vitest run" } }"#;
+    assert_eq!(
+        findings(
+            "package.json",
+            before,
+            r#"{ "scripts": { "test": "npm run test:all -- --project=unit", "test:all": "vitest run" } }"#
+        ),
+        ["medium 1: script test: now runs only --project unit"]
+    );
+}
+
+#[test]
 fn test_runs_through_tools_assertrust_does_not_know() {
     for run in [
         "vp test --run",

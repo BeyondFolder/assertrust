@@ -393,15 +393,15 @@ pub struct Context {
     /// Inside an `if` or a `? :`.
     pub in_if: bool,
     /// Inside a loop that may run zero times: not `for (const x of [a, b])`, a `for` with
-    /// literal bounds, `while (true)` or `do … while`.
+    /// literal bounds, `while (true)` or `do … while`, up to a `break` or `continue` in them.
     pub in_loop: bool,
     /// Inside a `try` block that has a `catch` (a failure may be caught).
     pub in_try: bool,
     /// Inside a `catch` block (only runs if something threw).
     pub in_catch: bool,
-    /// Inside a function nested in the test, e.g. a `.forEach` callback. Not a `test.step`,
-    /// an awaited `vi.waitFor`, or a function declared in the test that it surely calls
-    /// (`const hover = () => {…}; hover()`), which run as part of the test.
+    /// Inside a function nested in the test, e.g. a `.forEach` callback. Not a `test.step`
+    /// or an awaited `vi.waitFor`, which run as part of the test, nor a function declared in
+    /// the test, which is read where it's called (`const hover = () => {…}; hover()`).
     pub in_callback: bool,
     /// On the right of `&&`, `||` or `??`.
     pub short_circuit: bool,

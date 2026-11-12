@@ -8,9 +8,10 @@
 //! → expectation-loosened: .not.toMatch no longer rules out resend
 //! ```
 
-use assertrust_ir::{Assertion, Fact, ItemKind, MatcherKind, Test, Value, close_to};
+use assertrust_ir::{Assertion, Fact, Item, ItemKind, MatcherKind, Test, Value, close_to};
 use assertrust_match::{CheckMatch, CheckPair, TestPair};
 
+use crate::check_cant_fail::returns_promise;
 use crate::looser;
 use crate::strength::Canonical;
 use crate::{
@@ -23,12 +24,13 @@ pub(crate) fn check(change: &Change, findings: &mut Vec<Finding>) {
         if never_runs(after) {
             continue;
         }
+        let stated = Stated::of(after);
         for check in &pair.checks.pairs {
             // The same check, maybe in a new place, which is `check-cant-fail`'s.
             if check.how == CheckMatch::Identical {
                 continue;
             }
-            let Some((rule, confidence, message)) = verdict(before, after, check) else {
+            let Some((rule, confidence, message)) = verdict(before, after, check, &stated) else {
                 continue;
             };
             let old = check.before.first().map(|&item| &before.body.items[item]);
@@ -53,7 +55,7 @@ pub(crate) fn check(change: &Change, findings: &mut Vec<Finding>) {
 
 type Verdict = (RuleId, Confidence, String);
 
-fn verdict(before: &Test, after: &Test, check: &CheckPair) -> Option<Verdict> {
+fn verdict(before: &Test, after: &Test, check: &CheckPair, stated: &Stated) -> Option<Verdict> {
     let olds: Vec<&Assertion> = check
         .before
         .iter()
@@ -64,32 +66,65 @@ fn verdict(before: &Test, after: &Test, check: &CheckPair) -> Option<Verdict> {
         .iter()
         .map(|&item| assertion(after, item))
         .collect();
-    let elsewhere = stated_elsewhere(after, &check.after);
+    let elsewhere = stated.besides(&check.after);
     match (olds.as_slice(), news.as_slice()) {
         ([old], [new]) => one(old, new, &elsewhere),
         _ => folded(&olds, &news, &elsewhere),
     }
 }
 
-/// What the test's other checks state, where they run whenever the new checks do (in the
-/// same place, or where nothing can stop them). A fact one of them states isn't lost when
-/// the paired check drops it: `y: 239` taken out of a `toMatchObject` and checked on its own
-/// line, `expect(arrow.y).toBe(239)`.
-fn stated_elsewhere<'t>(after: &'t Test, news: &[usize]) -> Vec<&'t Fact> {
-    let items = &after.body.items;
-    let runs_with_them = |context| news.iter().all(|&new| items[new].context == context);
-    items
-        .iter()
-        .enumerate()
-        .filter(|(at, item)| {
-            !news.contains(at) && (item.context.is_plain() || runs_with_them(item.context))
-        })
-        .filter_map(|(_, item)| match &item.kind {
-            ItemKind::Assertion(assertion) => Some(&assertion.facts),
-            _ => None,
-        })
-        .flatten()
-        .collect()
+/// What a test's checks state, for telling whether a fact a check pair dropped is still
+/// stated by another check: `y: 239` taken out of a `toMatchObject` and checked on its own
+/// line, `expect(arrow.y).toBe(239)`, isn't lost.
+struct Stated<'t> {
+    /// The checks that can fail the test: not a promise check it doesn't wait for.
+    checks: Vec<(usize, &'t [Fact])>,
+    items: &'t [Item],
+    /// How many of the test's own early `return`s come before each item.
+    returns_before: Vec<usize>,
+}
+
+impl<'t> Stated<'t> {
+    fn of(test: &'t Test) -> Self {
+        let items = test.body.items.as_slice();
+        let mut returns = 0;
+        let mut returns_before = Vec::with_capacity(items.len());
+        let mut checks = Vec::new();
+        for (at, item) in items.iter().enumerate() {
+            returns_before.push(returns);
+            match &item.kind {
+                ItemKind::EarlyReturn if item.via.is_empty() => returns += 1,
+                ItemKind::Assertion(check) if check.awaited || !returns_promise(check) => {
+                    checks.push((at, check.facts.as_slice()));
+                }
+                _ => {}
+            }
+        }
+        Self {
+            checks,
+            items,
+            returns_before,
+        }
+    }
+
+    /// The facts the checks besides `news` state where they run whenever `news` do: in the
+    /// same place or where nothing can stop them, and after no `return` they don't come
+    /// after too.
+    fn besides(&self, news: &[usize]) -> Vec<&'t Fact> {
+        let runs_with_them = |at: usize| {
+            let context = self.items[at].context;
+            let returns = self.returns_before[at];
+            news.iter().all(|&new| {
+                (context.is_plain() || context == self.items[new].context)
+                    && returns <= self.returns_before[new]
+            })
+        };
+        self.checks
+            .iter()
+            .filter(|(at, _)| !news.contains(at) && runs_with_them(*at))
+            .flat_map(|(_, facts)| facts.iter())
+            .collect()
+    }
 }
 
 /// One check and what it became.
@@ -336,13 +371,10 @@ fn each_rows(
     findings: &mut Vec<Finding>,
 ) {
     // A test in a `describe.each` with an `it.each` of its own runs every row of one with
-    // every row of the other, so the tables are compared level by level, and only when both
-    // sides have as many levels.
+    // every row of the other, so the tables are compared level by level, from the test's own
+    // outward. A level only one side has (the test moved into a `describe.each`) isn't.
     let (olds, news) = (each_tables(before), each_tables(after));
-    if olds.len() != news.len() {
-        return;
-    }
-    for ((name, old), (_, new)) in olds.into_iter().zip(news) {
+    for ((name, old), (_, new)) in olds.into_iter().rev().zip(news.into_iter().rev()) {
         if let (Some(Value::Array(old)), Some(Value::Array(new))) = (old, new) {
             each_level(change, pair, after, name, old, new, findings);
         }

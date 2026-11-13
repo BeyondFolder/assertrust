@@ -278,6 +278,7 @@ impl fmt::Display for Assertion {
             ExpectKind::Plain => "expect",
             ExpectKind::Soft => "expect.soft",
             ExpectKind::Poll => "expect.poll",
+            ExpectKind::Element => "expect.element",
         };
         write!(f, "{expect}({})", self.subject)?;
         if self.negated {
@@ -362,12 +363,14 @@ impl fmt::Display for Fact {
     }
 }
 
-/// Which `expect`: plain, `expect.soft` (doesn't stop the test) or `expect.poll` (retries).
+/// Which `expect`: plain, `expect.soft` (doesn't stop the test), `expect.poll` (retries), or
+/// vitest browser mode's `expect.element` (retries until the element matches).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ExpectKind {
     Plain,
     Soft,
     Poll,
+    Element,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -389,14 +392,16 @@ pub struct Matcher {
 pub struct Context {
     /// Inside an `if` or a `? :`.
     pub in_if: bool,
-    /// Inside a `for` / `while` loop.
+    /// Inside a loop that may run zero times: not `for (const x of [a, b])`, a `for` with
+    /// literal bounds, `while (true)` or `do … while`, up to a `break` or `continue` in them.
     pub in_loop: bool,
     /// Inside a `try` block that has a `catch` (a failure may be caught).
     pub in_try: bool,
     /// Inside a `catch` block (only runs if something threw).
     pub in_catch: bool,
     /// Inside a function nested in the test, e.g. a `.forEach` callback. Not a `test.step`
-    /// or an awaited `vi.waitFor`, which run as part of the test.
+    /// or an awaited `vi.waitFor`, which run as part of the test, nor a function declared in
+    /// the test, which is read where it's called (`const hover = () => {…}; hover()`).
     pub in_callback: bool,
     /// On the right of `&&`, `||` or `??`.
     pub short_circuit: bool,

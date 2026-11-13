@@ -140,6 +140,7 @@ File snapshots can also be rewritten without cargo-insta, using `INSTA_UPDATE=al
 backtest/run.sh                    # every repo; exits with 1 on a finding not labelled yet or a right one gone
 backtest/run.sh hono zod           # only these
 backtest/run.sh --update-labels    # also write new findings into the labels files
+backtest/run.sh --format json zod  # flags go to `assertrust backtest`, with their values
 ```
 
 The script fetches what each replay needs into `target/backtest-clones/`: the range plus a year of history before it (so PRs opened earlier still find where they branched), and the commits of each squash-merged PR (`refs/pull/N/head`). A PR number GitHub has no PR for is remembered and not asked for again; any other failed fetch (say, the network) is retried on the next run. The first run downloads about 1.7 GB, most of it cal.com's checkout; later runs reuse the clones and take a minute or two.

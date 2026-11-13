@@ -9,6 +9,7 @@
 #   backtest/run.sh                    every labels file here and in $ASSERTRUST_PRIVATE_LABELS
 #   backtest/run.sh hono zod           only these
 #   backtest/run.sh --update-labels    flags go to `assertrust backtest`
+#   backtest/run.sh --format json zod  so does a flag's value
 #
 # Env: ASSERTRUST_PRIVATE_LABELS, a directory of labels files for private repos, kept out of
 # this repo; ASSERTRUST_BACKTEST_CLONES, where the clones go; ASSERTRUST_BIN, the binary to
@@ -32,11 +33,14 @@ bin=$(absolute "$bin")
 
 flags=()
 names=()
-for arg in "$@"; do
-  case $arg in
-    -*) flags+=("$arg") ;;
-    *) names+=("$arg") ;;
+while [ $# -gt 0 ]; do
+  case $1 in
+    # The flags of `assertrust backtest` that take a value.
+    --format | --range | --last) flags+=("$1" "${2:?$1 needs a value}") && shift ;;
+    -*) flags+=("$1") ;;
+    *) names+=("$1") ;;
   esac
+  shift
 done
 
 files=("$here"/*.toml)

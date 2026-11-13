@@ -263,66 +263,6 @@ note = "Moved to medium album and trash tests that check the next thumbnail move
 [[finding]]
 unit = "862059712620"
 pr = 32983
-rule = "check-removed"
-path = "web/src/lib/elements/__test__/FormatMessage.spec.ts"
-test = "FormatMessage component > formats a plain text message"
-before = ["expect(screen.getByText('Hello test')).toBeInTheDocument()"]
-after = []
-message = "removed expect(screen.getByText('Hello test')).toBeInTheDocument(); the test has no checks left"
-label = "wrong"
-note = "Check still there, rewritten as await expect.element(...).toBeInTheDocument() for vitest browser mode."
-
-[[finding]]
-unit = "862059712620"
-pr = 32983
-rule = "check-removed"
-path = "web/src/lib/elements/__test__/FormatMessage.spec.ts"
-test = "FormatMessage component > shows raw message when value is empty"
-before = ["expect(screen.getByText('Hello {name}')).toBeInTheDocument()"]
-after = []
-message = "removed expect(screen.getByText('Hello {name}')).toBeInTheDocument(); the test has no checks left"
-label = "wrong"
-note = "Check still there, rewritten as await expect.element(...).toBeInTheDocument() for vitest browser mode."
-
-[[finding]]
-unit = "862059712620"
-pr = 32983
-rule = "check-removed"
-path = "web/src/lib/elements/__test__/FormatMessage.spec.ts"
-test = "FormatMessage component > shows message when slot is empty"
-before = ["expect(screen.getByText('Hello test')).toBeInTheDocument()"]
-after = []
-message = "removed expect(screen.getByText('Hello test')).toBeInTheDocument(); the test has no checks left"
-label = "wrong"
-note = "Check still there, rewritten as await expect.element(...).toBeInTheDocument() for vitest browser mode."
-
-[[finding]]
-unit = "862059712620"
-pr = 32983
-rule = "check-removed"
-path = "web/src/lib/elements/__test__/FormatMessage.spec.ts"
-test = "FormatMessage component > protects against XSS injection"
-before = ["expect(screen.getByText('<image/src/onerror=prompt(8)>')).toBeInTheDocument()"]
-after = []
-message = "removed expect(screen.getByText('<image/src/onerror=prompt(8)>')).t…; the test has no checks left"
-label = "wrong"
-note = "Check still there, rewritten as await expect.element(...).toBeInTheDocument() for vitest browser mode."
-
-[[finding]]
-unit = "862059712620"
-pr = 32983
-rule = "check-removed"
-path = "web/src/lib/elements/__test__/FormatMessage.spec.ts"
-test = "FormatMessage component > displays the message key when not found"
-before = ["expect(screen.getByText('invalid.key')).toBeInTheDocument()"]
-after = []
-message = "removed expect(screen.getByText('invalid.key')).toBeInTheDocument(); the test has no checks left"
-label = "wrong"
-note = "Check still there, rewritten as await expect.element(...).toBeInTheDocument() for vitest browser mode."
-
-[[finding]]
-unit = "862059712620"
-pr = 32983
 rule = "test-disabled"
 path = "web/src/lib/elements/__test__/StarRating.spec.ts"
 tests = ["StarRating component > renders correctly", "StarRating component > renders correctly with readOnly"]
@@ -551,18 +491,6 @@ note = "Moved to album page.spec 'editor can edit the description' and 'viewer c
 [[finding]]
 unit = "862059712620"
 pr = 32983
-rule = "check-removed"
-path = "web/src/routes/(user)/people/manage/page.spec.ts"
-test = "keeps toggled hidden state when loading more people"
-before = ["expect(personButtons).toHaveLength(2)", "expect(personButtons[0].getAttribute('aria-pressed')).toBe('true')", "expect(personButtons).toHaveLength(3)", "expect(personButtons[0].getAttribute('aria-pressed')).toBe('true')", "expect(personButtons[2].getAttribute('aria-pressed')).toBe('true')"]
-after = []
-message = "removed 5 checks, including expect(personButtons).toHaveLength(2); the test has no checks left"
-label = "wrong"
-note = "Checks still there as await expect.element(...) on the hidden list (Alice and Carol); the vitest-browser assertion was not recognised."
-
-[[finding]]
-unit = "862059712620"
-pr = 32983
 rule = "test-disabled"
 path = "web/src/routes/(user)/shared-links/(list)/ShareCover.spec.ts"
 tests = ["ShareCover component > renders an image when the shared link is an album", "ShareCover component > renders an image when the shared link is an individual share", "ShareCover component > renders an image when the shared link has no album or assets"]
@@ -685,12 +613,24 @@ unit = "862059712620"
 pr = 32983
 rule = "check-removed"
 path = "web/src/routes/(user)/people/manage/page.spec.ts"
+test = "keeps toggled hidden state when loading more people"
+before = ["expect(personButtons).toHaveLength(2)", "expect(personButtons[0].getAttribute('aria-pressed')).toBe('true')", "expect(personButtons).toHaveLength(3)", "expect(personButtons[0].getAttribute('aria-pressed')).toBe('true')", "expect(personButtons[2].getAttribute('aria-pressed')).toBe('true')"]
+after = ["await expect.element(app.people.manage.hidden.nth(1)).toBeVisible()", "await expect.element(app.people.manage.hidden.first().getByText('Alice')).toBeVisible()", "await expect.element(app.people.manage.hidden.nth(1).getByText('Carol')).toBeVisible()"]
+message = "removed 5 checks, including expect(personButtons).toHaveLength(2)"
+label = "wrong"
+note = "Checks still there as await expect.element(...) on the hidden list (Alice and Carol), rewritten on new locators, so they don't pair with the old ones."
+
+[[finding]]
+unit = "862059712620"
+pr = 32983
+rule = "check-removed"
+path = "web/src/routes/(user)/people/manage/page.spec.ts"
 test = "shows newly loaded hidden people as hidden"
 before = ["expect(personButtons).toHaveLength(3)", "expect(personButtons[2].getAttribute('aria-pressed')).toBe('true')"]
-after = ["expect(app.people.manage.hidden.elements()).toHaveLength(1)"]
+after = ["await expect.element(app.people.manage.hidden.first().getByText('Carol')).toBeVisible()", "expect(app.people.manage.hidden.elements()).toHaveLength(1)"]
 message = "removed 2 checks, including expect(personButtons).toHaveLength(3)"
 label = "wrong"
-note = "Still checks Carol shows as hidden via expect.element and hidden list length 1; the vitest-browser assertion was not recognised."
+note = "Still checks Carol shows as hidden via expect.element and hidden list length 1, rewritten on new locators, so they don't pair with the old ones."
 
 [[finding]]
 unit = "862059712620"

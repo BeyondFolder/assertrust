@@ -107,18 +107,6 @@ note = "Tests the PR itself added were cut down to one label-hover test per cont
 [[finding]]
 unit = "63737025651f"
 pr = 7225
-rule = "expectation-loosened"
-path = "test/components/Tooltip.spec.ts"
-test = "Tooltip > with $name > opens over the label with variant %s"
-before = ["undefined", "'list'", "'card'"]
-after = ["{ component: Checkbox, name: 'Checkbox' }", "{ component: Switch, name: 'Switch' }"]
-message = ".each now runs 2 rows instead of 3"
-label = "wrong"
-note = "The it.each became name === 'Checkbox' ? [undefined, 'list', 'card'] : [undefined], so Checkbox still runs 3 rows and Switch adds one; assertrust took the outer describe.each rows as this test's rows."
-
-[[finding]]
-unit = "63737025651f"
-pr = 7225
 rule = "test-disabled"
 path = "test/components/Popover.spec.ts"
 tests = ["Popover > with $name > opens when entering the label boundary without duplicating pointer listeners", "Popover > with $name > stays open across the control, label and content and closes outside", "Popover > with $name > cancels delayed opening when leaving the label boundary", "Popover > with $name > ignores touch hover and preserves opt-in touch activation on the control", "Popover > with $name > preserves focus, control attributes and label-click toggling", "Popover > with $name > preserves click-mode popovers and control toggling"]

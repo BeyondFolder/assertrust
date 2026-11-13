@@ -74,10 +74,14 @@ fn work_dir(github: &TestRepo, range: &str) -> tempfile::TempDir {
 
 /// Runs the script from `dir` on the fixture, with relative paths for the labels and clones.
 fn run_script(github: &TestRepo, dir: &Path) -> Run {
+    run_script_with(github, dir, &["fixture"])
+}
+
+fn run_script_with(github: &TestRepo, dir: &Path, args: &[&str]) -> Run {
     github.program_in(
         dir,
         SCRIPT,
-        &["fixture"],
+        args,
         &[
             ("ASSERTRUST_BIN", BINARY),
             ("ASSERTRUST_PRIVATE_LABELS", "private"),
@@ -106,6 +110,20 @@ fn fetches_squash_merged_prs_and_finds_relative_paths() {
     );
     // GitHub has no PR #9: remembered, so it's asked about once.
     assert_eq!(missing_prs(dir.path()), "9\n");
+}
+
+#[test]
+fn a_flag_with_a_value_is_not_a_repo_name() {
+    let (github, range) = github();
+    let dir = work_dir(&github, &range);
+    let run = run_script_with(&github, dir.path(), &["--format", "json", "fixture"]);
+    assert_eq!(run.code, 1, "{}\n{}", run.stdout, run.stderr);
+    let json = run
+        .stdout
+        .strip_prefix("== fixture\n")
+        .unwrap_or_else(|| panic!("{}", run.stdout));
+    let report: serde_json::Value = serde_json::from_str(json).expect("JSON");
+    assert_eq!(report["range"], range.as_str());
 }
 
 #[test]

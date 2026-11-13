@@ -99,7 +99,7 @@ rule = "check-removed"
 path = "packages/element/tests/resize.test.tsx"
 test = "arrow element > resizes with a label"
 before = ["expect(labelPos.x + label.width / 2).toBeCloseTo(arrow.x + arrow.points[2][0])", "expect(labelPos.y + label.height / 2).toBeCloseTo(arrow.y + arrow.points[2][1])", "expect(labelPos.x + label.width / 2).toBeCloseTo(arrow.x + arrow.points[2][0])", "expect(labelPos.y + label.height / 2).toBeCloseTo(arrow.y + arrow.points[2][1])"]
-after = ["expect(label.labelPosition).toBe(0.5) (in callback)", "expect(centerX).toBeCloseTo(pathMidpoint[0], 0) (in callback)", "expect(centerY).toBeCloseTo(pathMidpoint[1], 0) (in callback)", "expect(distanceToElement(arrow, elementsMap, pointFrom(centerX, centerY))).toBeLessThan(0.5) (in callback)"]
+after = ["expect(label.labelPosition).toBe(0.5)", "expect(centerX).toBeCloseTo(pathMidpoint[0], 0)", "expect(centerY).toBeCloseTo(pathMidpoint[1], 0)", "expect(distanceToElement(arrow, elementsMap, pointFrom(centerX, centerY))).toBeLessThan(0.5)"]
 message = "removed 4 checks, including expect(labelPos.x + label.width / 2).toBeCloseTo(arrow.x + …"
 label = "wrong"
 note = "The position checks moved into a helper called after each resize, now comparing against the arc-length midpoint because this PR changed where the label sits."
@@ -134,7 +134,7 @@ pr = 10947
 rule = "check-removed"
 path = "packages/element/tests/linearElementEditor.test.tsx"
 test = "Test Linear Elements > Test bound text element > Test getPointAtPathParameter > should use the unrounded logical path of elbow arrows"
-before = ["expect(segments.length).toBeGreaterThan(1)", "expect(distanceToElement(arrow, elementsMap, point)).toBeLessThan(0.5) (in loop)", "expect(middle[0]).toBeGreaterThan(84)", "expect(middle[0]).toBeLessThan(100)", "expect(middle[1]).toBeGreaterThan(0)", "expect(middle[1]).toBeLessThan(16)"]
+before = ["expect(segments.length).toBeGreaterThan(1)", "expect(distanceToElement(arrow, elementsMap, point)).toBeLessThan(0.5)", "expect(middle[0]).toBeGreaterThan(84)", "expect(middle[0]).toBeLessThan(100)", "expect(middle[1]).toBeGreaterThan(0)", "expect(middle[1]).toBeLessThan(16)"]
 after = ["expect(segments).toHaveLength(2)", "expect(point).toEqual(expectedPoints[index]) (in loop)"]
 message = "removed 6 checks, including expect(segments.length).toBeGreaterThan(1); the test name dropped \"reach corner curves\""
 label = "wrong"
@@ -815,30 +815,6 @@ note = "The 8 tests were merged into two combined tests (\"clears the shared too
 [[finding]]
 unit = "d3a9c2a19518"
 pr = 11997
-rule = "check-cant-fail"
-path = "packages/excalidraw/tests/tooltip.test.tsx"
-test = "Tooltip > clears the shared tooltip when the trigger goes away mid-hover"
-before = ["expect(wrapper).not.toBeNull()"]
-after = ["expect(wrapper).not.toBeNull() (in callback)"]
-message = "expect(wrapper).not.toBeNull() is now inside a callback: it may run after the test ends, or not at all"
-label = "wrong"
-note = "The callback is a synchronous local helper (hover) called directly in the test, so the check always runs."
-
-[[finding]]
-unit = "d3a9c2a19518"
-pr = 11997
-rule = "check-cant-fail"
-path = "packages/excalidraw/tests/tooltip.test.tsx"
-test = "Tooltip > clears the shared tooltip when the trigger goes away mid-hover"
-before = ["expect(tooltip).toHaveClass(TOOLTIP_VISIBLE_CLASS)"]
-after = ["expect(tooltip).toHaveClass(TOOLTIP_VISIBLE_CLASS) (in callback)"]
-message = "expect(tooltip).toHaveClass(TOOLTIP_VISIBLE_CLASS) is now inside a callback: it may run after the test ends, or not at all"
-label = "wrong"
-note = "The callback is a synchronous local helper (hover) called directly in the test, so the check always runs."
-
-[[finding]]
-unit = "d3a9c2a19518"
-pr = 11997
 rule = "test-disabled"
 path = "packages/excalidraw/tests/hostAbstraction.test.tsx"
 test = "headless (server-side) export > fails the export rather than shipping a partial image"
@@ -863,18 +839,6 @@ note = "Rewritten into a stronger check: one text line is painted, and at the sa
 [[finding]]
 unit = "d3a9c2a19518"
 pr = 11997
-rule = "check-cant-fail"
-path = "packages/excalidraw/tests/hostAbstraction.test.tsx"
-test = "headless (server-side) export > exports the rest of the scene when an element fails to render"
-before = ["expect(canvas).toBe(target)"]
-after = ["expect(canvas).toBe(target) (in callback)"]
-message = "expect(canvas).toBe(target) is now inside a callback: it may run after the test ends, or not at all"
-label = "wrong"
-note = "The callback is an async helper awaited directly in the test (twice), so the check always runs."
-
-[[finding]]
-unit = "d3a9c2a19518"
-pr = 11997
 rule = "matcher-swapped"
 path = "packages/excalidraw/tests/tooltip.test.tsx"
 test = "Tooltip > clears the shared tooltip when the trigger goes away mid-hover"
@@ -883,18 +847,6 @@ after = ["expect(tooltip).not.toHaveClass(TOOLTIP_VISIBLE_CLASS)"]
 message = "swapped .not.toBe(null) for .not.toHaveClass(TOOLTIP_VISIBLE_CLASS)"
 label = "wrong"
 note = "Not a matcher swap: the not-null check is subsumed by toHaveClass(TOOLTIP_VISIBLE_CLASS) in the hover helper; the not.toHaveClass line is a different, later check."
-
-[[finding]]
-unit = "bee01e3a1281"
-pr = 12374
-rule = "check-cant-fail"
-path = "packages/excalidraw/tests/scene/export.test.ts"
-test = "export inputs > without a document font set (e.g. a DOM shim like linkedom) > exports without loading fonts, warning once"
-before = ["expect(svg.querySelector('text')?.textContent).toBe('hi')"]
-after = ["expect(svg.querySelector('text')?.textContent).toBe('hi') (in loop)"]
-message = "expect(svg.querySelector('text')?.textContent).toBe('hi') is now inside a loop: it doesn't run if the loop runs zero times"
-label = "wrong"
-note = "The loop has a constant bound (i < 2), so the check always runs, twice."
 
 [[finding]]
 unit = "6f0a4d19b577"
@@ -907,54 +859,6 @@ after = []
 message = "file deleted: its 6 tests no longer run"
 label = "unexplained"
 note = "\"chore: Remove test\" deleted all isQuotaExceededError tests while the fix stays; no reason given."
-
-[[finding]]
-unit = "808d068e1826"
-pr = 12425
-rule = "expectation-loosened"
-path = "packages/element/src/__tests__/transform.test.ts"
-test = "Test Transform > Test arrow bindings > should bind arrows to shapes when start / end provided without ids"
-before = ["expect(arrow).toMatchObject({ boundElements: [{ id: text.id, type: 'text' }], endBinding: { elementId: ellipse.id }, startBinding: { elementId: rectangle.id }, type: 'arrow', x: 255.5, y: 239 })"]
-after = ["expect(arrow).toMatchObject({ boundElements: [{ id: text.id, type: 'text' }], endBinding: { elementId: ellipse.id }, startBinding: { elementId: rectangle.id }, type: 'arrow', x: 261 })"]
-message = "toMatchObject no longer checks y"
-label = "wrong"
-note = "y is still checked, moved out of toMatchObject to expect(arrow.y).toBeCloseTo(239, 1) because placement is now computed."
-
-[[finding]]
-unit = "808d068e1826"
-pr = 12425
-rule = "expectation-loosened"
-path = "packages/element/src/__tests__/transform.test.ts"
-test = "Test Transform > Test arrow bindings > should bind arrows to shapes when start / end provided without ids"
-before = ["expect(text).toMatchObject({ containerId: arrow.id, text: 'HELLO WORLD!!', type: 'text', x: 240, y: 226.5 })"]
-after = ["expect(text).toMatchObject({ containerId: arrow.id, text: 'HELLO WORLD!!', type: 'text' })"]
-message = "toMatchObject no longer checks x, y"
-label = "wrong"
-note = "x and y are still checked, as expect(text.x).toBeCloseTo(240, 1) and expect(text.y).toBeCloseTo(226.5, 1) right above."
-
-[[finding]]
-unit = "808d068e1826"
-pr = 12425
-rule = "expectation-loosened"
-path = "packages/element/src/__tests__/transform.test.ts"
-test = "Test Transform > Test arrow bindings > should bind arrows to text when start / end provided without ids"
-before = ["expect(arrow).toMatchObject({ boundElements: [{ id: text1.id, type: 'text' }], endBinding: { elementId: text3.id }, startBinding: { elementId: text2.id }, type: 'arrow', x: 255.5, y: 239 })"]
-after = ["expect(arrow).toMatchObject({ boundElements: [{ id: text1.id, type: 'text' }], endBinding: { elementId: text3.id }, startBinding: { elementId: text2.id }, type: 'arrow', x: 261 })"]
-message = "toMatchObject no longer checks y"
-label = "wrong"
-note = "y is still checked, moved out of toMatchObject to expect(arrow.y).toBeCloseTo(239, 1) because placement is now computed."
-
-[[finding]]
-unit = "808d068e1826"
-pr = 12425
-rule = "expectation-loosened"
-path = "packages/element/src/__tests__/transform.test.ts"
-test = "Test Transform > Test arrow bindings > should bind arrows to text when start / end provided without ids"
-before = ["expect(text1).toMatchObject({ containerId: arrow.id, text: 'HELLO WORLD!!', type: 'text', x: 240, y: 226.5 })"]
-after = ["expect(text1).toMatchObject({ containerId: arrow.id, text: 'HELLO WORLD!!', type: 'text' })"]
-message = "toMatchObject no longer checks x, y"
-label = "wrong"
-note = "x and y are still checked, as expect(text1.x).toBeCloseTo(240, 1) and expect(text1.y).toBeCloseTo(226.5, 1) right above."
 
 [[finding]]
 unit = "2610ebae0cbd"

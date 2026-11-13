@@ -586,9 +586,9 @@ const ASYNC_MATCHERS: &[&str] = &[
 ];
 
 /// The check returns a promise, so it only fails the test when awaited.
-fn returns_promise(assertion: &Assertion) -> bool {
+pub(crate) fn returns_promise(assertion: &Assertion) -> bool {
     assertion.promise.is_some()
-        || assertion.expect == ExpectKind::Poll
+        || matches!(assertion.expect, ExpectKind::Poll | ExpectKind::Element)
         || assertion
             .matcher
             .as_ref()

@@ -110,7 +110,7 @@ pr = 7881
 rule = "test-disabled"
 path = "www/src/components/sponsors/pack.test.ts"
 test = "packSponsors > packs %s into a round cloud, not a diamond: it reaches near the edge every way out, and fills most of its circle"
-before = ["expect(Math.hypot(bubble.x - .5, bubble.y - .5) + bubble.r).toBeLessThanOrEqual(.5 + 1e-9) (in loop)", "expect(reach).toBeGreaterThan(0.4) (in loop)", "expect(filled).toBeGreaterThan(0.63)"]
+before = ["expect(Math.hypot(bubble.x - .5, bubble.y - .5) + bubble.r).toBeLessThanOrEqual(.5 + 1e-9) (in loop)", "expect(reach).toBeGreaterThan(0.4)", "expect(filled).toBeGreaterThan(0.63)"]
 after = []
 message = "deleted: packSponsors > packs %s into a round cloud, not a diamond: it reaches near the edge every way out, and fills most of its circle"
 label = "wrong"
@@ -561,7 +561,7 @@ pr = 7952
 rule = "test-disabled"
 path = "www/src/og/sponsor-cloud.test.ts"
 test = "sponsorCloudCacheControl > caches it as a page when every avatar loaded, at the current version or none"
-before = ["expect(sponsorCloudCacheControl({ avatars: all, bubbles, current, requested })).toBeUndefined() (in loop)"]
+before = ["expect(sponsorCloudCacheControl({ avatars: all, bubbles, current, requested })).toBeUndefined()"]
 after = []
 message = "deleted: sponsorCloudCacheControl > caches it as a page when every avatar loaded, at the current version or none"
 label = "wrong"
@@ -574,7 +574,7 @@ rule = "check-removed"
 path = "www/src/og/sponsor-cloud.test.ts"
 test = "sponsorCloudCacheControl > caches it briefly when an avatar is missing"
 before = ["expect(sponsorCloudCacheControl({ avatars: one, bubbles, current, requested: null })).toBe('public, max-age=0, s-maxage=600')", "expect(sponsorCloudCacheControl({ avatars: all, bubbles, current, requested: 'ffff0000' })).toBe('public, max-age=0, s-maxage=600')"]
-after = ["expect(sponsorCloudCacheControl({ avatars: new Map([...all].slice(0, 1)), bubbles, readme })).toBe('public, max-age=0, s-maxage=600') (in loop)"]
+after = ["expect(sponsorCloudCacheControl({ avatars: new Map([...all].slice(0, 1)), bubbles, readme })).toBe('public, max-age=0, s-maxage=600')"]
 message = "removed 2 checks, including expect(sponsorCloudCacheControl({ avatars: one, bubbles, cu…; the test name dropped \"or another version was asked for\""
 label = "wrong"
 note = "The missing-avatar check is still there (in a loop over readme true/false); another version now gets a 307 redirect, checked in the serveOgImage tests."
@@ -664,42 +664,6 @@ label = "wrong"
 note = "Replaced by requestedPage for the new path scheme, with more cases (with and without .png and a version)."
 
 [[finding]]
-unit = "410b7f352f3e"
-pr = 7952
-rule = "check-cant-fail"
-path = "www/src/og/version.test.ts"
-test = "/og/* > redirects the sponsor cloud at another version, as the READMEs' old ?v= URL, before drawing it"
-before = ["expect(response.status).toBe(307)"]
-after = ["expect(response.status).toBe(307) (in loop)"]
-message = "expect(response.status).toBe(307) is now inside a loop: it doesn't run if the loop runs zero times"
-label = "wrong"
-note = "The loop is over a literal non-empty array, so the check always runs."
-
-[[finding]]
-unit = "410b7f352f3e"
-pr = 7952
-rule = "check-cant-fail"
-path = "www/src/og/version.test.ts"
-test = "/og/* > redirects the sponsor cloud at another version, as the READMEs' old ?v= URL, before drawing it"
-before = ["expect(response.headers.get('location')).toBe(`${sponsorCloudPath}?v=${version}`)"]
-after = ["expect(response.headers.get('location')).toBe('/og/cloud1/sponsor-cloud.png') (in loop)"]
-message = "expect(response.headers.get('location')).toBe('/og/cloud1/s… is now inside a loop: it doesn't run if the loop runs zero times"
-label = "wrong"
-note = "The loop is over a literal non-empty array, so the check always runs."
-
-[[finding]]
-unit = "410b7f352f3e"
-pr = 7952
-rule = "check-cant-fail"
-path = "www/src/og/version.test.ts"
-test = "/og/* > answers a path without an image with a 404, whatever its version or query"
-before = ["expect((await get('/og/nothing.png?v=made-up')).status).toBe(404)"]
-after = ["expect((await get(path)).status).toBe(404) (in loop)"]
-message = "expect((await get(path)).status).toBe(404) is now inside a loop: it doesn't run if the loop runs zero times"
-label = "wrong"
-note = "The loop is over a literal non-empty array, so the check always runs."
-
-[[finding]]
 unit = "c561cd311fd1"
 pr = 7953
 rule = "check-removed"
@@ -717,7 +681,7 @@ pr = 7953
 rule = "test-disabled"
 path = "www/src/og/version.test.ts"
 test = "serveOgImage > redirects a card at no version, another version, or with a query, before drawing it"
-before = ["expect(response.headers.get('location')).toBe('/og/docs/server/procedures/abcdef0123.png') (in loop)", "await expect(get('/og/docs/server/procedures/abcdef0123.png')).rejects.toThrow('drew a card')"]
+before = ["expect(response.headers.get('location')).toBe('/og/docs/server/procedures/abcdef0123.png')", "await expect(get('/og/docs/server/procedures/abcdef0123.png')).rejects.toThrow('drew a card')"]
 after = []
 message = "deleted: serveOgImage > redirects a card at no version, another version, or with a query, before drawing it (only 1 of its 3 checks moved to other tests)"
 label = "wrong"
@@ -992,7 +956,7 @@ pr = 7999
 rule = "test-disabled"
 path = "www/src/og/avatar.test.ts"
 test = "Avatars with a shared cache > fetches an avatar the store has no image data for, or doesn't answer for in time"
-before = ["expect((await runtime.runPromise(fetchAvatars([image]))).size).toBe(1) (in loop)", "expect(server.hits).toEqual(['/a.png', '/a.png', '/a.png'])"]
+before = ["expect((await runtime.runPromise(fetchAvatars([image]))).size).toBe(1)", "expect(server.hits).toEqual(['/a.png', '/a.png', '/a.png'])"]
 after = []
 message = "deleted: Avatars with a shared cache > fetches an avatar the store has no image data for, or doesn't answer for in time"
 label = "wrong"

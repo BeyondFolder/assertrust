@@ -361,8 +361,8 @@ impl Found<'_> {
                     after.line,
                     &before.run,
                     &after.run,
-                    Some(old_command),
-                    command,
+                    Some(&through_scripts(old_command, &old.scripts)),
+                    &through_scripts(command, &new.scripts),
                 ),
                 // `echo skip` passes without testing anything; another command (`node
                 // scripts/ci.js`) may still run the tests in a way assertrust doesn't follow.
@@ -553,6 +553,67 @@ fn script(runner: &str) -> Option<String> {
         _ => &words[..],
     };
     (!words.is_empty()).then(|| words.join(" "))
+}
+
+/// What a script's command runs, read through the scripts of the same `package.json` it
+/// calls: with `"test:unit": "vitest --project unit"`, `"test": "nr test:unit
+/// --project=server"` runs vitest with both projects, not only `server`. A tool that runs
+/// other packages' scripts (`turbo run test`, `pnpm -r test`) isn't followed.
+fn through_scripts(command: &Command, scripts: &[Script]) -> Command {
+    let mut command = command.clone();
+    let mut seen: Vec<String> = Vec::new();
+    while let Some(name) = own_script(&command.runner)
+        && !seen.contains(&name)
+    {
+        let Some(called) = scripts
+            .iter()
+            .find(|script| script.name == name)
+            .and_then(|script| script.command.as_ref())
+        else {
+            break;
+        };
+        seen.push(name);
+        let mut filters = called.filters.clone();
+        filters.extend(
+            command
+                .filters
+                .iter()
+                .filter(|f| !called.filters.contains(f))
+                .cloned(),
+        );
+        let mut excludes = called.excludes.clone();
+        excludes.extend(
+            command
+                .excludes
+                .iter()
+                .filter(|e| !called.excludes.contains(e))
+                .cloned(),
+        );
+        command = Command {
+            runner: called.runner.clone(),
+            swallows: called.swallows || command.swallows,
+            pass_with_no_tests: called.pass_with_no_tests || command.pass_with_no_tests,
+            retries: command.retries.max(called.retries),
+            filters,
+            config: command.config.clone().or_else(|| called.config.clone()),
+            excludes,
+        };
+    }
+    command
+}
+
+/// The script of the same `package.json` a runner calls: `test:unit` for `nr test:unit`,
+/// `npm run test:unit`, `pnpm test:unit` or `bun run test:unit`, `test` for `npm test`.
+/// Not `bun test`, bun's own test runner.
+fn own_script(runner: &str) -> Option<String> {
+    let mut words = runner.split(' ').skip_while(|word| word.contains('='));
+    let binary = words.next()?.rsplit('/').next()?;
+    let runs_scripts = match binary {
+        "npm" | "pnpm" | "yarn" | "nr" => true,
+        "bun" => matches!(words.next(), Some("run" | "run-script")),
+        _ => false,
+    };
+    script(runner).filter(|name| runs_scripts && !name.contains(' '))
 }
 
 /// A job that looks like it runs tests even when assertrust sees no test step: its id or
@@ -969,4 +1030,30 @@ fn bare(value: &str) -> &str {
         .and_then(|inner| inner.strip_suffix("}}"))
         .unwrap_or(value)
         .trim()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::own_script;
+
+    #[test]
+    fn scripts_of_the_same_package_json_a_runner_calls() {
+        for (runner, script) in [
+            ("nr test:unit", Some("test:unit")),
+            ("npm test", Some("test")),
+            ("CI=true npm test", Some("test")),
+            ("npm run test:unit", Some("test:unit")),
+            ("pnpm test:unit", Some("test:unit")),
+            ("yarn run test:unit", Some("test:unit")),
+            ("bun run test:unit", Some("test:unit")),
+            // bun's own test runner, and tools running other packages' scripts.
+            ("bun test", None),
+            ("turbo run test", None),
+            ("pnpm -r test", None),
+            ("pnpm --filter web test", None),
+            ("npx vitest", None),
+        ] {
+            assert_eq!(own_script(runner).as_deref(), script, "{runner}");
+        }
+    }
 }

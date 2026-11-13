@@ -12,6 +12,7 @@
 //! expect(list.includes('a')).toBe(true)         list toContain('a')
 //! expect(await page.title()).toBe('Inbox')      page.title == 'Inbox'
 //! await expect(page).toHaveTitle('Inbox')       page.title == 'Inbox'
+//! expect(arrow.y).toBeCloseTo(239, 1)           arrow.y == 239
 //! ```
 //!
 //! Matching pairs two checks that state a fact in common, so a rewrite isn't read as one
@@ -22,6 +23,7 @@ use oxc::ast::ast::{Argument, BinaryOperator, ChainElement, Expression, UnaryOpe
 use super::calls::ExpectCall;
 use super::consts::Consts;
 use super::values::{Values, js_str, normalize};
+use crate::matcher::close_to;
 use crate::model::{Fact, FactTest, Promise};
 use crate::value::Value;
 
@@ -348,6 +350,17 @@ fn leaves(
         "toHaveLength" => match first {
             Some(n) => one(&["length"], equals(n.clone())),
             None => Vec::new(),
+        },
+        // Close enough states the number, like `toBe(239)` written for a computed value.
+        "toBeCloseTo" => match close_to(args) {
+            Some(number) => one(&[], equals(number.clone())),
+            None => one(
+                &[],
+                FactTest::Other {
+                    matcher: matcher.to_owned(),
+                    args: args.to_vec(),
+                },
+            ),
         },
         "toBeNull" => one(&[], FactTest::Equals(Value::Null)),
         "toBeUndefined" => one(&[], FactTest::Equals(Value::Undefined)),

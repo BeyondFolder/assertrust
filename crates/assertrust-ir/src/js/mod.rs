@@ -12,23 +12,26 @@ mod values;
 
 pub(crate) use self::config::config;
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use oxc::allocator::Allocator;
+use oxc::ast::AstKind;
 use oxc::ast::ast::{
-    ArrowFunctionExpression, AwaitExpression, BindingPattern, BlockStatement, BreakStatement,
-    CallExpression, CatchClause, ConditionalExpression, ContinueStatement, DoWhileStatement,
-    ExportAllDeclaration, ExportDefaultDeclaration, ExportDefaultDeclarationKind,
-    ExportFromDeclaration, Expression, ForInStatement, ForOfStatement, ForStatement,
-    FormalParameters, Function, FunctionBody, IfStatement, ImportDeclaration,
-    ImportDeclarationSpecifier, LogicalExpression, ObjectProperty, Program, ReturnStatement,
-    Statement, SwitchStatement, TryStatement, VariableDeclarator, WhileStatement,
+    ArrayExpressionElement, ArrowFunctionExpression, AwaitExpression, BinaryOperator,
+    BindingIdentifier, BindingPattern, BlockStatement, BreakStatement, CallExpression, CatchClause,
+    ConditionalExpression, ContinueStatement, DoWhileStatement, ExportAllDeclaration,
+    ExportDefaultDeclaration, ExportDefaultDeclarationKind, ExportFromDeclaration, Expression,
+    ForInStatement, ForOfStatement, ForStatement, ForStatementInit, FormalParameters, Function,
+    FunctionBody, IdentifierReference, IfStatement, ImportDeclaration, ImportDeclarationSpecifier,
+    LogicalExpression, ObjectProperty, Program, ReturnStatement, Statement, SwitchStatement,
+    TryStatement, UnaryOperator, VariableDeclarationKind, VariableDeclarator, WhileStatement,
 };
 use oxc::ast_visit::{Visit, walk};
 use oxc::parser::{ParseOptions, Parser};
 use oxc::semantic::SemanticBuilder;
 use oxc::span::{GetSpan, SourceType, Span};
 use oxc::syntax::scope::ScopeFlags;
+use oxc::syntax::symbol::SymbolId;
 
 use self::calls::{RawArg, RawModifier, Structure};
 use self::consts::Consts;
@@ -68,6 +71,7 @@ pub(crate) fn parse(path: &str, source: &str) -> Result<FileIr, ParseError> {
         last_statement: None,
         skip_names: SkipNames::default(),
         default_export: None,
+        locals: Locals::default(),
     };
     collector.visit_program(&program);
     let mut file = collector.file;
@@ -217,7 +221,28 @@ struct SkipNames {
     skip: Option<String>,
 }
 
-struct Collector<'s> {
+/// A function declared inside a test, hook or helper, under a name it calls:
+/// `const hover = () => {…}` or `function hover() {…}`. It's walked where it's first called,
+/// as part of what calls it, so its checks sit where they run: after an early `return`, in
+/// the `if` or `try` around the call, and awaited when the call is.
+#[derive(Clone, Copy)]
+struct LocalFunction<'a> {
+    body: CallbackBody<'a, 'a>,
+    is_async: bool,
+}
+
+/// The local functions of the test, hook or helper being walked.
+#[derive(Default)]
+struct Locals<'a> {
+    /// Found as the walker enters the block or `const` declaring them.
+    functions: HashMap<SymbolId, LocalFunction<'a>>,
+    /// Walked already, where they were first called (or being walked).
+    walked: HashSet<SymbolId>,
+    /// Declared, and waiting for a call.
+    waiting: Vec<SymbolId>,
+}
+
+struct Collector<'s, 'a> {
     values: Values<'s>,
     lines: Lines,
     file: FileIr,
@@ -240,9 +265,10 @@ struct Collector<'s> {
     skip_names: SkipNames,
     /// `export default expectOk;`: marked on the helper once the file is read.
     default_export: Option<String>,
+    locals: Locals<'a>,
 }
 
-impl<'a> Collector<'_> {
+impl<'a> Collector<'_, 'a> {
     fn line(&self, span: Span) -> u32 {
         self.lines.line(span.start)
     }
@@ -260,6 +286,130 @@ impl<'a> Collector<'_> {
             Owner::Test(index) => self.file.tests[index].body.items.push(item),
             Owner::Hook(index) => self.file.hooks[index].body.items.push(item),
             Owner::Helper(index) => self.file.helpers[index].body.items.push(item),
+        }
+    }
+
+    /// The body of a loop that runs at least once. Its statements surely run up to the
+    /// first one that may `break` or `continue`; from there on they're `in_loop`.
+    fn first_pass(&mut self, body: &Statement<'a>) {
+        let statements = match body {
+            Statement::BlockStatement(block) => block.body.as_slice(),
+            other => std::slice::from_ref(other),
+        };
+        let cut = statements
+            .iter()
+            .position(may_leave_loop)
+            .unwrap_or(statements.len());
+        let (surely, rest) = statements.split_at(cut);
+        for statement in surely {
+            self.visit_statement(statement);
+        }
+        self.scoped(
+            |context| context.in_loop = true,
+            |this| {
+                for statement in rest {
+                    this.visit_statement(statement);
+                }
+            },
+        );
+    }
+
+    fn symbol(&self, id: &IdentifierReference) -> Option<SymbolId> {
+        self.values
+            .scoping
+            .get_reference(id.reference_id.get()?)
+            .symbol_id()
+    }
+
+    /// Notes the local functions a block or `const` declares, as the walker enters it: a
+    /// `const` function, or a function declaration (which can be called before it). A `let`
+    /// can be given another function before the call, so it isn't one.
+    fn note_locals(&mut self, kind: AstKind<'a>) {
+        if matches!(self.owner, Owner::Outside) {
+            return;
+        }
+        let mut note = |id: &BindingIdentifier, function: Option<LocalFunction<'a>>| {
+            if let (Some(symbol), Some(function)) = (id.symbol_id.get(), function) {
+                self.locals.functions.insert(symbol, function);
+            }
+        };
+        match kind {
+            AstKind::VariableDeclaration(declaration)
+                if declaration.kind == VariableDeclarationKind::Const =>
+            {
+                for declarator in &declaration.declarations {
+                    if let BindingPattern::BindingIdentifier(id) = &declarator.id
+                        && let Some(init) = &declarator.init
+                    {
+                        note(id, local_expression(init));
+                    }
+                }
+            }
+            AstKind::FunctionBody(FunctionBody { statements, .. })
+            | AstKind::BlockStatement(BlockStatement {
+                body: statements, ..
+            }) => {
+                for statement in statements {
+                    if let Statement::FunctionDeclaration(function) = statement
+                        && let Some(id) = &function.id
+                    {
+                        note(id, local_declaration(function));
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// A local function's declaration: walked later, where it's called.
+    fn declared_local(&mut self, symbol: Option<SymbolId>) -> bool {
+        let Some(symbol) = symbol.filter(|symbol| self.locals.functions.contains_key(symbol))
+        else {
+            return false;
+        };
+        if !self.locals.walked.contains(&symbol) && !self.locals.waiting.contains(&symbol) {
+            self.locals.waiting.push(symbol);
+        }
+        true
+    }
+
+    /// Walks a local function where it's called, the first time it is: the call's place
+    /// (an `if`, a `try`, a callback) is its checks' place, and the call's `await` is what
+    /// it returns. An async one the test doesn't wait for may finish after the test.
+    fn called_local(&mut self, call: &CallExpression<'a>) {
+        let Expression::Identifier(callee) = call.callee.get_inner_expression() else {
+            return;
+        };
+        let Some(symbol) = self.symbol(callee) else {
+            return;
+        };
+        if self.locals.walked.contains(&symbol) {
+            return;
+        }
+        let Some(&function) = self.locals.functions.get(&symbol) else {
+            return;
+        };
+        self.locals.walked.insert(symbol);
+        let awaited = self.awaited.contains(&call.span);
+        let saved = (self.context, self.depth, self.runner_waits);
+        self.depth += 1;
+        self.context.in_callback |= function.is_async && !awaited;
+        // A plain function hands what it returns to the call; an async one's own `await`s
+        // decide inside it.
+        self.runner_waits = function.is_async || awaited;
+        self.visit_callback_body(&function.body);
+        (self.context, self.depth, self.runner_waits) = saved;
+    }
+
+    /// Once a test, hook or helper is walked: a local function whose call wasn't reached
+    /// (say, it's inside an `expect(…)`) is walked as a callback.
+    fn settle_locals(&mut self) {
+        for symbol in std::mem::take(&mut self.locals.waiting) {
+            if self.locals.walked.insert(symbol)
+                && let Some(&function) = self.locals.functions.get(&symbol)
+            {
+                self.nested_function(|this| this.visit_callback_body(&function.body));
+            }
         }
     }
 
@@ -301,7 +451,10 @@ impl<'a> Collector<'_> {
         // the call is.
         self.runner_waits = true;
         self.last_statement = body.statements().last().map(GetSpan::span);
+        let locals = std::mem::take(&mut self.locals);
         self.visit_callback_body(body);
+        self.settle_locals();
+        self.locals = locals;
         (
             self.owner,
             self.context,
@@ -523,7 +676,10 @@ impl<'a> Collector<'_> {
         } else {
             SkipNames::default()
         };
+        let locals = std::mem::take(&mut self.locals);
         self.visit_callback_body(&body);
+        self.settle_locals();
+        self.locals = locals;
 
         (
             self.owner,
@@ -618,7 +774,11 @@ impl<'a> Collector<'_> {
     }
 }
 
-impl<'a> Visit<'a> for Collector<'_> {
+impl<'a> Visit<'a> for Collector<'_, 'a> {
+    fn enter_node(&mut self, kind: AstKind<'a>) {
+        self.note_locals(kind);
+    }
+
     fn visit_call_expression(&mut self, call: &CallExpression<'a>) {
         if self.structure(call) {
             return;
@@ -656,6 +816,8 @@ impl<'a> Visit<'a> for Collector<'_> {
         }
         self.call(call);
         walk::walk_call_expression(self, call);
+        // Its arguments first, then what it runs.
+        self.called_local(call);
     }
 
     fn visit_await_expression(&mut self, it: &AwaitExpression<'a>) {
@@ -747,7 +909,23 @@ impl<'a> Visit<'a> for Collector<'_> {
         }
     }
 
+    /// A loop puts its checks `in_loop`, unless its body always runs at least once: a `for`
+    /// with literal bounds or no condition, a `for…of` over a written-out array, a
+    /// `while (true)`, a `do { … } while (…)`. Then see [`Self::first_pass`].
     fn visit_for_statement(&mut self, it: &ForStatement<'a>) {
+        if runs_at_least_once(it) {
+            if let Some(init) = &it.init {
+                self.visit_for_statement_init(init);
+            }
+            if let Some(test) = &it.test {
+                self.visit_expression(test);
+            }
+            if let Some(update) = &it.update {
+                self.visit_expression(update);
+            }
+            self.first_pass(&it.body);
+            return;
+        }
         self.scoped(
             |context| context.in_loop = true,
             |this| walk::walk_for_statement(this, it),
@@ -762,6 +940,12 @@ impl<'a> Visit<'a> for Collector<'_> {
     }
 
     fn visit_for_of_statement(&mut self, it: &ForOfStatement<'a>) {
+        if has_items(&it.right) {
+            self.visit_for_statement_left(&it.left);
+            self.visit_expression(&it.right);
+            self.first_pass(&it.body);
+            return;
+        }
         self.scoped(
             |context| context.in_loop = true,
             |this| walk::walk_for_of_statement(this, it),
@@ -769,6 +953,11 @@ impl<'a> Visit<'a> for Collector<'_> {
     }
 
     fn visit_while_statement(&mut self, it: &WhileStatement<'a>) {
+        if is_true(&it.test) {
+            self.visit_expression(&it.test);
+            self.first_pass(&it.body);
+            return;
+        }
         self.scoped(
             |context| context.in_loop = true,
             |this| walk::walk_while_statement(this, it),
@@ -776,10 +965,8 @@ impl<'a> Visit<'a> for Collector<'_> {
     }
 
     fn visit_do_while_statement(&mut self, it: &DoWhileStatement<'a>) {
-        self.scoped(
-            |context| context.in_loop = true,
-            |this| walk::walk_do_while_statement(this, it),
-        );
+        self.first_pass(&it.body);
+        self.visit_expression(&it.test);
     }
 
     fn visit_function(&mut self, it: &Function<'a>, flags: ScopeFlags) {
@@ -788,6 +975,11 @@ impl<'a> Visit<'a> for Collector<'_> {
         {
             let body = CallbackBody::Block(body);
             self.helper(id.name.to_string(), &it.params, it.r#async, it.span, &body);
+            return;
+        }
+        if it.is_declaration()
+            && self.declared_local(it.id.as_ref().and_then(|id| id.symbol_id.get()))
+        {
             return;
         }
         self.nested_function(|this| walk::walk_function(this, it, flags));
@@ -807,6 +999,12 @@ impl<'a> Visit<'a> for Collector<'_> {
             };
             let name = id.name.to_string();
             self.helper(name, callback.params, is_async, it.span, &callback.body);
+            return;
+        }
+        // `const hover = () => {…}` inside a test: walked where it's called.
+        if let BindingPattern::BindingIdentifier(id) = &it.id
+            && self.declared_local(id.symbol_id.get())
+        {
             return;
         }
         walk::walk_variable_declarator(self, it);
@@ -906,57 +1104,145 @@ impl<'a> Visit<'a> for Collector<'_> {
     }
 }
 
+/// A `for` loop whose body runs at least once: one without a condition (`for (;;)`), with
+/// `true`, or with a counter that starts inside its literal bound (`for (let i = 0; i < 2;
+/// i++)`).
+fn runs_at_least_once(it: &ForStatement) -> bool {
+    let Some(test) = &it.test else {
+        return true;
+    };
+    if is_true(test) {
+        return true;
+    }
+    let Some(ForStatementInit::VariableDeclaration(init)) = &it.init else {
+        return false;
+    };
+    let [declarator] = init.declarations.as_slice() else {
+        return false;
+    };
+    let (BindingPattern::BindingIdentifier(counter), Some(start)) =
+        (&declarator.id, &declarator.init)
+    else {
+        return false;
+    };
+    let Expression::BinaryExpression(test) = test.get_inner_expression() else {
+        return false;
+    };
+    let (Expression::Identifier(left), Some(start), Some(bound)) = (
+        test.left.get_inner_expression(),
+        literal_number(start),
+        literal_number(&test.right),
+    ) else {
+        return false;
+    };
+    left.name == counter.name
+        && match test.operator {
+            BinaryOperator::LessThan => start < bound,
+            BinaryOperator::LessEqualThan => start <= bound,
+            BinaryOperator::GreaterThan => start > bound,
+            BinaryOperator::GreaterEqualThan => start >= bound,
+            _ => false,
+        }
+}
+
+/// `2`, `-1`.
+fn literal_number(expr: &Expression) -> Option<f64> {
+    match expr.get_inner_expression() {
+        Expression::NumericLiteral(lit) => Some(lit.value),
+        Expression::UnaryExpression(unary) if unary.operator == UnaryOperator::UnaryNegation => {
+            literal_number(&unary.argument).map(|n| -n)
+        }
+        _ => None,
+    }
+}
+
+fn is_true(expr: &Expression) -> bool {
+    matches!(expr.get_inner_expression(), Expression::BooleanLiteral(lit) if lit.value)
+}
+
+/// An array written out with at least one item that isn't a spread, so a `for…of` over it
+/// runs: `for (const path of ['/a', '/b'])`.
+fn has_items(expr: &Expression) -> bool {
+    let Expression::ArrayExpression(array) = expr.get_inner_expression() else {
+        return false;
+    };
+    array
+        .elements
+        .iter()
+        .any(|element| !matches!(element, ArrayExpressionElement::SpreadElement(_)))
+}
+
 /// The block has a `return`, or a `break` / `continue` that leaves it. In a `finally`
 /// block, that drops the error being thrown.
 fn leaves_early(block: &BlockStatement) -> bool {
-    #[derive(Default)]
-    struct Finder {
-        found: bool,
-        /// Loops and `switch`es inside the block, which an unlabelled `break` stays in.
-        inner: u32,
-    }
-    impl Finder {
-        fn inside(&mut self, walk: impl FnOnce(&mut Self)) {
-            self.inner += 1;
-            walk(self);
-            self.inner -= 1;
-        }
-    }
-    impl<'a> Visit<'a> for Finder {
-        fn visit_return_statement(&mut self, _: &ReturnStatement<'a>) {
-            self.found = true;
-        }
-        fn visit_break_statement(&mut self, it: &BreakStatement<'a>) {
-            self.found |= self.inner == 0 || it.label.is_some();
-        }
-        fn visit_continue_statement(&mut self, it: &ContinueStatement<'a>) {
-            self.found |= self.inner == 0 || it.label.is_some();
-        }
-        fn visit_for_statement(&mut self, it: &ForStatement<'a>) {
-            self.inside(|this| walk::walk_for_statement(this, it));
-        }
-        fn visit_for_in_statement(&mut self, it: &ForInStatement<'a>) {
-            self.inside(|this| walk::walk_for_in_statement(this, it));
-        }
-        fn visit_for_of_statement(&mut self, it: &ForOfStatement<'a>) {
-            self.inside(|this| walk::walk_for_of_statement(this, it));
-        }
-        fn visit_while_statement(&mut self, it: &WhileStatement<'a>) {
-            self.inside(|this| walk::walk_while_statement(this, it));
-        }
-        fn visit_do_while_statement(&mut self, it: &DoWhileStatement<'a>) {
-            self.inside(|this| walk::walk_do_while_statement(this, it));
-        }
-        fn visit_switch_statement(&mut self, it: &SwitchStatement<'a>) {
-            self.inside(|this| walk::walk_switch_statement(this, it));
-        }
-        // A `return` in a nested function returns from that function.
-        fn visit_function(&mut self, _: &Function<'a>, _: ScopeFlags) {}
-        fn visit_arrow_function_expression(&mut self, _: &ArrowFunctionExpression<'a>) {}
-    }
-    let mut finder = Finder::default();
+    let mut finder = Leaves {
+        returns: true,
+        ..Leaves::default()
+    };
     finder.visit_block_statement(block);
     finder.found
+}
+
+/// The statement, in a loop's body, may `break` out of the loop or `continue` to its next
+/// pass, skipping what follows it.
+fn may_leave_loop(statement: &Statement) -> bool {
+    let mut finder = Leaves::default();
+    finder.visit_statement(statement);
+    finder.found
+}
+
+/// Finds a `break` or `continue` that leaves where it starts, and a `return` if asked.
+#[derive(Default)]
+struct Leaves {
+    returns: bool,
+    found: bool,
+    /// Loops inside, which an unlabelled `break` or `continue` stays in.
+    loops: u32,
+    /// `switch`es inside, which an unlabelled `break` stays in, but not a `continue`.
+    switches: u32,
+}
+
+impl Leaves {
+    fn inside(&mut self, walk: impl FnOnce(&mut Self)) {
+        self.loops += 1;
+        walk(self);
+        self.loops -= 1;
+    }
+}
+
+impl<'a> Visit<'a> for Leaves {
+    fn visit_return_statement(&mut self, _: &ReturnStatement<'a>) {
+        self.found |= self.returns;
+    }
+    fn visit_break_statement(&mut self, it: &BreakStatement<'a>) {
+        self.found |= self.loops + self.switches == 0 || it.label.is_some();
+    }
+    fn visit_continue_statement(&mut self, it: &ContinueStatement<'a>) {
+        self.found |= self.loops == 0 || it.label.is_some();
+    }
+    fn visit_for_statement(&mut self, it: &ForStatement<'a>) {
+        self.inside(|this| walk::walk_for_statement(this, it));
+    }
+    fn visit_for_in_statement(&mut self, it: &ForInStatement<'a>) {
+        self.inside(|this| walk::walk_for_in_statement(this, it));
+    }
+    fn visit_for_of_statement(&mut self, it: &ForOfStatement<'a>) {
+        self.inside(|this| walk::walk_for_of_statement(this, it));
+    }
+    fn visit_while_statement(&mut self, it: &WhileStatement<'a>) {
+        self.inside(|this| walk::walk_while_statement(this, it));
+    }
+    fn visit_do_while_statement(&mut self, it: &DoWhileStatement<'a>) {
+        self.inside(|this| walk::walk_do_while_statement(this, it));
+    }
+    fn visit_switch_statement(&mut self, it: &SwitchStatement<'a>) {
+        self.switches += 1;
+        walk::walk_switch_statement(self, it);
+        self.switches -= 1;
+    }
+    // A `return` in a nested function returns from that function.
+    fn visit_function(&mut self, _: &Function<'a>, _: ScopeFlags) {}
+    fn visit_arrow_function_expression(&mut self, _: &ArrowFunctionExpression<'a>) {}
 }
 
 /// A function passed to `describe`, `it`, a hook or `test.step`.
@@ -965,6 +1251,7 @@ struct Callback<'b, 'a> {
     body: CallbackBody<'b, 'a>,
 }
 
+#[derive(Clone, Copy)]
 enum CallbackBody<'b, 'a> {
     /// `() => { … }` or `function () { … }`
     Block(&'b FunctionBody<'a>),
@@ -985,10 +1272,7 @@ fn as_callback<'b, 'a>(expr: &'b Expression<'a>) -> Option<Callback<'b, 'a>> {
     match expr.get_inner_expression() {
         Expression::ArrowFunctionExpression(arrow) => Some(Callback {
             params: &arrow.params,
-            body: match arrow.body.as_function_body() {
-                Some(body) => CallbackBody::Block(body),
-                None => CallbackBody::Expression(arrow.body.as_expression()?),
-            },
+            body: arrow_body(arrow)?,
         }),
         Expression::FunctionExpression(function) => Some(Callback {
             params: &function.params,
@@ -996,6 +1280,33 @@ fn as_callback<'b, 'a>(expr: &'b Expression<'a>) -> Option<Callback<'b, 'a>> {
         }),
         _ => None,
     }
+}
+
+/// A `const`'s value as a local function: `() => {…}`, `async function () {…}`.
+fn local_expression<'a>(init: &'a Expression<'a>) -> Option<LocalFunction<'a>> {
+    match init.get_inner_expression() {
+        Expression::ArrowFunctionExpression(arrow) => Some(LocalFunction {
+            body: arrow_body(arrow)?,
+            is_async: arrow.r#async,
+        }),
+        Expression::FunctionExpression(function) => local_declaration(function),
+        _ => None,
+    }
+}
+
+fn local_declaration<'a>(function: &'a Function<'a>) -> Option<LocalFunction<'a>> {
+    Some(LocalFunction {
+        body: CallbackBody::Block(function.body.as_deref()?),
+        is_async: function.r#async,
+    })
+}
+
+/// An arrow function's body: a block, or the one expression it returns.
+fn arrow_body<'b, 'a>(arrow: &'b ArrowFunctionExpression<'a>) -> Option<CallbackBody<'b, 'a>> {
+    Some(match arrow.body.as_function_body() {
+        Some(body) => CallbackBody::Block(body),
+        None => CallbackBody::Expression(arrow.body.as_expression()?),
+    })
 }
 
 /// Words that say nothing about what a test does, left out of its fingerprint.

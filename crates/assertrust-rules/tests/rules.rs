@@ -327,6 +327,208 @@ it('x', async () => {
 }
 
 #[test]
+fn loops_that_always_run_are_fine() {
+    // The shapes of zod's from-json-schema test, tRPC's og routes test and Excalidraw's
+    // export test: a loop over a written-out array, or with literal bounds, runs its body.
+    let before = "
+it('x', async () => {
+  expect(a).toBe(1);
+  expect(b).toBe(2);
+  expect(c).toBe(3);
+  expect(d).toBe(4);
+  expect(e).toBe(5);
+});";
+    let after = "
+it('x', async () => {
+  for (const path of ['/a', '/b']) expect(a).toBe(1);
+  for (let i = 0; i < 2; i++) { expect(b).toBe(2) }
+  for (;;) { expect(c).toBe(3); break }
+  while (true) { expect(d).toBe(4); break }
+  do { expect(e).toBe(5) } while (next());
+});";
+    assert_eq!(findings(before, after), [""; 0]);
+    // A `break` or `continue` may skip what comes after it; a `break` in a `switch` stays
+    // there, a `continue` doesn't.
+    let after = "
+it('x', async () => {
+  while (true) { if (await done()) break; expect(a).toBe(1) }
+  for (const x of ['a', 'b']) { continue; expect(b).toBe(2) }
+  for (const x of ['a', 'b']) { switch (x) { case 'a': break } expect(c).toBe(3) }
+  for (const x of ['a', 'b']) { switch (x) { case 'a': continue } expect(d).toBe(4) }
+  expect(e).toBe(5);
+});";
+    assert_eq!(
+        findings(before, after),
+        [
+            "check-cant-fail low 3: expect(a).toBe(1) is now inside a loop: it doesn't run if the loop runs zero times",
+            "check-cant-fail low 4: expect(b).toBe(2) is now inside a loop: it doesn't run if the loop runs zero times",
+            "check-cant-fail low 6: expect(d).toBe(4) is now inside a loop: it doesn't run if the loop runs zero times",
+        ]
+    );
+    // Loops that may run zero times are still flagged.
+    let after = "
+it('x', async () => {
+  for (const path of [...paths]) expect(a).toBe(1);
+  for (let i = 0; i < n; i++) { expect(b).toBe(2) }
+  for (let i = 2; i < 2; i++) { expect(c).toBe(3) }
+  while (more()) { expect(d).toBe(4) }
+  for (const path of []) expect(e).toBe(5);
+});";
+    assert_eq!(
+        findings(before, after),
+        [
+            "check-cant-fail low 3: expect(a).toBe(1) is now inside a loop: it doesn't run if the loop runs zero times",
+            "check-cant-fail low 4: expect(b).toBe(2) is now inside a loop: it doesn't run if the loop runs zero times",
+            "check-cant-fail low 5: expect(c).toBe(3) is now inside a loop: it doesn't run if the loop runs zero times",
+            "check-cant-fail low 6: expect(d).toBe(4) is now inside a loop: it doesn't run if the loop runs zero times",
+            "check-cant-fail low 7: expect(e).toBe(5) is now inside a loop: it doesn't run if the loop runs zero times",
+        ]
+    );
+}
+
+#[test]
+fn a_function_the_test_surely_calls_runs_as_part_of_it() {
+    // The shape of Excalidraw's tooltip and headless export tests.
+    let before = "
+it('x', async () => {
+  expect(a).toBe(1);
+  expect(b).toBe(2);
+  expect(c).toBe(3);
+});";
+    let after = "
+it('x', async () => {
+  const hover = () => {
+    expect(a).toBe(1);
+    return tip;
+  };
+  const exported = async () => {
+    expect(b).toBe(2);
+  };
+  function settle() {
+    expect(c).toBe(3);
+  }
+  const tooltip = hover();
+  await exported();
+  settle();
+});";
+    assert_eq!(findings(before, after), [""; 0]);
+    // Not surely called: only in an `if` (its checks are in the `if`), not awaited though
+    // async, or called from a function that is never called.
+    let after = "
+it('x', async () => {
+  const hover = () => {
+    expect(a).toBe(1);
+  };
+  const exported = async () => {
+    expect(b).toBe(2);
+  };
+  const outer = () => {
+    inner();
+  };
+  const inner = () => {
+    expect(c).toBe(3);
+  };
+  if (ready) hover();
+  exported();
+});";
+    assert_eq!(
+        findings(before, after),
+        [
+            "check-cant-fail medium 4: expect(a).toBe(1) is now inside an if: it may not run",
+            "check-cant-fail medium 7: expect(b).toBe(2) is now inside a callback: it may run after the test ends, or not at all",
+            "check-cant-fail medium 13: expect(c).toBe(3) is now inside a callback: it may run after the test ends, or not at all",
+        ]
+    );
+    // Its checks run where it's called: after a `return` before the call, inside a `try`
+    // around it.
+    let after = "
+it('x', async () => {
+  const first = () => {
+    expect(a).toBe(1);
+  };
+  const second = () => {
+    expect(b).toBe(2);
+  };
+  try { second() } catch {}
+  if (skip) return;
+  first();
+  expect(c).toBe(3);
+});";
+    assert_eq!(
+        findings(before, after),
+        [
+            "check-cant-fail medium 7: expect(b).toBe(2) is now inside a try with a catch: its failure may be caught",
+            "check-cant-fail medium 10: a return (in if) now comes before 2 checks: they may not run",
+        ]
+    );
+    // A `let` may hold another function by the time it's called.
+    let after = "
+it('x', async () => {
+  let check = () => {
+    expect(a).toBe(1);
+  };
+  check = () => {};
+  check();
+  expect(b).toBe(2);
+  expect(c).toBe(3);
+});";
+    assert_eq!(
+        findings(before, after),
+        [
+            "check-cant-fail medium 4: expect(a).toBe(1) is now inside a callback: it may run after the test ends, or not at all"
+        ]
+    );
+}
+
+#[test]
+fn a_check_a_local_function_returns_is_awaited_with_the_call() {
+    let before = "it('x', async () => { await expect.element(row).toBeVisible() })";
+    assert_eq!(
+        findings(
+            before,
+            "it('x', async () => {
+  const visible = () => expect.element(row).toBeVisible();
+  await visible();
+})",
+        ),
+        [""; 0]
+    );
+    assert_eq!(
+        findings(
+            before,
+            "it('x', async () => {
+  const visible = () => expect.element(row).toBeVisible();
+  visible();
+})",
+        ),
+        [
+            "check-cant-fail high 2: await dropped from expect.element(row).toBeVisible(): the test may end before it fails"
+        ]
+    );
+}
+
+#[test]
+fn expect_element_is_a_check_that_must_be_awaited() {
+    // The shape of immich's move to vitest browser mode.
+    assert_eq!(
+        findings(
+            "it('x', () => { expect(screen.getByText('Hello test')).toBeInTheDocument() })",
+            "it('x', async () => { await expect.element(screen.getByText('Hello test')).toBeInTheDocument() })",
+        ),
+        [""; 0]
+    );
+    assert_eq!(
+        findings(
+            "it('x', async () => { await expect.element(row).toBeVisible() })",
+            "it('x', async () => { expect.element(row).toBeVisible() })",
+        ),
+        [
+            "check-cant-fail high 1: await dropped from expect.element(row).toBeVisible(): the test may end before it fails"
+        ]
+    );
+}
+
+#[test]
 fn an_early_return_before_checks_is_flagged() {
     let before = "
 it('a', () => {
@@ -723,10 +925,128 @@ fn the_same_matcher_accepting_more() {
             "expect(r.a).toBe(1)",
             "expectation-loosened high 1: no longer checks r.b == 2",
         ),
+        // Compared to fewer than one decimal digit, it's not the same number anymore.
+        (
+            "expect(y).toBe(239)",
+            "expect(y).toBeCloseTo(239, 0)",
+            "matcher-loosened medium 1: toBe(239) → toBeCloseTo(239, 0): now a range of values passes",
+        ),
     ];
     for (before, after, expected) in cases {
         assert_eq!(one_check(before, after), [expected], "{before} → {after}");
     }
+}
+
+#[test]
+fn a_number_compared_closely_is_the_same_check() {
+    for (before, after) in [
+        ("expect(y).toBe(239)", "expect(y).toBeCloseTo(239, 1)"),
+        ("expect(y).toEqual(0.3)", "expect(y).toBeCloseTo(0.3)"),
+        (
+            "expect(r).toMatchObject({ y: 239 })",
+            "expect(r.y).toBeCloseTo(239, 1)",
+        ),
+    ] {
+        assert_eq!(one_check(before, after), [""; 0], "{before} → {after}");
+    }
+}
+
+#[test]
+fn a_key_checked_on_its_own_line_is_still_checked() {
+    // The shape of Excalidraw's transform test: placement became computed, so y moved out of
+    // the object into a close comparison.
+    assert_eq!(
+        findings(
+            "it('x', () => {
+  expect(arrow).toMatchObject({ type: 'arrow', x: 255.5, y: 239 });
+  expect(text).toMatchObject({ type: 'text', x: 240, y: 226.5 });
+})",
+            "it('x', () => {
+  expect(arrow.y).toBeCloseTo(239, 1);
+  expect(arrow).toMatchObject({ type: 'arrow', x: 255.5 });
+  expect(text.x).toBe(240);
+  expect(text.y).toBeCloseTo(226.5, 1);
+  expect(text).toMatchObject({ type: 'text' });
+})",
+        ),
+        [""; 0]
+    );
+    // Not by a check that can't fail: a promise check the test doesn't wait for, or one
+    // after a `return` the object's check doesn't come after.
+    assert_eq!(
+        findings(
+            "it('x', async () => {
+  await expect(p).resolves.toMatchObject({ a: 1, y: 2 });
+  expect(r).toMatchObject({ a: 1, y: 2 });
+})",
+            "it('x', async () => {
+  await expect(p).resolves.toMatchObject({ a: 1 });
+  expect(p).resolves.toHaveProperty('y', 2);
+  expect(r).toMatchObject({ a: 1 });
+  if (!ok) return;
+  expect(r.y).toBe(2);
+})",
+        ),
+        [
+            "expectation-loosened high 2: toMatchObject no longer checks y",
+            "expectation-loosened high 4: toMatchObject no longer checks y",
+        ]
+    );
+    // Only where it runs whenever the object's check does; the rest is still reported.
+    assert_eq!(
+        findings(
+            "it('x', () => {
+  expect(r).toMatchObject({ a: 1, b: 2, c: { d: 3, e: 4 } });
+})",
+            "it('x', () => {
+  if (ready) expect(r.b).toBe(2);
+  expect(r.c.d).toBe(3);
+  expect(r).toMatchObject({ a: 1 });
+})",
+        ),
+        ["expectation-loosened high 4: toMatchObject no longer checks b, c"]
+    );
+}
+
+#[test]
+fn each_tables_are_compared_level_by_level() {
+    // The shape of nuxt/ui's Tooltip test: the test moved into a `describe.each`, and its own
+    // table became an expression.
+    assert_eq!(
+        findings(
+            "describe('Tooltip', () => {
+  it.each([undefined, 'list', 'card'])('opens with variant %s', (variant) => { expect(open(variant)).toBe(true) })
+})",
+            "describe('Tooltip', () => {
+  describe.each([{ name: 'Checkbox' }, { name: 'Switch' }])('with $name', ({ name }) => {
+    it.each(name === 'Checkbox' ? [undefined, 'list', 'card'] : [undefined])('opens with variant %s', (variant) => { expect(open(variant)).toBe(true) })
+  })
+})",
+        ),
+        [""; 0]
+    );
+    // A test moved into a `describe.each`: its own table is still compared.
+    assert_eq!(
+        findings(
+            "it.each(['pro', 'agency'])('upgrades to %s', (plan) => { expect(upgrade(plan)).toBe(true) })",
+            "describe.each(['a'])('%s', () => {
+  it.each(['pro'])('upgrades to %s', (plan) => { expect(upgrade(plan)).toBe(true) })
+})",
+        ),
+        ["expectation-loosened high 2: .each no longer runs 1 row: 'agency'"]
+    );
+    // A row dropped from the test's own table, under a suite table that didn't change.
+    assert_eq!(
+        findings(
+            "describe.each(['a', 'b'])('%s', () => {
+  it.each(['pro', 'agency'])('upgrades to %s', (plan) => { expect(upgrade(plan)).toBe(true) })
+})",
+            "describe.each(['a', 'b'])('%s', () => {
+  it.each(['pro'])('upgrades to %s', (plan) => { expect(upgrade(plan)).toBe(true) })
+})",
+        ),
+        ["expectation-loosened high 2: .each no longer runs 1 row: 'agency'"]
+    );
 }
 
 #[test]

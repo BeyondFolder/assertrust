@@ -11,6 +11,7 @@ mod facts;
 mod values;
 
 pub(crate) use self::config::config;
+pub(crate) use self::facts::subject_target;
 
 use std::collections::{HashMap, HashSet};
 

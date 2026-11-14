@@ -377,11 +377,13 @@ fn checks_moved_into_a_method_of_an_imported_class_are_followed() {
 #[test]
 fn a_change_to_a_method_that_checks_nothing_loads_nothing() {
     // A page object: `expectOpen` checks, `click` and `API.clear` drive the page, and
-    // `h.app.clear()` is the app's own method, not `API.clear`.
+    // `h.app.clear()` is the app's own method, not `API.clear`. Which page `expectOpen`
+    // clicks isn't a check either.
     let page = |click: &str, import: &str| {
+        let click_arg = if click.contains("delay") { 2 } else { 1 };
         format!(
             "{import}\nexport class API {{\n  static clear = () => {{\n    act(() => {{ h.app.clear() }});\n    expect(selected()).toEqual([]);\n  }}\n}}\n\
-             export class Page {{\n  click(x) {{ {click} }}\n  expectOpen() {{ expect(this.dialog).toBeVisible() }}\n}}\n"
+             export class Page {{\n  click(x) {{ {click} }}\n  expectOpen() {{ this.click({click_arg}); expect(this.dialog).toBeVisible() }}\n}}\n"
         )
     };
     let tests = "import { Page } from './page'\n\nconst page = new Page()\n\nit('opens', () => { page.click(1); page.expectOpen() })\n";
@@ -420,5 +422,29 @@ fn a_change_to_a_method_that_checks_nothing_loads_nothing() {
         run.stdout.contains("test/open.test.ts: 1 test paired"),
         "{}",
         run.stdout
+    );
+}
+
+#[test]
+fn a_method_that_turns_static_loses_its_calls() {
+    let page = |method: &str| {
+        format!("export class Page {{\n  {method}() {{ expect(this.dialog).toBeVisible() }}\n}}\n")
+    };
+    let mut repo = TestRepo::new();
+    repo.write(
+        "test/open.test.ts",
+        "import { Page } from './page'\n\nconst page = new Page()\n\nit('opens', () => { page.expectOpen() })\n",
+    );
+    repo.write("test/page.ts", &page("expectOpen"));
+    let base = repo.commit("Add tests");
+    repo.write("test/page.ts", &page("static expectOpen"));
+    let head = repo.commit("Make expectOpen static");
+    // `page.expectOpen()` no longer reaches it: only `Page.expectOpen()` would.
+    assert_eq!(
+        check(&repo, &["--range", &format!("{base}..HEAD")]),
+        format!(
+            "test/open.test.ts:5  HIGH  check-removed\n  removed page.expectOpen(), which ran 1 check; the test has no checks left · {}\n\n1 finding · warn-only (exit 0)\n",
+            &head[..7]
+        )
     );
 }

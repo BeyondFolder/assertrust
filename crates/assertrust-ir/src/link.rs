@@ -12,7 +12,8 @@
 //! that checks something, with `this` standing for `ctx`.
 
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+use std::rc::Rc;
 
 use crate::model::{
     Call, Context, Defined, Fact, FactTest, FileIr, Helper, Hook, HookKind, Item, ItemKind, Via,
@@ -66,6 +67,7 @@ pub fn link(path: &str, file: &FileIr, modules: &dyn Modules) -> FileIr {
         checks: RefCell::new(HashMap::new()),
         working_out: RefCell::new(Vec::new()),
         methods: RefCell::new(HashMap::new()),
+        searched: RefCell::new(HashMap::new()),
     };
     let mut linked = file.clone();
     for (index, test) in file.tests.iter().enumerate() {
@@ -120,6 +122,7 @@ pub fn helper_checks(path: &str, file: &FileIr, modules: &dyn Modules) -> Vec<Op
         checks: RefCell::new(HashMap::new()),
         working_out: RefCell::new(Vec::new()),
         methods: RefCell::new(HashMap::new()),
+        searched: RefCell::new(HashMap::new()),
     };
     file.helpers
         .iter()
@@ -147,6 +150,14 @@ pub fn helper_checks(path: &str, file: &FileIr, modules: &dyn Modules) -> Vec<Op
             })
         })
         .collect()
+}
+
+/// A helper's name with its class or object: `Page.expectOpen`.
+fn qualified(helper: &Helper) -> String {
+    match &helper.owner {
+        Some(owner) => format!("{owner}.{}", helper.name),
+        None => helper.name.clone(),
+    }
 }
 
 fn hook_via(hook: &Hook) -> [Via; 1] {
@@ -193,7 +204,12 @@ struct Linker<'m> {
     /// Methods found by their name, by where the call is (file and class) and the name: a
     /// test file can make thousands of calls like `mouse.click(…)`.
     methods: RefCell<MethodCache<'m>>,
+    /// The files methods are looked for in, by the file the call is in.
+    searched: RefCell<HashMap<String, Rc<Files<'m>>>>,
 }
+
+/// Files to look in, each with whether it's another file than the test's.
+type Files<'m> = Vec<(&'m str, &'m FileIr, bool)>;
 
 /// By the file a call is in, the class it's in, the name the receiver ends with (`API` for
 /// `API.clearSelection()`), and the method's name.
@@ -316,7 +332,8 @@ impl<'m> Linker<'m> {
             let Some((target, helper)) = found else {
                 continue;
             };
-            let key = (target.path.to_owned(), helper.name.clone());
+            // Two classes in a file may each have a method by one name.
+            let key = (target.path.to_owned(), qualified(helper));
             if stack.contains(&key) || stack.len() >= MAX_DEPTH || !self.runs_checks(target, helper)
             {
                 continue;
@@ -436,7 +453,12 @@ impl<'m> Linker<'m> {
                     suites: &helper.suites,
                     ..place
                 };
-                return Found::Helper(target, helper);
+                // Its own method surely: a helper only if it checks something.
+                return if self.runs_checks_in(target, helper).0 {
+                    Found::Helper(target, helper)
+                } else {
+                    Found::Nothing
+                };
             }
         }
         let named = receiver.rsplit('.').next().unwrap_or(receiver);
@@ -449,27 +471,38 @@ impl<'m> Linker<'m> {
         if let Some(found) = self.methods.borrow().get(&key) {
             return *found;
         }
-        // An answer found while another helper's is being worked out may lean on it.
-        let settled = self.working_out.borrow().is_empty();
-        let found = self.method_by_name(place, named, name);
-        if settled {
+        let (found, unsure) = self.method_by_name(place, named, name);
+        // An answer that leaned on a helper still being worked out may change.
+        if !unsure {
             self.methods.borrow_mut().insert(key, found);
         }
         found
     }
 
     /// The one method called `name` that checks something, in the file `place` is in and
-    /// the files it imports, called on something whose name ends in `named`.
-    fn method_by_name(&self, place: Place<'m>, named: &str, name: &str) -> Found<'m> {
-        let mut files = vec![(place.path, place.file, place.other)];
-        self.imported(place.path, place.file, 0, &mut files);
+    /// the files it imports, called on something whose name ends in `named`. An instance
+    /// method counts only when its class is built (`new Page()`) or extended in one of those
+    /// files: an object of a class nobody builds can't be what the call is made on. Also
+    /// says whether the answer leaned on a helper still being worked out.
+    fn method_by_name(&self, place: Place<'m>, named: &str, name: &str) -> (Found<'m>, bool) {
+        let files = self.search(place);
+        let built: HashSet<&str> = files
+            .iter()
+            .flat_map(|(_, file, _)| file.constructed.iter().map(String::as_str))
+            .collect();
         let mut found: Vec<(Place<'m>, &'m Helper)> = Vec::new();
-        for (path, file, other) in files {
+        let mut unsure = false;
+        for &(path, file, other) in files.iter() {
             for helper in &file.helpers {
-                if helper.owner.is_none()
-                    || helper.name != name
-                    || (helper.on_owner && helper.owner.as_deref() != Some(named))
-                {
+                let Some(owner) = helper.owner.as_deref() else {
+                    continue;
+                };
+                let reachable = if helper.on_owner {
+                    owner == named
+                } else {
+                    built.contains(owner)
+                };
+                if helper.name != name || !reachable {
                     continue;
                 }
                 let target = Place {
@@ -477,21 +510,40 @@ impl<'m> Linker<'m> {
                     other,
                     file,
                     suites: &helper.suites,
-                    owner: helper.owner.as_deref(),
+                    owner: Some(owner),
                 };
-                if self.runs_checks_in(target, helper).0 {
+                let (checks, cycle) = self.runs_checks_in(target, helper);
+                unsure |= cycle;
+                if checks {
                     found.push((target, helper));
                 }
             }
         }
-        match found.as_slice() {
+        let found = match found.as_slice() {
             [] => Found::Nothing,
             [(target, helper)] => Found::Helper(*target, helper),
             _ => Found::Ambiguous,
-        }
+        };
+        (found, unsure)
     }
 
-    /// Adds the files `file` (at `path`) imports, and the files those pass on, to `files`.
+    /// The files a method called at `place` is looked for in: its own, the files it
+    /// imports, and what those pass on or build objects from.
+    fn search(&self, place: Place<'m>) -> Rc<Files<'m>> {
+        if let Some(files) = self.searched.borrow().get(place.path) {
+            return Rc::clone(files);
+        }
+        let mut files = vec![(place.path, place.file, place.other)];
+        self.imported(place.path, place.file, 0, &mut files);
+        let files = Rc::new(files);
+        self.searched
+            .borrow_mut()
+            .insert(place.path.to_owned(), Rc::clone(&files));
+        files
+    }
+
+    /// Adds the files `file` (at `path`) imports, and the files those pass on or build
+    /// objects from, to `files`.
     fn imported(
         &self,
         path: &str,
@@ -503,7 +555,9 @@ impl<'m> Linker<'m> {
             return;
         }
         for import in &file.imports {
-            if depth > 0 && !import.reexport {
+            // Beyond the file the call is in, only what a file passes on, or builds objects
+            // from (`export const page = new Page()` in a fixtures file).
+            if depth > 0 && !import.reexport && !file.constructed.contains(&import.local) {
                 continue;
             }
             let Some((found, ir)) = self.modules.module(path, &import.from) else {
@@ -675,74 +729,28 @@ fn fill_item(item: &mut Item, args: &HashMap<String, Value>, awaited: bool) {
     }
 }
 
-/// A fact's base with the arguments filled in. Properties now read from what was filled in
-/// are split off again, so the fact reads like one written in the test: `body` filled with
-/// `(await refund()).body` is the base `await refund()` and the path `body`.
+/// A fact's base with the arguments filled in, read again the way a check written in the
+/// test would be, so the two state the same fact: `body` filled with `(await refund()).body`
+/// is the base `await refund()` and the path `body`, while `await page.title` stays whole.
 fn fill_base(fact: &mut Fact, args: &HashMap<String, Value>) {
     let filled = fill_source(&fact.base, args);
     if filled == fact.base {
         return;
     }
-    let (base, mut path) = split_properties(&filled);
+    // A name with properties (`res.body`) splits at its dots; anything else is parsed.
+    let plain = |part: &str| {
+        part.chars().next().is_some_and(is_identifier_start) && part.chars().all(is_identifier_char)
+    };
+    let (base, mut path) = if filled.split('.').all(plain) {
+        let mut parts = filled.split('.').map(str::to_owned);
+        let base = parts.next().unwrap_or_default();
+        (base, parts.collect())
+    } else {
+        crate::js::subject_target(&filled).unwrap_or((filled, Vec::new()))
+    };
     path.append(&mut fact.path);
     fact.base = base;
     fact.path = path;
-}
-
-/// `res.body.items[0]` → `res` and `[body, items, 0]`, as facts read a subject: properties and
-/// numeric indexes, up to the first call or other expression. Parentheses around what's
-/// left go: `(await p).data` → `await p` and `[data]`.
-fn split_properties(source: &str) -> (String, Vec<String>) {
-    let mut rest = source;
-    let mut path = Vec::new();
-    loop {
-        if let Some(dot) = rest.rfind('.')
-            && dot > 0
-            && let key = &rest[dot + 1..]
-            && key.chars().next().is_some_and(is_identifier_start)
-            && key.chars().all(is_identifier_char)
-        {
-            path.push(key.to_owned());
-            rest = rest[..dot].strip_suffix('?').unwrap_or(&rest[..dot]);
-            continue;
-        }
-        if let Some(inner) = rest.strip_suffix(']')
-            && let Some(open) = inner.rfind('[')
-            && open > 0
-            && let index = &inner[open + 1..]
-            && !index.is_empty()
-            && index.chars().all(|c| c.is_ascii_digit())
-        {
-            path.push(index.to_owned());
-            rest = &inner[..open];
-            continue;
-        }
-        break;
-    }
-    path.reverse();
-    (without_parentheses(rest).to_owned(), path)
-}
-
-/// `(await p)` → `await p`, when the parentheses wrap all of it.
-fn without_parentheses(source: &str) -> &str {
-    let Some(inner) = source
-        .strip_prefix('(')
-        .and_then(|rest| rest.strip_suffix(')'))
-    else {
-        return source;
-    };
-    let mut depth = 0_i32;
-    for c in inner.chars() {
-        match c {
-            '(' => depth += 1,
-            ')' => depth -= 1,
-            _ => {}
-        }
-        if depth < 0 {
-            return source;
-        }
-    }
-    inner
 }
 
 /// Normalized source with the names in `args` replaced by their values: a helper's `res.status`
@@ -846,7 +854,10 @@ fn single_term(source: &str) -> bool {
     let mut quote: Option<char> = None;
     let mut chars = source.chars().peekable();
     let mut first = true;
+    let mut previous = ' ';
     while let Some(c) = chars.next() {
+        let after = previous;
+        previous = c;
         if let Some(open) = quote {
             if c == '\\' {
                 chars.next();
@@ -860,6 +871,10 @@ fn single_term(source: &str) -> bool {
             '(' | '[' | '{' => depth += 1,
             ')' | ']' | '}' => depth -= 1,
             '-' if first => {}
+            // `res?.body`, and TypeScript's `res!.body`: still one term.
+            '?' if chars.peek() == Some(&'.') => {}
+            '!' if (is_identifier_char(after) || matches!(after, ')' | ']'))
+                && chars.peek() != Some(&'=') => {}
             c if depth == 0 && (c.is_whitespace() || "+-*/%<>=!&|?:~^,".contains(c)) => {
                 return false;
             }
@@ -1107,32 +1122,35 @@ class Page {
 const api = { expectOk(res) { expect(res.ok).toBe(true) } };
 class A { check() { expect(1).toBe(1) } }
 class B { check() { expect(2).toBe(2) } static reset() { expect(3).toBe(3) } }
+class Form { validate() { expect(4).toBe(4) } }
 it('works', async () => {
   const page = new Page();
   await page.expectSaved(7);
   page.url();
   page.expectClosed();
   api.expectOk(res);
-  thing.check();
+  thing.check(new A(), new B());
   db.reset(); other.expectOk(res); B.reset();
+  schema.validate(input);
 });
 ";
         // `url` checks nothing, so calling it is like any other line. Two methods called
         // `check` check something: which one `thing` has isn't known. A static method, or
-        // an object's, is only called on its owner: `db.reset()` isn't `B.reset()`.
+        // an object's, is only called on its owner: `db.reset()` isn't `B.reset()`. Nothing
+        // builds a `Form`, so `schema` can't be one.
         assert_eq!(
             linked(source, &()),
             [
-                "works: 13 call page.expectSaved(7)",
+                "works: 14 call page.expectSaved(7)",
                 "works: 4 call page.expectOpen() via page.expectSaved(7)",
                 "works: 3 expect(this.dialog.visible).toBe(true) via page.expectSaved(7) > page.expectOpen()",
                 "works: 4 expect(await db.get(id)).toBeDefined() via page.expectSaved(7)",
-                "works: 15 call page.expectClosed()",
+                "works: 16 call page.expectClosed()",
                 "works: 6 expect(this.dialog.visible).toBe(false) via page.expectClosed()",
-                "works: 16 call api.expectOk(res)",
+                "works: 17 call api.expectOk(res)",
                 "works: 8 expect(res.ok).toBe(true) via api.expectOk(res)",
-                "works: 17 call thing.check() (not followed)",
-                "works: 18 call B.reset()",
+                "works: 18 call thing.check(new A(), new B()) (not followed)",
+                "works: 19 call B.reset()",
                 "works: 10 expect(3).toBe(3) via B.reset()",
             ]
         );
@@ -1167,6 +1185,28 @@ it('refunds', async () => { expectOk(await refund()) });
                 "all.done | all.done is truthy",
             ]
         );
+        // What's filled in reads like the same check written in the test.
+        let source = "
+function check(v) { expect(v).toBe(1) }
+function expectOk(res) { expect(res.ok).toBe(true) }
+it('reads', async () => {
+  check(await page.title);
+  check(a + b.length);
+  check(res['body']);
+  check(await el.textContent());
+  expectOk(data?.body);
+});
+";
+        assert_eq!(
+            checked(source),
+            [
+                "await page.title | await page.title == 1",
+                "a + b.length | a + b.length == 1",
+                "res['body'] | res.body == 1",
+                "await el.textContent() | el.text() == 1",
+                "data?.body.ok | data.body.ok is truthy",
+            ]
+        );
     }
 
     #[test]
@@ -1187,16 +1227,9 @@ it('refunds', async () => { expectOk(await refund()) });
         assert_eq!(fill("[res, id]"), "[await refund(), 7]");
         assert_eq!(fill("get('res', `id ${id}`)"), "get('res', `id ${id}`)");
         assert_eq!(fill("[...res, id2]"), "[...(await refund()), id2]");
-        assert_eq!(
-            split_properties("(await refund()).body.items[0]"),
-            (
-                "await refund()".to_owned(),
-                vec!["body".to_owned(), "items".to_owned(), "0".to_owned()]
-            )
-        );
-        assert_eq!(
-            split_properties("res.slice(0, -1)"),
-            ("res.slice(0, -1)".to_owned(), Vec::<String>::new())
-        );
+        assert_eq!(fill("res?.body"), "(await refund())?.body");
+        assert!(single_term("data?.body"));
+        assert!(single_term("data!.body"));
+        assert!(!single_term("a !== b"));
     }
 }

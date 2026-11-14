@@ -620,3 +620,79 @@ fn a_check_removed_from_a_method_is_one_finding_for_every_test() {
         ]
     );
 }
+
+#[test]
+fn single_items_or_a_partial_slice_do_not_fix_the_count() {
+    // `[0]` and `[1]` pass for a list with a third item too.
+    assert_eq!(
+        findings(
+            "it('a', () => {\n  expect(res).toEqual([{ id: 1 }, { id: 2 }])\n})",
+            "it('a', () => {\n  expect(res[0]).toEqual({ id: 1 });\n  expect(res[1]).toEqual({ id: 2 })\n})",
+        ),
+        [
+            "expectation-loosened medium test/a.test.ts:2: expect(res).toEqual([{ id: 1 }, { id: 2 }]) is now checked in parts, which pass with more than its 2 items"
+        ]
+    );
+    // `slice(0, 1)` is only the first item: `[a, b, x, 'done']` passes too.
+    assert_eq!(
+        findings(
+            "it('a', () => {\n  expect(res).toEqual([{ id: 1 }, { id: 2 }, 'done'])\n})",
+            "it('a', () => {\n  expect(res.at(-1)).toBe('done');\n  expect(res.slice(0, 1)).toEqual([{ id: 1 }]);\n  expect(res.at(1)).toEqual({ id: 2 })\n})",
+        ),
+        [
+            "expectation-loosened medium test/a.test.ts:2: expect(res).toEqual([{ id: 1 }, { id: 2 }, 'done']) is now checked in parts, which pass with more than its 3 items"
+        ]
+    );
+    // The first item, and the rest with its count: the same list.
+    assert_eq!(
+        findings(
+            "it('a', () => {\n  expect(res).toEqual(['head', { id: 1 }])\n})",
+            "it('a', () => {\n  expect(res[0]).toBe('head');\n  expect(res.slice(1)).toEqual([{ id: 1 }])\n})",
+        ),
+        Vec::<String>::new()
+    );
+}
+
+#[test]
+fn a_class_a_fixtures_file_builds_is_searched_for_methods() {
+    // The Playwright layout: the test imports a ready-made object from fixtures.
+    let files = Files::default()
+        .with(
+            "./fixtures",
+            "test/fixtures.ts",
+            "import { Page } from './page'\nexport const page = new Page()\n",
+        )
+        .with(
+            "./page",
+            "test/page.ts",
+            "export class Page {\n  expectOpen() { expect(this.dialog).toBeVisible() }\n}\n",
+        );
+    assert_eq!(
+        findings_with(
+            "import { page } from './fixtures'\nit('opens', () => {\n  page.open();\n  expect(page.dialog).toBeVisible();\n})",
+            "import { page } from './fixtures'\nit('opens', () => {\n  page.open();\n  page.expectOpen();\n})",
+            (&files, &files),
+        ),
+        Vec::<String>::new()
+    );
+}
+
+#[test]
+fn methods_with_one_name_in_two_classes_are_both_followed() {
+    let source = |check: &str| {
+        format!(
+            "class Dialog {{\n  static expectOpen() {{ {check} }}\n}}\n\
+             class Page {{\n  static expectOpen() {{ Dialog.expectOpen() }}\n}}\n\
+             it('opens', () => {{ Page.expectOpen() }})"
+        )
+    };
+    assert_eq!(
+        findings(
+            &source("expect(dialog.open).toBe(true)"),
+            &source("expect(dialog).toBeDefined()"),
+        ),
+        [
+            "check-removed medium test/a.test.ts:2: removed expect(dialog.open).toBe(true) from expectOpen"
+        ]
+    );
+}

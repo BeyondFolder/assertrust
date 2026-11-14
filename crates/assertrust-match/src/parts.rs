@@ -166,12 +166,12 @@ fn same_list_names(check: &Assertion) -> Vec<String> {
 }
 
 /// A part of a list.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Part {
     /// One item: `at(-1)`, `[0]`.
     At(i64),
-    /// Some of them: `slice(0, -1)`.
-    Slice,
+    /// The items from one index up to another, or to the end: `slice(0, -1)`, `slice(1)`.
+    Slice(i64, Option<i64>),
 }
 
 /// `x.at(-1)`, `x[0]`, `x.slice(0, -1)`: the list and the part.
@@ -187,10 +187,16 @@ fn part(subject: &str) -> Option<(&str, Part)> {
         return Some((&inner[..open], Part::At(index)));
     }
     let open = inner.rfind(".slice(")?;
-    let args = &inner[open + 7..];
-    args.split(',')
-        .all(|arg| arg.trim().parse::<i64>().is_ok())
-        .then(|| (&inner[..open], Part::Slice))
+    let bounds: Vec<i64> = inner[open + 7..]
+        .split(',')
+        .map(|arg| arg.trim().parse().ok())
+        .collect::<Option<_>>()?;
+    let part = match bounds.as_slice() {
+        [start] => Part::Slice(*start, None),
+        [start, end] => Part::Slice(*start, Some(*end)),
+        _ => return None,
+    };
+    Some((&inner[..open], part))
 }
 
 /// What a check on a part states.
@@ -216,8 +222,10 @@ fn read(check: &Assertion) -> Option<(Part, Says<'_>)> {
     };
     let says = match (part, matcher.name.as_str(), arg) {
         (Part::At(_), "toEqual" | "toStrictEqual" | "toBe", value) => Says::Item(value),
-        (Part::Slice, "toEqual" | "toStrictEqual", Value::Array(items)) => Says::Items(items, true),
-        (Part::Slice, "toEqual" | "toStrictEqual", Value::Matcher { name, args })
+        (Part::Slice(..), "toEqual" | "toStrictEqual", Value::Array(items)) => {
+            Says::Items(items, true)
+        }
+        (Part::Slice(..), "toEqual" | "toStrictEqual", Value::Matcher { name, args })
             if name == "arrayContaining" =>
         {
             match args.as_slice() {
@@ -225,7 +233,7 @@ fn read(check: &Assertion) -> Option<(Part, Says<'_>)> {
                 _ => return None,
             }
         }
-        (Part::Slice, "toHaveLength", Value::Number(count)) => Says::Count(count.parse().ok()?),
+        (Part::Slice(..), "toHaveLength", Value::Number(count)) => Says::Count(count.parse().ok()?),
         _ => return None,
     };
     Some((part, says))
@@ -238,46 +246,73 @@ struct Analysis {
 }
 
 /// Whether the checks on parts state every item of `items` again, and what they still
-/// fix. An item is matched once. When the old list was exact, an `at(i)` check must
-/// state the item at `i`.
+/// fix. An item is matched once. When the old list was exact, a part must state the items
+/// at its place: `at(i)` the one at `i`, a slice the ones in its range.
+///
+/// The number of items is still fixed only by one slice whose count is known (an exact list,
+/// or a `toHaveLength` on the same slice) with single items around it that cover the rest:
+/// `slice(0, -1)` and `at(-1)`, or `[0]` and `slice(1)`. Single items alone never fix it.
 fn analyse(items: &[Value], exact: bool, parts: &[Option<(Part, Says)>]) -> Option<Analysis> {
-    let mut claimed = vec![false; items.len()];
+    let count = items.len();
+    let len = i64::try_from(count).ok()?;
+    let index = |at: i64| usize::try_from(if at < 0 { len + at } else { at }).ok();
+    let bound = |at: i64| {
+        usize::try_from(if at < 0 {
+            (len + at).max(0)
+        } else {
+            at.min(len)
+        })
+    };
+    let mut claimed = vec![false; count];
     let mut used = vec![false; parts.len()];
-    let len = i64::try_from(items.len()).ok()?;
-    let mut singles = 0;
-    let mut sliced: Option<usize> = None;
+    let mut singles: Vec<i64> = Vec::new();
+    let mut slices: Vec<(Part, Option<usize>)> = Vec::new();
     let mut order_kept = true;
     for (i, found) in parts.iter().enumerate() {
         match found {
             Some((Part::At(at), Says::Item(value))) => {
-                let index = if *at < 0 { len + at } else { *at };
-                let Ok(index) = usize::try_from(index) else {
-                    continue;
-                };
                 let matched = if exact {
-                    (index < items.len() && !claimed[index] && items[index] == **value)
-                        .then_some(index)
+                    index(*at).filter(|&j| j < count && !claimed[j] && items[j] == **value)
                 } else {
-                    (0..items.len()).find(|&j| !claimed[j] && items[j] == **value)
+                    (0..count).find(|&j| !claimed[j] && items[j] == **value)
                 };
                 if let Some(j) = matched {
                     claimed[j] = true;
                     used[i] = true;
-                    singles += 1;
+                    singles.push(*at);
                 }
             }
-            Some((Part::Slice, Says::Items(values, ordered))) => {
-                for value in *values {
-                    let j = (0..items.len()).find(|&j| !claimed[j] && items[j] == *value)?;
-                    claimed[j] = true;
+            Some((part @ Part::Slice(start, end), Says::Items(values, ordered))) => {
+                let range = if exact {
+                    let start = bound(*start).ok()?;
+                    let end = end.map_or(Ok(count), bound).ok()?;
+                    start..end.max(start)
+                } else {
+                    0..count
+                };
+                if exact && *ordered {
+                    // The same items in the same places.
+                    if values.len() != range.len()
+                        || range
+                            .clone()
+                            .zip(*values)
+                            .any(|(j, value)| claimed[j] || items[j] != *value)
+                    {
+                        return None;
+                    }
+                    range.for_each(|j| claimed[j] = true);
+                } else {
+                    for value in *values {
+                        let j = range.clone().find(|&j| !claimed[j] && items[j] == *value)?;
+                        claimed[j] = true;
+                    }
+                    // Items that are all alike have no order to lose.
+                    if values.iter().any(|value| *value != values[0]) {
+                        order_kept &= *ordered;
+                    }
                 }
                 used[i] = true;
-                if *ordered {
-                    sliced = Some(values.len());
-                } else if values.iter().any(|value| *value != values[0]) {
-                    // Items that are all alike have no order to lose.
-                    order_kept = false;
-                }
+                slices.push((*part, ordered.then_some(values.len())));
             }
             _ => {}
         }
@@ -285,30 +320,32 @@ fn analyse(items: &[Value], exact: bool, parts: &[Option<(Part, Says)>]) -> Opti
     if !claimed.iter().all(|&claimed| claimed) {
         return None;
     }
-    // A count only counts for the part it's about: the one whose items were stated.
+    // A count only counts for the slice whose items were stated.
     for (i, found) in parts.iter().enumerate() {
-        if let Some((Part::Slice, Says::Count(count))) = found
-            && used.iter().enumerate().any(|(j, &used)| {
-                used && j != i && matches!(parts[j], Some((Part::Slice, Says::Items(..))))
-            })
+        if let Some((part @ Part::Slice(..), Says::Count(n))) = found
+            && let Some((_, known)) = slices.iter_mut().find(|(other, _)| other == part)
         {
             used[i] = true;
-            sliced.get_or_insert(*count);
+            known.get_or_insert(*n);
         }
     }
-    let has_slice = parts
-        .iter()
-        .zip(&used)
-        .any(|(found, &used)| used && matches!(found, Some((Part::Slice, _))));
-    let count_kept = match sliced {
-        Some(count) => count + singles == items.len(),
-        None => !has_slice && singles == items.len(),
+    let count_kept = match slices.as_slice() {
+        [(Part::Slice(start, end), Some(sliced))]
+            if *start >= 0 && end.is_none_or(|end| end < 0) =>
+        {
+            let mut around: Vec<i64> = (0..*start).chain(end.unwrap_or(0)..0).collect();
+            let mut written = singles.clone();
+            around.sort_unstable();
+            written.sort_unstable();
+            around == written && sliced + singles.len() == count
+        }
+        _ => false,
     };
     Some(Analysis {
         list: SplitList {
             ordered: exact,
             counted: exact,
-            items: items.len(),
+            items: count,
             count_kept,
             order_kept,
         },

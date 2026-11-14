@@ -401,3 +401,34 @@ fn a_deleted_test_without_checks_was_not_moved() {
     assert_eq!(matching.deleted.len(), 1);
     assert!(!matching.deleted[0].all_moved());
 }
+
+#[test]
+fn a_list_checked_in_parts_pairs_with_the_parts() {
+    // Every item is stated again: the last one by `at(-1)`, the others by the slice.
+    let (matching, before, after) = match_one(
+        "it('syncs', () => { expect(res).toEqual([{ id: 'user-1' }, 'done']) })",
+        "it('syncs', () => {
+           expect(res.at(-1)).toBe('done');
+           expect(res.slice(0, -1)).toEqual(expect.arrayContaining([{ id: 'user-1' }]));
+           expect(res.slice(0, -1)).toHaveLength(1);
+         })",
+    );
+    assert_eq!(
+        check_lines(&matching, &before, &after),
+        [
+            "Parts: expect(res).toEqual([{ id: 'user-1' }, 'done']) => expect(res.at(-1)).toBe('done') + expect(res.slice(0, -1)).toEqual(expect.arrayContaining([{ id: 'user-1' }])) + expect(res.slice(0, -1)).toHaveLength(1)"
+        ]
+    );
+    // An item the parts don't state again: not the same check.
+    let (matching, before, after) = match_one(
+        "it('syncs', () => { expect(res).toEqual([{ id: 'user-1' }, 'done']) })",
+        "it('syncs', () => { expect(res.at(-1)).toBe('done') })",
+    );
+    assert!(
+        !check_lines(&matching, &before, &after)
+            .iter()
+            .any(|line| line.starts_with("Parts")),
+        "{:?}",
+        check_lines(&matching, &before, &after)
+    );
+}

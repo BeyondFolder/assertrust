@@ -24,18 +24,33 @@ pub struct FileIr {
     /// What this file imports (`import { expectOk } from './utils'`) or passes on
     /// (`export * from './api'`). Imports from packages aren't followed.
     pub imports: Vec<Import>,
+    /// Names the file builds objects from or extends: `X` in `new X(…)` and
+    /// `class Y extends X`. Their methods may be helpers, so imports of them are followed.
+    pub constructed: Vec<String>,
 }
 
-/// A named function outside tests and hooks. Its checks run for the tests that call it,
-/// once [`link`](crate::link) has put them there.
+/// A named function outside tests and hooks, or a method of a class or object defined
+/// there. Its checks run for the tests that call it, once [`link`](crate::link) has put them
+/// there.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Helper {
     pub name: String,
+    /// For a method, its class or object: `SyncTestContext` for
+    /// `class SyncTestContext { assertSyncResponse(…) { … } }`. A method is called on
+    /// something (`ctx.assertSyncResponse(…)`), never by its plain name.
+    pub owner: Option<String>,
+    /// A static method or an object's method: it's called on its owner by name
+    /// (`API.clearSelection()`, `api.expectOk(res)`), not on any object.
+    pub on_owner: bool,
     /// The `describe` blocks it's defined in, outermost first: it's visible to tests in them.
     pub suites: Vec<String>,
     /// Its parameters in order: a name, or `None` for one that isn't a plain name
     /// (`{ a, b }`, `x = 1`, `...rest`). A call's arguments are filled in for the names.
     pub params: Vec<Option<String>>,
+    /// Constants it reads from its arguments, in order, with their normalized source:
+    /// `const items = response.slice(0, -1)`. Their names are replaced in its checks'
+    /// subjects, so the checks read the value the test passed.
+    pub locals: Vec<(String, String)>,
     /// `async`: a call that isn't awaited may finish after the test.
     pub is_async: bool,
     /// `export default`.
@@ -202,10 +217,14 @@ pub struct Via {
     pub defined: u32,
 }
 
-/// A call to a function by its name, which may be a helper: `expectOk(res)`.
+/// A call to a function by its name, which may be a helper: `expectOk(res)`, or to a
+/// method, which may be one too: `ctx.assertSyncResponse(response, [])`.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Call {
+    /// The function's name, or the method's.
     pub name: String,
+    /// For a method call, what it's called on, as normalized source: `ctx`, `this`.
+    pub receiver: Option<String>,
     pub args: Vec<Value>,
     /// The call as normalized source, for messages: [`Call::text_of`].
     pub text: String,
@@ -218,10 +237,14 @@ pub struct Call {
 }
 
 impl Call {
-    /// A call's text from its name and arguments: `expectStatus(res, 200)`.
-    pub fn text_of(name: &str, args: &[Value]) -> String {
+    /// A call's text from its receiver, name and arguments: `expectStatus(res, 200)`,
+    /// `ctx.assertSyncResponse(response, [])`.
+    pub fn text_of(receiver: Option<&str>, name: &str, args: &[Value]) -> String {
         let args: Vec<String> = args.iter().map(ToString::to_string).collect();
-        format!("{name}({})", args.join(", "))
+        match receiver {
+            Some(receiver) => format!("{receiver}.{name}({})", args.join(", ")),
+            None => format!("{name}({})", args.join(", ")),
+        }
     }
 }
 
@@ -252,10 +275,17 @@ pub enum ItemKind {
 
 /// One check: `expect(subject)`, then optionally `.not` / `.resolves` / `.rejects`, then a
 /// matcher.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct Assertion {
-    /// The subject's normalized source, e.g. `res.body`.
+    /// The subject's normalized source, e.g. `res.body`. In a check that runs through a
+    /// helper, with the call's arguments filled in: `refund().body` for
+    /// `expectOk(refund())`.
     pub subject: String,
+    /// The subject as the helper writes it (`res.body`), when filling in the call's
+    /// arguments changed it. Messages show this, so they read like the helper's code and
+    /// one finding about the helper covers every test that calls it. It never makes two
+    /// checks different.
+    pub written: Option<String>,
     pub expect: ExpectKind,
     pub negated: bool,
     pub promise: Option<Promise>,
@@ -268,9 +298,29 @@ pub struct Assertion {
     pub facts: Vec<Fact>,
 }
 
-impl fmt::Display for Assertion {
-    /// Normalized source, e.g. `await expect(p).resolves.toEqual({ a: 1 })`.
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl PartialEq for Assertion {
+    fn eq(&self, other: &Self) -> bool {
+        self.subject == other.subject
+            && self.expect == other.expect
+            && self.negated == other.negated
+            && self.promise == other.promise
+            && self.awaited == other.awaited
+            && self.matcher == other.matcher
+            && self.facts == other.facts
+    }
+}
+
+impl Assertion {
+    /// Normalized source with the subject as checked (arguments filled in), for comparing
+    /// checks by their text. `Display` shows the subject as written.
+    pub fn checked_text(&self) -> String {
+        let mut text = String::new();
+        self.write(&mut text, &self.subject)
+            .expect("writing to a String doesn't fail");
+        text
+    }
+
+    fn write(&self, f: &mut impl fmt::Write, subject: &str) -> fmt::Result {
         if self.awaited {
             f.write_str("await ")?;
         }
@@ -280,7 +330,7 @@ impl fmt::Display for Assertion {
             ExpectKind::Poll => "expect.poll",
             ExpectKind::Element => "expect.element",
         };
-        write!(f, "{expect}({})", self.subject)?;
+        write!(f, "{expect}({subject})")?;
         if self.negated {
             f.write_str(".not")?;
         }
@@ -300,6 +350,14 @@ impl fmt::Display for Assertion {
             f.write_str(")")?;
         }
         Ok(())
+    }
+}
+
+impl fmt::Display for Assertion {
+    /// Normalized source, e.g. `await expect(p).resolves.toEqual({ a: 1 })`, with the subject
+    /// as written.
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.write(f, self.written.as_deref().unwrap_or(&self.subject))
     }
 }
 

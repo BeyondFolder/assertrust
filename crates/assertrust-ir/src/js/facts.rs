@@ -18,7 +18,10 @@
 //! Matching pairs two checks that state a fact in common, so a rewrite isn't read as one
 //! check removed and another added.
 
+use oxc::allocator::Allocator;
 use oxc::ast::ast::{Argument, BinaryOperator, ChainElement, Expression, UnaryOperator};
+use oxc::parser::Parser;
+use oxc::span::SourceType;
 
 use super::calls::ExpectCall;
 use super::consts::Consts;
@@ -119,6 +122,19 @@ pub(super) fn facts(found: &ExpectCall, values: &Values, consts: &Consts) -> Vec
             }
         })
         .collect()
+}
+
+/// What a subject given as source reads, the way a check written in a test is read: its base
+/// and the properties read from it (`(await refund()).body.ok` → `await refund()` and
+/// `[body, ok]`). For a helper's check once linking has filled in a call's arguments. `None`
+/// when it doesn't parse.
+pub(crate) fn subject_target(source: &str) -> Option<(String, Vec<String>)> {
+    let allocator = Allocator::default();
+    let expr = Parser::new(&allocator, source, SourceType::ts().with_module(true))
+        .parse_expression()
+        .ok()?;
+    let target = target(&expr, "");
+    Some((target.base, target.path))
 }
 
 /// What a check reads: a base value and the properties read from it.

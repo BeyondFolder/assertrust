@@ -502,3 +502,197 @@ fn methods_on_an_object_a_helper_builds_are_not_its_checks() {
         ]
     );
 }
+
+/// immich's `SyncTestContext.assertSyncResponse`: the last record, then the ones before it
+/// in any order, and how many there are.
+const SYNC_CONTEXT: &str = "
+export class SyncContext {
+  assertSyncResponse(response, records) {
+    const completeAck = response.at(-1);
+    const items = response.slice(0, -1);
+    expect(completeAck).toEqual(expect.objectContaining({ type: 'SyncCompleteV1' }));
+    expect(items).toEqual(expect.arrayContaining(records));
+    expect(items).toHaveLength(records.length);
+  }
+  async assertSyncIsComplete(auth) {
+    this.assertSyncResponse(await this.syncStream(auth), []);
+  }
+}
+";
+
+/// A test file using `SyncContext`, built in a setup function, with `body` as the test.
+fn sync_test(body: &str) -> String {
+    format!(
+        "import {{ SyncContext }} from './context';\n\
+         const setup = () => ({{ ctx: new SyncContext() }});\n\
+         it('syncs', async () => {{\n  const {{ ctx }} = setup();\n  const response = await ctx.syncStream(auth);\n{body}\n}})\n"
+    )
+}
+
+#[test]
+fn checks_moved_into_a_method_are_still_checked() {
+    let files = Files::default().with("./context", "test/context.ts", SYNC_CONTEXT);
+    let complete = "expect.objectContaining({ type: 'SyncCompleteV1' })";
+    // One record: the same check, written as parts of the list.
+    assert_eq!(
+        findings_with(
+            &sync_test(&format!(
+                "  expect(response).toEqual([{{ id: 'user-1', type: 'UserV1' }}, {complete}]);"
+            )),
+            &sync_test("  ctx.assertSyncResponse(response, [{ id: 'user-1', type: 'UserV1' }]);"),
+            (&files, &files),
+        ),
+        Vec::<String>::new()
+    );
+    // A list that only had to contain them, with its length: nothing lost either.
+    assert_eq!(
+        findings_with(
+            &sync_test(&format!(
+                "  expect(response).toHaveLength(3);\n  expect(response).toEqual(expect.arrayContaining([{{ id: 'user-1' }}, {{ id: 'user-2' }}, {complete}]));"
+            )),
+            &sync_test("  ctx.assertSyncResponse(response, [{ id: 'user-1' }, { id: 'user-2' }]);"),
+            (&files, &files),
+        ),
+        Vec::<String>::new()
+    );
+    // `this.…()` in the method, with the argument it passes on: `await expect(p).resolves`
+    // is the list `(await p)`.
+    assert_eq!(
+        findings_with(
+            &sync_test(&format!(
+                "  await expect(ctx.syncStream(auth)).resolves.toEqual([{complete}]);"
+            )),
+            &sync_test("  await ctx.assertSyncIsComplete(auth);"),
+            (&files, &files),
+        ),
+        Vec::<String>::new()
+    );
+}
+
+#[test]
+fn a_list_checked_in_parts_may_lose_its_order_or_count() {
+    let files = Files::default().with("./context", "test/context.ts", SYNC_CONTEXT);
+    let complete = "expect.objectContaining({ type: 'SyncCompleteV1' })";
+    let before = sync_test(&format!(
+        "  expect(response).toEqual([{{ id: 'user-1' }}, {{ id: 'user-2' }}, {complete}]);"
+    ));
+    assert_eq!(
+        findings_with(
+            &before,
+            &sync_test("  ctx.assertSyncResponse(response, [{ id: 'user-1' }, { id: 'user-2' }]);"),
+            (&files, &files),
+        ),
+        [
+            "expectation-loosened low test/a.test.ts:6: expect(response).toEqual([{ id: 'user-1' }, { id: 'user-2' … is now checked in parts, with its 3 items in any order"
+        ]
+    );
+    // Without the length check, more records would pass too.
+    let lenient = Files::default().with(
+        "./context",
+        "test/context.ts",
+        &SYNC_CONTEXT.replace("    expect(items).toHaveLength(records.length);\n", ""),
+    );
+    assert_eq!(
+        findings_with(
+            &before,
+            &sync_test("  ctx.assertSyncResponse(response, [{ id: 'user-1' }, { id: 'user-2' }]);"),
+            (&files, &lenient),
+        ),
+        [
+            "expectation-loosened medium test/a.test.ts:6: expect(response).toEqual([{ id: 'user-1' }, { id: 'user-2' … is now checked in parts, which pass with more than its 3 items"
+        ]
+    );
+}
+
+#[test]
+fn a_check_removed_from_a_method_is_one_finding_for_every_test() {
+    let tests = "import { Api } from './api';\nconst api = new Api();\n\
+                 it('refunds', () => { api.expectOk(refund()) })\n\
+                 it('charges', () => { api.expectOk(charge()) })\n";
+    let strict = "export class Api {\n  expectOk(res) {\n    expect(res.status).toBe(200);\n    expect(res.body.ok).toBe(true);\n  }\n  url() { return '/api' }\n}\n";
+    let weaker = strict.replace("    expect(res.body.ok).toBe(true);\n", "");
+    let before = Files::default().with("./api", "test/api.ts", strict);
+    let after = Files::default().with("./api", "test/api.ts", &weaker);
+    assert_eq!(
+        findings_with(tests, tests, (&before, &after)),
+        [
+            "check-removed high test/api.ts:2: removed expect(res.body.ok).toBe(true) from expectOk (in 2 tests)"
+        ]
+    );
+}
+
+#[test]
+fn single_items_or_a_partial_slice_do_not_fix_the_count() {
+    // `[0]` and `[1]` pass for a list with a third item too.
+    assert_eq!(
+        findings(
+            "it('a', () => {\n  expect(res).toEqual([{ id: 1 }, { id: 2 }])\n})",
+            "it('a', () => {\n  expect(res[0]).toEqual({ id: 1 });\n  expect(res[1]).toEqual({ id: 2 })\n})",
+        ),
+        [
+            "expectation-loosened medium test/a.test.ts:2: expect(res).toEqual([{ id: 1 }, { id: 2 }]) is now checked in parts, which pass with more than its 2 items"
+        ]
+    );
+    // `slice(0, 1)` is only the first item: `[a, b, x, 'done']` passes too.
+    assert_eq!(
+        findings(
+            "it('a', () => {\n  expect(res).toEqual([{ id: 1 }, { id: 2 }, 'done'])\n})",
+            "it('a', () => {\n  expect(res.at(-1)).toBe('done');\n  expect(res.slice(0, 1)).toEqual([{ id: 1 }]);\n  expect(res.at(1)).toEqual({ id: 2 })\n})",
+        ),
+        [
+            "expectation-loosened medium test/a.test.ts:2: expect(res).toEqual([{ id: 1 }, { id: 2 }, 'done']) is now checked in parts, which pass with more than its 3 items"
+        ]
+    );
+    // The first item, and the rest with its count: the same list.
+    assert_eq!(
+        findings(
+            "it('a', () => {\n  expect(res).toEqual(['head', { id: 1 }])\n})",
+            "it('a', () => {\n  expect(res[0]).toBe('head');\n  expect(res.slice(1)).toEqual([{ id: 1 }])\n})",
+        ),
+        Vec::<String>::new()
+    );
+}
+
+#[test]
+fn a_class_a_fixtures_file_builds_is_searched_for_methods() {
+    // The Playwright layout: the test imports a ready-made object from fixtures.
+    let files = Files::default()
+        .with(
+            "./fixtures",
+            "test/fixtures.ts",
+            "import { Page } from './page'\nexport const page = new Page()\n",
+        )
+        .with(
+            "./page",
+            "test/page.ts",
+            "export class Page {\n  expectOpen() { expect(this.dialog).toBeVisible() }\n}\n",
+        );
+    assert_eq!(
+        findings_with(
+            "import { page } from './fixtures'\nit('opens', () => {\n  page.open();\n  expect(page.dialog).toBeVisible();\n})",
+            "import { page } from './fixtures'\nit('opens', () => {\n  page.open();\n  page.expectOpen();\n})",
+            (&files, &files),
+        ),
+        Vec::<String>::new()
+    );
+}
+
+#[test]
+fn methods_with_one_name_in_two_classes_are_both_followed() {
+    let source = |check: &str| {
+        format!(
+            "class Dialog {{\n  static expectOpen() {{ {check} }}\n}}\n\
+             class Page {{\n  static expectOpen() {{ Dialog.expectOpen() }}\n}}\n\
+             it('opens', () => {{ Page.expectOpen() }})"
+        )
+    };
+    assert_eq!(
+        findings(
+            &source("expect(dialog.open).toBe(true)"),
+            &source("expect(dialog).toBeDefined()"),
+        ),
+        [
+            "check-removed medium test/a.test.ts:2: removed expect(dialog.open).toBe(true) from expectOpen"
+        ]
+    );
+}

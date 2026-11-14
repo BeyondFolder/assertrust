@@ -12,9 +12,9 @@ use crate::{
 };
 
 /// The checks of one side of a test pair, and which are still unpaired.
-struct Side<'a> {
+pub(crate) struct Side<'a> {
     test: &'a Test,
-    left: Vec<usize>,
+    pub(crate) left: Vec<usize>,
 }
 
 impl<'a> Side<'a> {
@@ -25,7 +25,17 @@ impl<'a> Side<'a> {
         }
     }
 
-    fn assertion(&self, item: usize) -> &'a Assertion {
+    /// The calls an item runs through, by their lines: checks from two calls to one helper
+    /// are told apart by it.
+    pub(crate) fn calls(&self, item: usize) -> Vec<u32> {
+        self.test.body.items[item]
+            .via
+            .iter()
+            .map(|via| via.line)
+            .collect()
+    }
+
+    pub(crate) fn assertion(&self, item: usize) -> &'a Assertion {
         match &self.test.body.items[item].kind {
             ItemKind::Assertion(assertion) => assertion,
             _ => unreachable!("only assertion items are tracked"),
@@ -36,7 +46,7 @@ impl<'a> Side<'a> {
         self.test.body.items[item].context
     }
 
-    fn take(&mut self, items: &[usize]) {
+    pub(crate) fn take(&mut self, items: &[usize]) {
         self.left.retain(|item| !items.contains(item));
     }
 }
@@ -64,6 +74,7 @@ pub(crate) fn pair_checks(before: &Test, after: &Test) -> CheckMatching {
         any,
         |a| Some(a.subject.clone()),
     );
+    crate::parts::pair(&mut old, &mut new, &mut pairs);
     same_fact(&mut old, &mut new, &mut pairs);
     same_expected(&mut old, &mut new, &mut pairs);
     // The same matcher and arguments on a refactored subject, in order:
@@ -413,7 +424,7 @@ pub(crate) fn expected_values(assertion: &Assertion) -> Vec<String> {
 
 /// `'Hi there'`, `/err(or)?/`, `1234`, `user.email`: likely to mean the same thing wherever
 /// it appears. `200`, `true`, `null` or `'ok'` could be anything.
-fn distinctive(value: &Value) -> bool {
+pub(crate) fn distinctive(value: &Value) -> bool {
     match value {
         Value::String(text) | Value::Template(text) => text.trim().chars().count() >= 4,
         Value::Regex { .. } => true,
@@ -433,7 +444,11 @@ pub(crate) fn find_moves(files: &[FilePair], matching: &mut Matching) {
     let key = |test: &Test, item: usize| {
         let item = &test.body.items[item];
         match &item.kind {
-            ItemKind::Assertion(assertion) => Some(format!("{assertion}\u{0}{:?}", item.context)),
+            ItemKind::Assertion(assertion) => Some(format!(
+                "{}\u{0}{:?}",
+                assertion.checked_text(),
+                item.context
+            )),
             _ => None,
         }
     };

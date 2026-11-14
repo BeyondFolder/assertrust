@@ -671,266 +671,50 @@ note = "Same locator moved to the app.dialog helper (page.getByRole('dialog'))."
 [[finding]]
 unit = "fa44c744e33d"
 pr = 33010
-rule = "check-removed"
+rule = "expectation-loosened"
 path = "server/test/medium/specs/sync/sync-album-user.spec.ts"
 test = "SyncRequestType.AlbumUsersV1 > should sync an album user with the correct properties"
 before = ["await expect(ctx.syncStream(auth, [SyncRequestType.AlbumUsersV1])).resolves.toEqual([{ ack: expect.any(String), data: expect.objectContaining({ albumId: album.id, role: AlbumUserRole.Owner }), type: SyncEntityType.AlbumUserV1 }, { ack: expect.any(String), data: expect.objectContaining({ albumId: albumUser.albumId, role: albumUser.role, userId: albumUser.userId }), type: SyncEntityType.AlbumUserV1 }, expect.objectContaining({ type: SyncEntityType.SyncCompleteV1 })])"]
-after = []
-message = "removed await expect(ctx.syncStream(auth, [SyncRequestType.AlbumUse…; the test has no checks left"
-label = "wrong"
-note = "Same records checked via the new ctx.assertSyncResponse helper; only the order of the records is no longer enforced, the test still has full checks."
+after = ["expect(completeAck).toEqual(expect.objectContaining({ type: SyncEntityType.SyncCompleteV1 })) via ctx.assertSyncResponse(response, [{ ack: expect.any(String), data: expect.objectContaining({ albumId: album.id, role: AlbumUserRole.Owner }), type: SyncEntityType.AlbumUserV1 }, { ack: expect.any(String), data: expect.objectContaining({ albumId: albumUser.albumId, role: albumUser.role, userId: albumUser.userId }), type: SyncEntityType.AlbumUserV1 }])", "expect(items).toEqual(expect.arrayContaining([{ ack: expect.any(String), data: expect.objectContaining({ albumId: album.id, role: AlbumUserRole.Owner }), type: SyncEntityType.AlbumUserV1 }, { ack: expect.any(String), data: expect.objectContaining({ albumId: albumUser.albumId, role: albumUser.role, userId: albumUser.userId }), type: SyncEntityType.AlbumUserV1 }])) via ctx.assertSyncResponse(response, [{ ack: expect.any(String), data: expect.objectContaining({ albumId: album.id, role: AlbumUserRole.Owner }), type: SyncEntityType.AlbumUserV1 }, { ack: expect.any(String), data: expect.objectContaining({ albumId: albumUser.albumId, role: albumUser.role, userId: albumUser.userId }), type: SyncEntityType.AlbumUserV1 }])", "expect(items).toHaveLength(2) via ctx.assertSyncResponse(response, [{ ack: expect.any(String), data: expect.objectContaining({ albumId: album.id, role: AlbumUserRole.Owner }), type: SyncEntityType.AlbumUserV1 }, { ack: expect.any(String), data: expect.objectContaining({ albumId: albumUser.albumId, role: albumUser.role, userId: albumUser.userId }), type: SyncEntityType.AlbumUserV1 }])"]
+message = "await expect(ctx.syncStream(auth, [SyncRequestType.AlbumUse… is now checked in parts, with its 3 items in any order"
+label = "intended"
+note = "True and deliberate: the refactor moved the check into ctx.assertSyncResponse, which checks the same records, SyncComplete last and the count, but no longer the order of the two records."
 
 [[finding]]
 unit = "fa44c744e33d"
 pr = 33010
-rule = "check-removed"
+rule = "expectation-loosened"
 path = "server/test/medium/specs/sync/sync-album-user.spec.ts"
 test = "SyncRequestType.AlbumUsersV1 > owner > should detect and sync a new shared user"
 before = ["expect(response).toEqual([{ ack: expect.any(String), data: expect.objectContaining({ albumId: album.id, role: AlbumUserRole.Owner }), type: SyncEntityType.AlbumUserV1 }, { ack: expect.any(String), data: expect.objectContaining({ albumId: albumUser.albumId, role: albumUser.role, userId: albumUser.userId }), type: SyncEntityType.AlbumUserV1 }, expect.objectContaining({ type: SyncEntityType.SyncCompleteV1 })])"]
-after = []
-message = "removed expect(response).toEqual([{ ack: expect.any(String), data: …; the test has no checks left"
-label = "wrong"
-note = "Same records checked via the new ctx.assertSyncResponse helper; only the order of the records is no longer enforced, the test still has full checks."
+after = ["expect(completeAck).toEqual(expect.objectContaining({ type: SyncEntityType.SyncCompleteV1 })) via ctx.assertSyncResponse(response, [{ ack: expect.any(String), data: expect.objectContaining({ albumId: album.id, role: AlbumUserRole.Owner }), type: SyncEntityType.AlbumUserV1 }, { ack: expect.any(String), data: expect.objectContaining({ albumId: albumUser.albumId, role: albumUser.role, userId: albumUser.userId }), type: SyncEntityType.AlbumUserV1 }])", "expect(items).toEqual(expect.arrayContaining([{ ack: expect.any(String), data: expect.objectContaining({ albumId: album.id, role: AlbumUserRole.Owner }), type: SyncEntityType.AlbumUserV1 }, { ack: expect.any(String), data: expect.objectContaining({ albumId: albumUser.albumId, role: albumUser.role, userId: albumUser.userId }), type: SyncEntityType.AlbumUserV1 }])) via ctx.assertSyncResponse(response, [{ ack: expect.any(String), data: expect.objectContaining({ albumId: album.id, role: AlbumUserRole.Owner }), type: SyncEntityType.AlbumUserV1 }, { ack: expect.any(String), data: expect.objectContaining({ albumId: albumUser.albumId, role: albumUser.role, userId: albumUser.userId }), type: SyncEntityType.AlbumUserV1 }])", "expect(items).toHaveLength(2) via ctx.assertSyncResponse(response, [{ ack: expect.any(String), data: expect.objectContaining({ albumId: album.id, role: AlbumUserRole.Owner }), type: SyncEntityType.AlbumUserV1 }, { ack: expect.any(String), data: expect.objectContaining({ albumId: albumUser.albumId, role: albumUser.role, userId: albumUser.userId }), type: SyncEntityType.AlbumUserV1 }])"]
+message = "expect(response).toEqual([{ ack: expect.any(String), data: … is now checked in parts, with its 3 items in any order"
+label = "intended"
+note = "True and deliberate: the refactor moved the check into ctx.assertSyncResponse, which checks the same records, SyncComplete last and the count, but no longer the order of the two records."
 
 [[finding]]
 unit = "fa44c744e33d"
 pr = 33010
-rule = "check-removed"
-path = "server/test/medium/specs/sync/sync-album-user.spec.ts"
-test = "SyncRequestType.AlbumUsersV1 > owner > should detect and sync an updated shared user"
-before = ["expect(newResponse).toEqual([{ ack: expect.any(String), data: expect.objectContaining({ albumId: albumUser.albumId, role: AlbumUserRole.Viewer, userId: albumUser.userId }), type: SyncEntityType.AlbumUserV1 }, expect.objectContaining({ type: SyncEntityType.SyncCompleteV1 })])"]
-after = []
-message = "removed expect(newResponse).toEqual([{ ack: expect.any(String), dat…; the test has no checks left"
-label = "wrong"
-note = "Moved into the new ctx.assertSyncResponse helper, which checks the same record(s) plus SyncComplete last."
-
-[[finding]]
-unit = "fa44c744e33d"
-pr = 33010
-rule = "check-removed"
-path = "server/test/medium/specs/sync/sync-album-user.spec.ts"
-test = "SyncRequestType.AlbumUsersV1 > owner > should detect and sync a deleted shared user"
-before = ["expect(newResponse).toEqual([{ ack: expect.any(String), data: expect.objectContaining({ albumId: albumUser.albumId, userId: albumUser.userId }), type: SyncEntityType.AlbumUserDeleteV1 }, expect.objectContaining({ type: SyncEntityType.SyncCompleteV1 })])"]
-after = []
-message = "removed expect(newResponse).toEqual([{ ack: expect.any(String), dat…; the test has no checks left"
-label = "wrong"
-note = "Moved into the new ctx.assertSyncResponse helper, which checks the same record(s) plus SyncComplete last."
-
-[[finding]]
-unit = "fa44c744e33d"
-pr = 33010
-rule = "check-removed"
-path = "server/test/medium/specs/sync/sync-album-user.spec.ts"
-test = "SyncRequestType.AlbumUsersV1 > shared user > should detect and sync a new shared user"
-before = ["expect(response).toHaveLength(3)", "expect(response).toEqual(expect.arrayContaining([{ ack: expect.any(String), data: expect.objectContaining({ albumId: album.id, role: AlbumUserRole.Owner }), type: SyncEntityType.AlbumUserV1 }, { ack: expect.any(String), data: expect.objectContaining({ albumId: albumUser.albumId, role: albumUser.role, userId: albumUser.userId }), type: SyncEntityType.AlbumUserV1 }, expect.objectContaining({ type: SyncEntityType.SyncCompleteV1 })]))"]
-after = []
-message = "removed 2 checks, including expect(response).toHaveLength(3); the test has no checks left"
-label = "wrong"
-note = "Moved into ctx.assertSyncResponse, which checks the same records and length (and now that SyncComplete is last)."
-
-[[finding]]
-unit = "fa44c744e33d"
-pr = 33010
-rule = "check-removed"
-path = "server/test/medium/specs/sync/sync-album-user.spec.ts"
-test = "SyncRequestType.AlbumUsersV1 > shared user > should detect and sync an updated shared user"
-before = ["expect(response).toEqual([expect.objectContaining({ type: SyncEntityType.AlbumUserV1 }), expect.objectContaining({ type: SyncEntityType.AlbumUserV1 }), expect.objectContaining({ type: SyncEntityType.AlbumUserV1 }), expect.objectContaining({ type: SyncEntityType.SyncCompleteV1 })])", "expect(newResponse).toEqual([{ ack: expect.any(String), data: expect.objectContaining({ albumId: album.id, role: AlbumUserRole.Viewer, userId: user.id }), type: SyncEntityType.AlbumUserV1 }, expect.objectContaining({ type: SyncEntityType.SyncCompleteV1 })])"]
-after = []
-message = "removed 2 checks, including expect(response).toEqual([expect.objectContaining({ type: S…; the test has no checks left"
-label = "wrong"
-note = "Moved into the new ctx.assertSyncResponse helper, which checks the same record(s) plus SyncComplete last."
-
-[[finding]]
-unit = "fa44c744e33d"
-pr = 33010
-rule = "check-removed"
-path = "server/test/medium/specs/sync/sync-album-user.spec.ts"
-test = "SyncRequestType.AlbumUsersV1 > shared user > should detect and sync a deleted shared user"
-before = ["expect(response).toEqual([expect.objectContaining({ type: SyncEntityType.AlbumUserV1 }), expect.objectContaining({ type: SyncEntityType.AlbumUserV1 }), expect.objectContaining({ type: SyncEntityType.AlbumUserV1 }), expect.objectContaining({ type: SyncEntityType.SyncCompleteV1 })])", "expect(newResponse).toEqual([{ ack: expect.any(String), data: expect.objectContaining({ albumId: album.id, userId: user.id }), type: SyncEntityType.AlbumUserDeleteV1 }, expect.objectContaining({ type: SyncEntityType.SyncCompleteV1 })])"]
-after = []
-message = "removed 2 checks, including expect(response).toEqual([expect.objectContaining({ type: S…; the test has no checks left"
-label = "wrong"
-note = "Moved into the new ctx.assertSyncResponse helper, which checks the same record(s) plus SyncComplete last."
-
-[[finding]]
-unit = "fa44c744e33d"
-pr = 33010
-rule = "check-removed"
+rule = "expectation-loosened"
 path = "server/test/medium/specs/sync/sync-album-user.spec.ts"
 test = "SyncRequestType.AlbumUsersV1 > shared user > should backfill album users when a user shares an album with you"
 before = ["expect(response).toEqual([{ ack: expect.any(String), data: expect.objectContaining({ albumId: album2.id, role: AlbumUserRole.Owner, userId: user.id }), type: SyncEntityType.AlbumUserV1 }, { ack: expect.any(String), data: expect.objectContaining({ albumId: album2.id, role: AlbumUserRole.Editor, userId: auth.user.id }), type: SyncEntityType.AlbumUserV1 }, expect.objectContaining({ type: SyncEntityType.SyncCompleteV1 })])"]
-after = []
-message = "removed expect(response).toEqual([{ ack: expect.any(String), data: …"
-label = "wrong"
-note = "Same records checked via the new ctx.assertSyncResponse helper; only the order of the records is no longer enforced, the test still has full checks."
+after = ["expect(completeAck).toEqual(expect.objectContaining({ type: SyncEntityType.SyncCompleteV1 })) via ctx.assertSyncResponse(response, [{ ack: expect.any(String), data: expect.objectContaining({ albumId: album2.id, role: AlbumUserRole.Owner, userId: user.id }), type: SyncEntityType.AlbumUserV1 }, { ack: expect.any(String), data: expect.objectContaining({ albumId: album2.id, role: AlbumUserRole.Editor, userId: auth.user.id }), type: SyncEntityType.AlbumUserV1 }])", "expect(items).toEqual(expect.arrayContaining([{ ack: expect.any(String), data: expect.objectContaining({ albumId: album2.id, role: AlbumUserRole.Owner, userId: user.id }), type: SyncEntityType.AlbumUserV1 }, { ack: expect.any(String), data: expect.objectContaining({ albumId: album2.id, role: AlbumUserRole.Editor, userId: auth.user.id }), type: SyncEntityType.AlbumUserV1 }])) via ctx.assertSyncResponse(response, [{ ack: expect.any(String), data: expect.objectContaining({ albumId: album2.id, role: AlbumUserRole.Owner, userId: user.id }), type: SyncEntityType.AlbumUserV1 }, { ack: expect.any(String), data: expect.objectContaining({ albumId: album2.id, role: AlbumUserRole.Editor, userId: auth.user.id }), type: SyncEntityType.AlbumUserV1 }])", "expect(items).toHaveLength(2) via ctx.assertSyncResponse(response, [{ ack: expect.any(String), data: expect.objectContaining({ albumId: album2.id, role: AlbumUserRole.Owner, userId: user.id }), type: SyncEntityType.AlbumUserV1 }, { ack: expect.any(String), data: expect.objectContaining({ albumId: album2.id, role: AlbumUserRole.Editor, userId: auth.user.id }), type: SyncEntityType.AlbumUserV1 }])"]
+message = "expect(response).toEqual([{ ack: expect.any(String), data: … is now checked in parts, with its 3 items in any order"
+label = "intended"
+note = "True and deliberate: the refactor moved the check into ctx.assertSyncResponse, which checks the same records, SyncComplete last and the count, but no longer the order of the two records."
 
 [[finding]]
 unit = "fa44c744e33d"
 pr = 33010
-rule = "check-removed"
-path = "server/test/medium/specs/sync/sync-asset-edit.spec.ts"
-test = "SyncRequestType.AssetEditsV1 > should detect and sync the first asset edit"
-before = ["expect(response).toEqual([{ ack: expect.any(String), data: { action: AssetEditAction.Crop, assetId: asset.id, id: expect.any(String), parameters: { height: 200, width: 100, x: 10, y: 20 }, sequence: 0 }, type: SyncEntityType.AssetEditV1 }, expect.objectContaining({ type: SyncEntityType.SyncCompleteV1 })])"]
-after = []
-message = "removed expect(response).toEqual([{ ack: expect.any(String), data: …; the test has no checks left"
-label = "wrong"
-note = "Moved into the new ctx.assertSyncResponse helper, which checks the same record(s) plus SyncComplete last."
-
-[[finding]]
-unit = "fa44c744e33d"
-pr = 33010
-rule = "check-removed"
-path = "server/test/medium/specs/sync/sync-asset-edit.spec.ts"
-test = "SyncRequestType.AssetEditsV1 > should detect and sync multiple asset edits for the same asset"
-before = ["expect(response).toEqual(expect.arrayContaining([{ ack: expect.any(String), data: { action: AssetEditAction.Crop, assetId: asset.id, id: expect.any(String), parameters: { height: 200, width: 100, x: 10, y: 20 }, sequence: 0 }, type: SyncEntityType.AssetEditV1 }, { ack: expect.any(String), data: { action: AssetEditAction.Rotate, assetId: asset.id, id: expect.any(String), parameters: { angle: 90 }, sequence: 1 }, type: SyncEntityType.AssetEditV1 }, { ack: expect.any(String), data: { action: AssetEditAction.Mirror, assetId: asset.id, id: expect.any(String), parameters: { axis: MirrorAxis.Horizontal }, sequence: 2 }, type: SyncEntityType.AssetEditV1 }, expect.objectContaining({ type: SyncEntityType.SyncCompleteV1 })]))"]
-after = []
-message = "removed expect(response).toEqual(expect.arrayContaining([{ ack: exp…; the test has no checks left"
-label = "wrong"
-note = "Moved into ctx.assertSyncResponse, which keeps the arrayContaining check and adds a length check (stronger)."
-
-[[finding]]
-unit = "fa44c744e33d"
-pr = 33010
-rule = "check-removed"
-path = "server/test/medium/specs/sync/sync-asset-edit.spec.ts"
-test = "SyncRequestType.AssetEditsV1 > should detect and sync updated edits"
-before = ["expect(response2).toEqual(expect.arrayContaining([{ ack: expect.any(String), data: { action: AssetEditAction.Crop, assetId: asset.id, id: expect.any(String), parameters: { height: 250, width: 150, x: 50, y: 60 }, sequence: 0 }, type: SyncEntityType.AssetEditV1 }, expect.objectContaining({ type: SyncEntityType.SyncCompleteV1 })]))"]
-after = []
-message = "removed expect(response2).toEqual(expect.arrayContaining([{ ack: ex…; the test has no checks left"
-label = "wrong"
-note = "Moved into ctx.assertSyncResponse, which keeps the arrayContaining check and adds a length check (stronger)."
-
-[[finding]]
-unit = "fa44c744e33d"
-pr = 33010
-rule = "check-removed"
-path = "server/test/medium/specs/sync/sync-asset-edit.spec.ts"
-test = "SyncRequestType.AssetEditsV1 > should detect and sync deleted asset edits"
-before = ["expect(response2).toEqual(expect.arrayContaining([{ ack: expect.any(String), data: { editId: edits[0].id }, type: SyncEntityType.AssetEditDeleteV1 }, expect.objectContaining({ type: SyncEntityType.SyncCompleteV1 })]))"]
-after = []
-message = "removed expect(response2).toEqual(expect.arrayContaining([{ ack: ex…; the test has no checks left"
-label = "wrong"
-note = "Moved into ctx.assertSyncResponse, which keeps the arrayContaining check and adds a length check (stronger)."
-
-[[finding]]
-unit = "fa44c744e33d"
-pr = 33010
-rule = "check-removed"
-path = "server/test/medium/specs/sync/sync-asset-edit.spec.ts"
-test = "SyncRequestType.AssetEditsV1 > should only sync asset edits for own user"
-before = ["await expect(ctx.syncStream(auth2, [SyncRequestType.AssetEditsV1])).resolves.toEqual([expect.objectContaining({ type: SyncEntityType.AssetEditV1 }), expect.objectContaining({ type: SyncEntityType.SyncCompleteV1 })])"]
-after = []
-message = "removed await expect(ctx.syncStream(auth2, [SyncRequestType.AssetEd…; the test has no checks left"
-label = "wrong"
-note = "Moved into the new ctx.assertSyncResponse helper, which checks the same record(s) plus SyncComplete last."
-
-[[finding]]
-unit = "fa44c744e33d"
-pr = 33010
-rule = "check-removed"
-path = "server/test/medium/specs/sync/sync-asset-edit.spec.ts"
-test = "SyncRequestType.AssetEditsV1 > should sync edits for multiple assets"
-before = ["expect(response).toEqual(expect.arrayContaining([{ ack: expect.any(String), data: { action: AssetEditAction.Crop, assetId: asset1.id, id: expect.any(String), parameters: { height: 200, width: 100, x: 10, y: 20 }, sequence: 0 }, type: SyncEntityType.AssetEditV1 }, { ack: expect.any(String), data: { action: AssetEditAction.Rotate, assetId: asset2.id, id: expect.any(String), parameters: { angle: 270 }, sequence: 0 }, type: SyncEntityType.AssetEditV1 }, expect.objectContaining({ type: SyncEntityType.SyncCompleteV1 })]))"]
-after = []
-message = "removed expect(response).toEqual(expect.arrayContaining([{ ack: exp…; the test has no checks left"
-label = "wrong"
-note = "Moved into ctx.assertSyncResponse, which keeps the arrayContaining check and adds a length check (stronger)."
-
-[[finding]]
-unit = "fa44c744e33d"
-pr = 33010
-rule = "check-removed"
-path = "server/test/medium/specs/sync/sync-partner.spec.ts"
-test = "SyncEntityType.PartnerV1 > should detect and sync the first partner"
-before = ["expect(response).toEqual([{ ack: expect.any(String), data: { inTimeline: partner.inTimeline, sharedById: partner.sharedById, sharedWithId: partner.sharedWithId }, type: 'PartnerV1' }, expect.objectContaining({ type: SyncEntityType.SyncCompleteV1 })])"]
-after = []
-message = "removed expect(response).toEqual([{ ack: expect.any(String), data: …; the test has no checks left"
-label = "wrong"
-note = "Moved into the new ctx.assertSyncResponse helper, which checks the same record(s) plus SyncComplete last."
-
-[[finding]]
-unit = "fa44c744e33d"
-pr = 33010
-rule = "check-removed"
-path = "server/test/medium/specs/sync/sync-partner.spec.ts"
-test = "SyncEntityType.PartnerV1 > should detect and sync a deleted partner"
-before = ["expect(response).toEqual([{ ack: expect.any(String), data: { sharedById: partner.sharedById, sharedWithId: partner.sharedWithId }, type: 'PartnerDeleteV1' }, expect.objectContaining({ type: SyncEntityType.SyncCompleteV1 })])"]
-after = []
-message = "removed expect(response).toEqual([{ ack: expect.any(String), data: …; the test has no checks left"
-label = "wrong"
-note = "Moved into the new ctx.assertSyncResponse helper, which checks the same record(s) plus SyncComplete last."
-
-[[finding]]
-unit = "fa44c744e33d"
-pr = 33010
-rule = "check-removed"
-path = "server/test/medium/specs/sync/sync-partner.spec.ts"
-test = "SyncEntityType.PartnerV1 > should detect and sync a partner share both to and from another user"
-before = ["expect(response).toHaveLength(3)", "expect(response).toEqual(expect.arrayContaining([{ ack: expect.any(String), data: { inTimeline: partner1.inTimeline, sharedById: partner1.sharedById, sharedWithId: partner1.sharedWithId }, type: 'PartnerV1' }, { ack: expect.any(String), data: { inTimeline: partner2.inTimeline, sharedById: partner2.sharedById, sharedWithId: partner2.sharedWithId }, type: 'PartnerV1' }, expect.objectContaining({ type: SyncEntityType.SyncCompleteV1 })]))"]
-after = []
-message = "removed 2 checks, including expect(response).toHaveLength(3); the test has no checks left"
-label = "wrong"
-note = "Moved into ctx.assertSyncResponse, which checks the same records and length (and now that SyncComplete is last)."
-
-[[finding]]
-unit = "fa44c744e33d"
-pr = 33010
-rule = "check-removed"
-path = "server/test/medium/specs/sync/sync-partner.spec.ts"
-test = "SyncEntityType.PartnerV1 > should sync a partner and then an update to that same partner"
-before = ["expect(response).toEqual([{ ack: expect.any(String), data: { inTimeline: partner.inTimeline, sharedById: partner.sharedById, sharedWithId: partner.sharedWithId }, type: 'PartnerV1' }, expect.objectContaining({ type: SyncEntityType.SyncCompleteV1 })])", "expect(newResponse).toEqual([{ ack: expect.any(String), data: { inTimeline: updated.inTimeline, sharedById: updated.sharedById, sharedWithId: updated.sharedWithId }, type: 'PartnerV1' }, expect.objectContaining({ type: SyncEntityType.SyncCompleteV1 })])"]
-after = []
-message = "removed 2 checks, including expect(response).toEqual([{ ack: expect.any(String), data: …; the test has no checks left"
-label = "wrong"
-note = "Moved into the new ctx.assertSyncResponse helper, which checks the same record(s) plus SyncComplete last."
-
-[[finding]]
-unit = "fa44c744e33d"
-pr = 33010
-rule = "check-removed"
-path = "server/test/medium/specs/sync/sync-user.spec.ts"
-test = "SyncEntityType.UserV1 > should detect and sync the first user"
-before = ["expect(response).toEqual([{ ack: expect.any(String), data: { avatarColor: user.avatarColor, deletedAt: user.deletedAt, email: user.email, hasProfileImage: user.profileImagePath !== '', id: user.id, name: user.name, profileChangedAt: user.profileChangedAt.toISOString() }, type: 'UserV1' }, expect.objectContaining({ type: SyncEntityType.SyncCompleteV1 })])"]
-after = []
-message = "removed expect(response).toEqual([{ ack: expect.any(String), data: …; the test has no checks left"
-label = "wrong"
-note = "Moved into the new ctx.assertSyncResponse helper, which checks the same record(s) plus SyncComplete last."
-
-[[finding]]
-unit = "fa44c744e33d"
-pr = 33010
-rule = "check-removed"
-path = "server/test/medium/specs/sync/sync-user.spec.ts"
-test = "SyncEntityType.UserV1 > should detect and sync a soft deleted user"
-before = ["expect(response).toEqual(expect.arrayContaining([{ ack: expect.any(String), data: expect.objectContaining({ id: auth.user.id }), type: 'UserV1' }, { ack: expect.any(String), data: expect.objectContaining({ id: deleted.id }), type: 'UserV1' }, expect.objectContaining({ type: SyncEntityType.SyncCompleteV1 })]))"]
-after = []
-message = "removed expect(response).toEqual(expect.arrayContaining([{ ack: exp…; the test has no checks left"
-label = "wrong"
-note = "Moved into ctx.assertSyncResponse, which keeps the arrayContaining check and adds a length check (stronger)."
-
-[[finding]]
-unit = "fa44c744e33d"
-pr = 33010
-rule = "check-removed"
+rule = "expectation-loosened"
 path = "server/test/medium/specs/sync/sync-user.spec.ts"
 test = "SyncEntityType.UserV1 > should detect and sync a deleted user"
 before = ["expect(response).toEqual([{ ack: expect.any(String), data: { userId: user.id }, type: 'UserDeleteV1' }, { ack: expect.any(String), data: expect.objectContaining({ id: authUser.id }), type: 'UserV1' }, expect.objectContaining({ type: SyncEntityType.SyncCompleteV1 })])"]
-after = []
-message = "removed expect(response).toEqual([{ ack: expect.any(String), data: …; the test has no checks left"
-label = "wrong"
-note = "Same records checked via the new ctx.assertSyncResponse helper; only the order of the records is no longer enforced, the test still has full checks."
-
-[[finding]]
-unit = "fa44c744e33d"
-pr = 33010
-rule = "check-removed"
-path = "server/test/medium/specs/sync/sync-user.spec.ts"
-test = "SyncEntityType.UserV1 > should sync a user and then an update to that same user"
-before = ["expect(response).toEqual([{ ack: expect.any(String), data: expect.objectContaining({ id: user.id }), type: 'UserV1' }, expect.objectContaining({ type: SyncEntityType.SyncCompleteV1 })])", "expect(newResponse).toEqual([{ ack: expect.any(String), data: expect.objectContaining({ id: user.id, name: updated.name }), type: 'UserV1' }, expect.objectContaining({ type: SyncEntityType.SyncCompleteV1 })])"]
-after = []
-message = "removed 2 checks, including expect(response).toEqual([{ ack: expect.any(String), data: …; the test has no checks left"
-label = "wrong"
-note = "Moved into the new ctx.assertSyncResponse helper, which checks the same record(s) plus SyncComplete last."
+after = ["expect(completeAck).toEqual(expect.objectContaining({ type: SyncEntityType.SyncCompleteV1 })) via ctx.assertSyncResponse(response, [{ ack: expect.any(String), data: { userId: user.id }, type: 'UserDeleteV1' }, { ack: expect.any(String), data: expect.objectContaining({ id: authUser.id }), type: 'UserV1' }])", "expect(items).toEqual(expect.arrayContaining([{ ack: expect.any(String), data: { userId: user.id }, type: 'UserDeleteV1' }, { ack: expect.any(String), data: expect.objectContaining({ id: authUser.id }), type: 'UserV1' }])) via ctx.assertSyncResponse(response, [{ ack: expect.any(String), data: { userId: user.id }, type: 'UserDeleteV1' }, { ack: expect.any(String), data: expect.objectContaining({ id: authUser.id }), type: 'UserV1' }])", "expect(items).toHaveLength(2) via ctx.assertSyncResponse(response, [{ ack: expect.any(String), data: { userId: user.id }, type: 'UserDeleteV1' }, { ack: expect.any(String), data: expect.objectContaining({ id: authUser.id }), type: 'UserV1' }])"]
+message = "expect(response).toEqual([{ ack: expect.any(String), data: … is now checked in parts, with its 3 items in any order"
+label = "intended"
+note = "True and deliberate: the refactor moved the check into ctx.assertSyncResponse, which checks the same records, SyncComplete last and the count, but no longer the order of the two records."
 
 [[finding]]
 unit = "42cd0dab416c"

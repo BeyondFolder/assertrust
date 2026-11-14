@@ -12,7 +12,9 @@
 //!   10  test forwarding > retries  [skip]
 //! ```
 //!
-//! Calls to helpers are shown as written: `assertrust pairs` shows the checks they add.
+//! Calls to helpers are shown as written: `assertrust pairs` shows the checks they add. A
+//! method call is shown when the file defines a method by that name: one defined in an
+//! imported file only shows up in `assertrust pairs`.
 
 use std::fmt::Write as _;
 use std::fs;
@@ -121,7 +123,8 @@ fn render(label: &str, ir: &FileIr) -> String {
         ));
     }
     line(&mut out, &format!("{label}: {}", summary.join(", ")));
-    // The imports that matter for helpers: the ones called, and the ones passed on.
+    // The imports that matter for helpers: the ones called, called on, built from or
+    // extended, and the ones passed on.
     let called: Vec<&str> = ir
         .tests
         .iter()
@@ -130,9 +133,13 @@ fn render(label: &str, ir: &FileIr) -> String {
         .chain(ir.helpers.iter().map(|helper| &helper.body))
         .flat_map(|body| &body.items)
         .filter_map(|item| match &item.kind {
-            ItemKind::Call(call) => Some(call.name.as_str()),
+            ItemKind::Call(call) => Some(match &call.receiver {
+                None => call.name.as_str(),
+                Some(receiver) => receiver.split('.').next().unwrap_or_default(),
+            }),
             _ => None,
         })
+        .chain(ir.constructed.iter().map(String::as_str))
         .collect();
     for import in &ir.imports {
         if !import.reexport && !called.contains(&import.local.as_str()) {
@@ -156,7 +163,7 @@ fn render(label: &str, ir: &FileIr) -> String {
 
     if !ir.outside.items.is_empty() {
         line(&mut out, "      outside tests");
-        body(&mut out, &ir.outside);
+        body(&mut out, &ir.outside, &[]);
     }
 
     // Tests and hooks in source order.
@@ -175,7 +182,11 @@ fn render(label: &str, ir: &FileIr) -> String {
             .iter()
             .map(|param| param.as_deref().unwrap_or("…"))
             .collect();
-        let mut heading = format!("helper {}({})", helper.name, params.join(", "));
+        let name = match &helper.owner {
+            Some(owner) => format!("{owner}.{}", helper.name),
+            None => helper.name.clone(),
+        };
+        let mut heading = format!("helper {name}({})", params.join(", "));
         if helper.is_async {
             heading.insert_str("helper ".len(), "async ");
         }
@@ -195,16 +206,28 @@ fn render(label: &str, ir: &FileIr) -> String {
         blocks.push((hook.line, heading, &hook.body));
     }
     blocks.sort_by_key(|(line, _, _)| *line);
+    let methods: Vec<&str> = ir
+        .helpers
+        .iter()
+        .filter(|helper| helper.owner.is_some())
+        .map(|helper| helper.name.as_str())
+        .collect();
     for (number, heading, block) in blocks {
         line(&mut out, &format!("{number:>4}  {heading}"));
-        body(&mut out, block);
+        body(&mut out, block, &methods);
     }
     out
 }
 
-fn body(out: &mut String, body: &Body) {
+/// A body's items. Method calls show only for `methods`, the ones the file defines.
+fn body(out: &mut String, body: &Body, methods: &[&str]) {
     for item in &body.items {
         let (label, text) = match &item.kind {
+            ItemKind::Call(call)
+                if call.receiver.is_some() && !methods.contains(&call.name.as_str()) =>
+            {
+                continue;
+            }
             ItemKind::Assertion(assertion) => (
                 assertion
                     .matcher

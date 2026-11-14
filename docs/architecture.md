@@ -172,16 +172,17 @@ test/refund.test.ts: it('refunds', async () => { expectOk(await refund()) })
 → refunds checks expect(res.status).toBe(200) and expect(res.body.ok).toBe(true), via expectOk(await refund())
 ```
 
-- **A helper** is a named function outside tests and hooks: `function expectOk(res) { … }` or `const expectOk = (res) => { … }`, at the top of a file or in a `describe` (then only tests in that `describe` see it). Its body is recorded like a test's: checks, calls and where they sit. Methods (page objects, classes) aren't helpers yet. A function a helper puts on an object it builds (`return { sendChunk() { expect(…) } }`) runs when a test calls that method, not with the helper, so its checks aren't the helper's.
-- **A call** to a function by its plain name, from a test, hook or helper, is recorded when the name is a helper in the file or something the file imports. Its arguments are recorded as values.
-- **Where helpers are found:** in the same file, and in files imported through a relative path, but only files in test folders (step 1's Test and Test support kinds). In the six repos we checked, every helper with checks lives in a test folder, and following imports into source files would read and parse many files per commit for nothing. Imports are resolved the way bundlers do: the path with each extension (`.ts`, `.tsx`, `.mts`, `.cts`, `.js`, `.jsx`, `.mjs`, `.cjs`), then an `index` file in it, and `./helpers.js` may name `helpers.ts`. Files that pass helpers on are followed (`export { expectOk } from './http'`, `export * from './http'`), and so are default exports. Only imports a file calls are followed. Files that aren't UTF-8 text are left out.
+- **A helper** is a named function outside tests and hooks: `function expectOk(res) { … }` or `const expectOk = (res) => { … }`, at the top of a file or in a `describe` (then only tests in that `describe` see it). Its body is recorded like a test's: checks, calls and where they sit. A function a helper puts on an object it builds (`return { sendChunk() { expect(…) } }`) runs when a test calls that method, not with the helper, so its checks aren't the helper's.
+- **A method is a helper too** when its class or object is defined outside tests: `class SyncTestContext { assertSyncResponse(response, records) { … } }`, a class field `expectOpen = () => { … }`, or `const api = { expectOk(res) { … } }`. Constructors, getters and setters aren't. immich's sync tests get their context from a `setup()` function, so what a test calls a method on (`ctx.assertSyncResponse(…)`) can't be traced to its class. A method call is linked by the method's name instead: to the one method by that name that checks something, in the file and the files it imports (and what they pass on). With two such methods, the call isn't followed. Methods that check nothing never count, so `ctx.get(…)` and `page.click()` stay ordinary lines. A static method or an object's method is only called on its owner by name: `API.clearSelection()` links, `h.app.clearSelection()` doesn't. Inside a method, `this.other()` is first its own class's method, and `this` stands for what the call was made on.
+- **A call** to a function by its plain name, from a test, hook or helper, is recorded when the name is a helper in the file or something the file imports. Every method call (`ctx.assertSyncResponse(…)`, `this.syncStream(…)`) is recorded too, since its method may be in any file the test imports; linking drops the ones that lead to no helper. Arguments are recorded as values.
+- **Where helpers are found:** in the same file, and in files imported through a relative path, but only files in test folders (step 1's Test and Test support kinds). In the six repos we checked, every helper with checks lives in a test folder, and following imports into source files would read and parse many files per commit for nothing. Imports are resolved the way bundlers do: the path with each extension (`.ts`, `.tsx`, `.mts`, `.cts`, `.js`, `.jsx`, `.mjs`, `.cjs`), then an `index` file in it, and `./helpers.js` may name `helpers.ts`. Files that pass helpers on are followed (`export { expectOk } from './http'`, `export * from './http'`), and so are default exports. Only imports a file uses that way are followed: ones it calls, calls methods on, builds objects from (`new SyncTestContext(db)`) or extends. Files that aren't UTF-8 text are left out.
 - **Aliases** go through the nearest `tsconfig.json` above the importing file: its `paths` (the pattern with the longest prefix wins, `@/test/*` over `@/*`), then its `baseUrl`, including what it `extends` from files in the repo. Packages it extends (`@tsconfig/node20`) aren't read. Aliases that live outside git can't be followed: Nuxt's `~~/…` and `#shared/…` come from a generated `.nuxt/tsconfig.json`, and vite's `resolve.alias` is code. Imports from packages aren't followed either.
 - **A helper that moved out of test folders** (`test/helpers.ts` → `src/testing.ts`, with the import changed) is followed into its new file: it was followed before the change, so the comparison would otherwise lose it.
 - **A call that can't be followed** (an alias that can't be resolved, a package, a file outside test folders) stays in the test's view, marked so. The checks it ran before aren't reported as removed: what it checks now can't be seen. Dropping the call still counts.
-- **A test file that didn't change** is loaded too when a helper file it calls changed. A search for the helper file's name in import paths (`git grep`) finds candidates, and resolving their imports confirms them, also through files that pass helpers on. This only happens when the helpers themselves changed, not just their lines, and when they check something (themselves or through helper files they call): a file of factories or mocks doesn't start a search. All the changed helper files of a change are searched for at once, one `git grep` per step away from them, and a test file is kept only when what its tests check changed.
+- **A test file that didn't change** is loaded too when a helper file it calls changed. A search for the helper file's name in import paths (`git grep`) finds candidates, and resolving their imports confirms them, also through files that pass helpers on. This only happens when a helper that checks something (itself or through helper files it calls) changed, not just its lines, or an import such a helper uses did. A file of factories or mocks doesn't start a search, and neither does a page object whose `click()` changed next to an `expectOpen()` that didn't, or a call in a helper that leads to no helper (`act(() => …)` from a package): changing those doesn't change what a test checks. All the changed helper files of a change are searched for at once, one `git grep` per step away from them, and a test file is kept only when what its tests check changed.
 - **A helper file that doesn't parse** skips the tests that call it, with a note: comparing without its checks would make them look removed.
 - **Helpers that don't assert still shape what a test does:** setup, seeding and request wrappers, like everything in Mailyond's `test/utils.ts`. Changes there go to the LLM judge (step 7), such as a seed helper's default switching from `'connected'` to `'pending'`.
-- **Not covered yet:** a runtime skip inside a helper, arguments for parameters that aren't plain names (`{ strict }`, `status = 200`), and the subject of a check (`expect(res.status)` stays as the helper writes it, only expected values are filled in).
+- **Not covered yet:** a runtime skip inside a helper, arguments for parameters that aren't plain names (`{ strict }`, `status = 200`), and values read from a page object rather than methods called on it (immich's `app.dialog`, built by a function the tests' fixture calls).
 
 ### Not in v0.1
 
@@ -218,7 +219,7 @@ test "emails a confirmation … and only forwards once confirmed"
    - `afterEach` and `afterAll` hooks, innermost `describe` first
 
    Each item from a helper or hook is tagged with how it gets there, its `via` chain: `expect(res.status).toBe(200)  via expectOk(res) > expectStatus(res, 200)`.
-   - **Arguments are filled in** for plain parameters: `function expectStatus(res, status) { expect(res.status).toBe(status) }` called as `expectStatus(res, 200)` checks `toBe(200)`, so moving a check into a helper isn't a change.
+   - **Arguments are filled in** for plain parameters, in the checks' subjects and expected values: `function expectStatus(res, status) { expect(res.status).toBe(status) }` called as `expectStatus(refund(), 200)` checks `refund().status` with `toBe(200)`, so moving a check into a helper isn't a change. A constant the helper reads from its arguments is filled in too (`const items = response.slice(0, -1)`), and so is `this` in a method. In an expected value only a whole parameter is replaced: `schema.safeParse(input).data` stays as written, so a test that passes the same input under another name (`proto` for `JSON.parse(…)`) doesn't look like a new outcome. Messages show a check as its helper writes it (`expect(res.status).toBe(200)`), so one finding about the helper covers every test that calls it.
    - **Where a call sits counts for every check it runs:** a helper called in an `if` puts all of its checks in one.
    - **An async helper that isn't awaited** marks its checks "not awaited": they may run after the test ends. A helper that isn't async runs its checks before it returns, so `await` doesn't matter there.
    - **A `return` in a hook or helper** stays in the view, tagged like the rest: it ends only the items of that call. A `return` in the test stops everything after it but `afterEach` and `afterAll`.
@@ -227,7 +228,7 @@ test "emails a confirmation … and only forwards once confirmed"
 
 ### What gets recorded
 
-- **Per file:** imports, suites (`describe` blocks and their modifiers), tests, hooks, helpers, and custom matchers (`expect.extend`).
+- **Per file:** imports, suites (`describe` blocks and their modifiers), tests, hooks, helpers (methods with their class or object), the names it builds objects from or extends, and custom matchers (`expect.extend`).
 - **Per test:** its id (`describe` path + name), its effective modifiers (`describe.skip` is inherited), its `.each` table as a value, and a body.
 - **Per body** (shared by tests, helpers and hooks), in source order:
   - assertions
@@ -377,11 +378,12 @@ Within each file first, then across the files of the change (a test moved to ano
 1. **Identical** → unchanged. Checks in the same place pair first, so a check that moved into an `if`, `try` or callback is the one paired with a changed context. `pairs` shows it as `context`, and the rules judge it.
 2. **Same subject and matcher kind** → paired, then their values are compared (`10d8742`: same `res.body`, same matcher, fewer fields).
 3. **Same subject, another matcher** → paired: `toEqual({ id: 1 })` → `toBeTruthy()`.
-4. **Same fact, written differently** → paired, see "Rewritten checks" below. This can pair groups: two property checks folded into one object check.
-5. **The same distinctive expected value** (a string of 4+ characters, a regex, a long number, an expression), with the subject refactored → paired: `expect(fields.textBody).toBe('Hi there')` → `expect(textOf(html)).toBe('Hi there')`.
-6. **Same matcher and arguments on a refactored subject, in order**, when the subjects share a word or input: `normalize('a.com').invalid` → `parse('a.com').skipped`, `hasDmarcEnforcement({ dmarc: result })` → `result.enforced`.
-7. **Same matcher kind, scored:** subjects that share a word, plus expected values that mostly match (or subjects that mostly match). Same margin rule as tests.
-8. **Leftover old checks** → removed. **Leftover new checks** → added.
+4. **A list checked in parts** → paired as a group, when the new checks state every item of the old list again on parts of one list: `expect(response).toEqual([user, done])` → `expect(response.at(-1)).toEqual(done)`, `expect(response.slice(0, -1)).toEqual(expect.arrayContaining([user]))` and `toHaveLength(1)` on the slice, the shape of immich's `assertSyncResponse`. Parts are `at(i)`, `[i]` and `slice(…)`; an old `toHaveLength` of the list goes with it. The list should be the same (`response`, or `(await p)` for `expect(p).resolves`); one stored under another name first (`const response = await …`) counts when one of its items is distinctive (step 6), since all of them must match.
+5. **Same fact, written differently** → paired, see "Rewritten checks" below. This can pair groups: two property checks folded into one object check.
+6. **The same distinctive expected value** (a string of 4+ characters, a regex, a long number, an expression), with the subject refactored → paired: `expect(fields.textBody).toBe('Hi there')` → `expect(textOf(html)).toBe('Hi there')`.
+7. **Same matcher and arguments on a refactored subject, in order**, when the subjects share a word or input: `normalize('a.com').invalid` → `parse('a.com').skipped`, `hasDmarcEnforcement({ dmarc: result })` → `result.enforced`.
+8. **Same matcher kind, scored:** subjects that share a word, plus expected values that mostly match (or subjects that mostly match). Same margin rule as tests.
+9. **Leftover old checks** → removed. **Leftover new checks** → added.
 
 When one check could pair with several, the closest wins if it's clearly ahead: by subject words, then expected value, then the same `.not` and the same matcher. So `toBe(200)` goes to `toBe(201)` rather than `.not.toBe(500)` when all three check `res.status`. Otherwise none are paired. Subjects are compared by their words, splitting camelCase (`parseURLValue` → parse, url, value), with each string literal counted as one word: the same input is a strong sign, but a long one mustn't swamp the rest.
 
@@ -457,7 +459,7 @@ Fixtures cover:
 - one test split into two
 - two tests with near-identical bodies (must not be mis-paired)
 - duplicate names in the same file
-- each check-pairing step, groups of folded checks, and every form in the rewritten-checks table
+- each check-pairing step, groups of folded checks, a list checked in parts, and every form in the rewritten-checks table
 
 ## 5. Rules
 
@@ -545,6 +547,8 @@ test/helpers.ts:1  HIGH  check-removed
 3. **`.not` added or removed,** or `.resolves` ↔ `.rejects`: `outcome-changed`.
 4. **Another matcher:** the ladder below. Down is `matcher-loosened`, across is `matcher-swapped`, up is fine. Within one family, a different value is `outcome-changed`: `toEqual({ preview })` → `toBe('Hi')`, `toBeGreaterThan(t)` → `toBeLessThanOrEqual(t)`. A number compared closely (step 4's facts) is the same check: `toBe(239)` → `toBeCloseTo(239, 1)`.
 5. **The same matcher:** the expected values, by the table under "Which direction is looser". Looser is `expectation-loosened`; different but not looser is `outcome-changed`; stricter is fine.
+
+A list checked in parts (step 4) states every item again, so only two things can be lost, both `expectation-loosened`: the order, when the old list was exact and the parts take two different items in any order (low: `expect(response).toEqual([…]) is now checked in parts, with its 3 items in any order`), and the count, when the old checks fixed it and the parts don't (medium: `… which pass with more than its 3 items`).
 
 What another check in the test still states isn't lost, if that check runs whenever the pair's new one does and can fail: it's in the same place or where nothing can stop it, no `return` comes before it that doesn't come before the new one too, and it isn't a promise check the test doesn't await. Placement became computed in Excalidraw, so `y` moved out of an object check into one of its own:
 
@@ -673,7 +677,7 @@ Linking costs 0–15% more time on 9 of the 11 (Excalidraw 55%, Mailyond 33% of 
 ### Tests
 
 There's at least one fixture that must be flagged and one that must not, per rule (`crates/assertrust-rules/tests/rules.rs`), plus:
-- checks through helpers and hooks, linked (`crates/assertrust-rules/tests/helpers.rs`), and helper files followed in real repos, including staged and unsaved changes, `index` files that pass helpers on or are imported by dots alone, helpers outside test folders and helpers moved there, tsconfig aliases, files that aren't text, and a helper file that stops parsing (`crates/assertrust/tests/helpers.rs`)
+- checks through helpers and hooks, linked (`crates/assertrust-rules/tests/helpers.rs`), including methods found by their name and immich's `assertSyncResponse` shape (a list checked in parts, its order or count lost), and helper files followed in real repos, including staged and unsaved changes, `index` files that pass helpers on or are imported by dots alone, helpers outside test folders and helpers moved there, tsconfig aliases, files that aren't text, a helper file that stops parsing, a class the tests build with `new`, and a page object whose methods that check nothing changed (`crates/assertrust/tests/helpers.rs`)
 - a fixture with one change of each kind, run through `assertrust check` (`crates/assertrust/tests/fixtures/rules/`)
 - both polarity directions for Pattern and Subset
 - rewrites that state the same thing, and matchers that behave the same, which must produce no findings, including a number compared closely and a key checked on its own line
@@ -846,7 +850,7 @@ Most right findings are `intended` (137): tests deleted or cut down along with t
 
 The 245 wrong ones, most common first:
 - **A test rewritten for a deliberate behaviour change**, still checking the same input against the new result, reported as a removed check or a deleted test instead of a changed outcome. Often the test was renamed too, or split into new tests (hono's percent-encoded paths now giving 404, a tRPC formula changed from square root to linear).
-- **A check rewritten into an equivalent or stronger form that matching doesn't pair:** an `it.each` table replacing a list of tests, a new API or state field asserting the same value, a check moved into a helper the test calls through an object (immich's `ctx.assertSyncResponse`, 20 findings) or into a fixture (`app.dialog`).
+- **A check rewritten into an equivalent or stronger form that matching doesn't pair:** an `it.each` table replacing a list of tests, a new API or state field asserting the same value, a check moved into a helper the test calls through an object (immich's `ctx.assertSyncResponse`, 22 findings; fixed since) or into a fixture (`app.dialog`).
 - **Tests or checks moved to another file**, which matching doesn't look for: immich moved component tests into page specs and Playwright specs, hono moved adapter tests into their own packages and CI workflow.
 - **Smaller mistakes, each with a clear fix:**
   - `await expect.element(…)` (vitest browser mode) isn't read as a check (7 in immich). Fixed since.
@@ -871,6 +875,12 @@ Then the smaller mistakes above were fixed: `expect.element`, loops that always 
 - added by their PR, hidden: 184, 46% right.
 
 Two immich findings stay: checks rewritten into `expect.element` on new locators, which don't pair with the old ones (the rewrites above).
+
+Then methods became helpers. immich had moved its sync checks into `ctx.assertSyncResponse(response, records)`, a method of a context class its tests get from a `setup()` function, which checks the last record, then the others in any order, and how many there are. Following methods by name, filling arguments into subjects and pairing a list with checks on its parts took away those 22 false alarms, all at high confidence. In their place are 4 true findings that two records are now checked in any order (low), and one false alarm in Excalidraw: a test that stopped calling `mouse.select()`, whose `API.clearSelection()` checks that the selection is empty, a setup check. Nothing right was lost. The labels now hold 378 findings:
+- shown by default: 194, **50% right** (70% at high confidence, 68 of 97);
+- added by their PR, hidden: 184, 46% right.
+
+Following methods costs time where tests call many of them: Excalidraw's 100 PRs take 5.4s instead of 4.3s, immich's 2.5s instead of 1.9s, the whole backtest 11% more. What's left of the wrong findings is mostly tests rewritten for a behaviour change (renamed, new expected values on the same inputs) and tests moved into other files as different tests. To matching, those look exactly like a behaviour removed on purpose with its tests, so they're for the LLM judge (step 7).
 
 ### Tests
 

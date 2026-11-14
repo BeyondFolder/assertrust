@@ -316,3 +316,109 @@ fn commit_by_commit_each_side_reads_its_own_helpers() {
         )
     );
 }
+
+/// A context class whose method checks a response, like immich's `SyncTestContext`.
+const CONTEXT: &str = "export class Context {\n  assertResponse(response, records) {\n    const done = response.at(-1);\n    const items = response.slice(0, -1);\n    expect(done).toEqual(expect.objectContaining({ type: 'done' }));\n    expect(items).toEqual(expect.arrayContaining(records));\n    expect(items).toHaveLength(records.length);\n  }\n}\n";
+
+/// Two tests that get a `Context` from a setup function, each with `check` as its last line
+/// (`{user}` stands for its record).
+fn context_tests(check: &str) -> String {
+    let test = |name: &str, user: &str| {
+        format!(
+            "it('{name}', async () => {{\n  const {{ ctx }} = setup();\n  const response = await sync();\n  {}\n}})\n",
+            check.replace("{user}", user)
+        )
+    };
+    format!(
+        "import {{ Context }} from './context'\n\nconst setup = () => ({{ ctx: new Context() }})\n\n{}{}",
+        test("syncs a user", "{ id: 1 }"),
+        test("syncs a partner", "{ id: 2 }")
+    )
+}
+
+#[test]
+fn checks_moved_into_a_method_of_an_imported_class_are_followed() {
+    let mut repo = TestRepo::new();
+    repo.write(
+        "test/sync.test.ts",
+        &context_tests(
+            "expect(response).toEqual([{user}, expect.objectContaining({ type: 'done' })])",
+        ),
+    );
+    let base = repo.commit("Add tests");
+    repo.write("test/context.ts", CONTEXT);
+    repo.write(
+        "test/sync.test.ts",
+        &context_tests("ctx.assertResponse(response, [{user}])"),
+    );
+    repo.commit("Check responses in Context");
+    // The same checks, run by the method the tests call on what `setup` builds.
+    assert_eq!(
+        check(&repo, &["--range", &format!("{base}..HEAD")]),
+        "no findings\n"
+    );
+
+    // The method drops its count: one finding there, for both tests.
+    let before = repo.git(&["rev-parse", "HEAD"]);
+    repo.write(
+        "test/context.ts",
+        &CONTEXT.replace("    expect(items).toHaveLength(records.length);\n", ""),
+    );
+    let head = repo.commit("Relax assertResponse");
+    assert_eq!(
+        check(&repo, &["--range", &format!("{before}..HEAD")]),
+        format!(
+            "test/context.ts:2  HIGH  check-removed\n  removed expect(items).toHaveLength(1) from assertResponse (in 2 tests) · {}\n\n1 finding · warn-only (exit 0)\n",
+            &head[..7]
+        )
+    );
+}
+
+#[test]
+fn a_change_to_a_method_that_checks_nothing_loads_nothing() {
+    // A page object: `expectOpen` checks, `click` and `API.clear` drive the page, and
+    // `h.app.clear()` is the app's own method, not `API.clear`.
+    let page = |click: &str, import: &str| {
+        format!(
+            "{import}\nexport class API {{\n  static clear = () => {{\n    act(() => {{ h.app.clear() }});\n    expect(selected()).toEqual([]);\n  }}\n}}\n\
+             export class Page {{\n  click(x) {{ {click} }}\n  expectOpen() {{ expect(this.dialog).toBeVisible() }}\n}}\n"
+        )
+    };
+    let tests = "import { Page } from './page'\n\nconst page = new Page()\n\nit('opens', () => { page.click(1); page.expectOpen() })\n";
+    let mut repo = TestRepo::new();
+    repo.write("test/open.test.ts", tests);
+    repo.write(
+        "test/page.ts",
+        &page("fire(x)", "import { act } from 'react'"),
+    );
+    let base = repo.commit("Add tests");
+    repo.write(
+        "test/page.ts",
+        &page(
+            "fire(x, { delay: 1 })",
+            "import { act } from 'react-dom/test-utils'",
+        )
+        .replace("h.app.clear()", "h.app.selection.clear()"),
+    );
+    let slower = repo.commit("Click slower");
+    let run = repo.assertrust(&["pairs", "--range", &format!("{base}..HEAD")]);
+    assert_eq!(run.code, 0, "{}", run.stderr);
+    assert!(
+        run.stdout.contains("no test files changed"),
+        "{}",
+        run.stdout
+    );
+    // A method that checks changes: the tests that call it are loaded.
+    let current = std::fs::read_to_string(repo.path().join("test/page.ts")).unwrap();
+    repo.write(
+        "test/page.ts",
+        &current.replace("toBeVisible()", "toBeAttached()"),
+    );
+    repo.commit("Relax expectOpen");
+    let run = repo.assertrust(&["pairs", "--range", &format!("{slower}..HEAD")]);
+    assert!(
+        run.stdout.contains("test/open.test.ts: 1 test paired"),
+        "{}",
+        run.stdout
+    );
+}

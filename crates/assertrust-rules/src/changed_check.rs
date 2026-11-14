@@ -9,7 +9,7 @@
 //! ```
 
 use assertrust_ir::{Assertion, Fact, Item, ItemKind, MatcherKind, Test, Value, close_to};
-use assertrust_match::{CheckMatch, CheckPair, TestPair};
+use assertrust_match::{CheckMatch, CheckPair, TestPair, split_list};
 
 use crate::check_cant_fail::returns_promise;
 use crate::looser;
@@ -68,8 +68,32 @@ fn verdict(before: &Test, after: &Test, check: &CheckPair, stated: &Stated) -> O
         .collect();
     let elsewhere = stated.besides(&check.after);
     match (olds.as_slice(), news.as_slice()) {
+        (olds, news) if check.how == CheckMatch::Parts => split(olds, news),
         ([old], [new]) => one(old, new, &elsewhere),
         _ => folded(&olds, &news, &elsewhere),
+    }
+}
+
+/// A list check split into checks on parts of the list, which state every item again:
+/// what can be lost is the number of items, or their order.
+fn split(olds: &[&Assertion], news: &[&Assertion]) -> Option<Verdict> {
+    let split = split_list(olds, news)?;
+    let items = count(split.items, "item");
+    let old = short(&olds.first()?.to_string());
+    if split.counted && !split.count_kept {
+        Some((
+            RuleId::ExpectationLoosened,
+            Confidence::Medium,
+            format!("{old} is now checked in parts, which pass with more than its {items}"),
+        ))
+    } else if split.ordered && !split.order_kept {
+        Some((
+            RuleId::ExpectationLoosened,
+            Confidence::Low,
+            format!("{old} is now checked in parts, with its {items} in any order"),
+        ))
+    } else {
+        None
     }
 }
 

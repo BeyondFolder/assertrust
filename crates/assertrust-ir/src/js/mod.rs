@@ -19,12 +19,14 @@ use oxc::ast::AstKind;
 use oxc::ast::ast::{
     ArrayExpressionElement, ArrowFunctionExpression, AwaitExpression, BinaryOperator,
     BindingIdentifier, BindingPattern, BlockStatement, BreakStatement, CallExpression, CatchClause,
-    ConditionalExpression, ContinueStatement, DoWhileStatement, ExportAllDeclaration,
+    Class, ConditionalExpression, ContinueStatement, DoWhileStatement, ExportAllDeclaration,
     ExportDefaultDeclaration, ExportDefaultDeclarationKind, ExportFromDeclaration, Expression,
     ForInStatement, ForOfStatement, ForStatement, ForStatementInit, FormalParameters, Function,
     FunctionBody, IdentifierReference, IfStatement, ImportDeclaration, ImportDeclarationSpecifier,
-    LogicalExpression, ObjectProperty, Program, ReturnStatement, Statement, SwitchStatement,
-    TryStatement, UnaryOperator, VariableDeclarationKind, VariableDeclarator, WhileStatement,
+    LogicalExpression, MethodDefinition, MethodDefinitionKind, NewExpression, ObjectExpression,
+    ObjectProperty, ObjectPropertyKind, Program, PropertyDefinition, ReturnStatement, Statement,
+    SwitchStatement, TryStatement, UnaryOperator, VariableDeclarationKind, VariableDeclarator,
+    WhileStatement,
 };
 use oxc::ast_visit::{Visit, walk};
 use oxc::parser::{ParseOptions, Parser};
@@ -72,6 +74,7 @@ pub(crate) fn parse(path: &str, source: &str) -> Result<FileIr, ParseError> {
         skip_names: SkipNames::default(),
         default_export: None,
         locals: Locals::default(),
+        class: None,
     };
     collector.visit_program(&program);
     let mut file = collector.file;
@@ -86,11 +89,13 @@ pub(crate) fn parse(path: &str, source: &str) -> Result<FileIr, ParseError> {
 
 /// Drops calls to anything but a possible helper: one defined in the file, or something
 /// imported. Helpers can be defined after the tests that call them, so this runs last. The
-/// calls kept get their text.
+/// calls kept get their text. Method calls are all kept: the method may be defined in any
+/// file the test file imports, which only linking reads.
 fn keep_helper_calls(file: &mut FileIr) {
     let known: HashSet<String> = file
         .helpers
         .iter()
+        .filter(|helper| helper.owner.is_none())
         .map(|helper| helper.name.clone())
         .chain(
             file.imports
@@ -102,9 +107,9 @@ fn keep_helper_calls(file: &mut FileIr) {
     let keep = |body: &mut Body| {
         body.items.retain_mut(|item| match &mut item.kind {
             ItemKind::Call(call) => {
-                let known = known.contains(&call.name);
+                let known = call.receiver.is_some() || known.contains(&call.name);
                 if known {
-                    call.text = Call::text_of(&call.name, &call.args);
+                    call.text = Call::text_of(call.receiver.as_deref(), &call.name, &call.args);
                 }
                 known
             }
@@ -266,6 +271,8 @@ struct Collector<'s, 'a> {
     /// `export default expectOk;`: marked on the helper once the file is read.
     default_export: Option<String>,
     locals: Locals<'a>,
+    /// The class whose body is being walked, outside tests: its methods are helpers.
+    class: Option<String>,
 }
 
 impl<'a> Collector<'_, 'a> {
@@ -418,19 +425,30 @@ impl<'a> Collector<'_, 'a> {
         matches!(self.owner, Owner::Outside) && !self.in_helper
     }
 
-    /// Walks a named function outside tests as a helper.
+    /// Walks a named function outside tests as a helper, or a method: its owner, and whether
+    /// it's called only on the owner by name.
     fn helper(
         &mut self,
         name: String,
+        method: Option<(String, bool)>,
         params: &FormalParameters<'a>,
         is_async: bool,
         span: Span,
         body: &CallbackBody<'_, 'a>,
     ) {
+        let params = param_names(params);
+        let locals = self.argument_locals(&params, method.is_some(), body);
+        let (owner, on_owner) = match method {
+            Some((owner, on_owner)) => (Some(owner), on_owner),
+            None => (None, false),
+        };
         self.file.helpers.push(Helper {
             name,
+            owner,
+            on_owner,
             suites: self.suite_names(),
-            params: param_names(params),
+            params,
+            locals,
             is_async,
             default_export: false,
             line: self.line(span),
@@ -464,14 +482,51 @@ impl<'a> Collector<'_, 'a> {
         ) = saved;
     }
 
-    /// A call to a function by its name, which may be a helper: kept if one turns up.
+    /// The constants a helper's body declares first thing from its arguments (or, in a
+    /// method, from `this`): `const items = response.slice(0, -1)`. Each may read the ones
+    /// before it.
+    fn argument_locals(
+        &self,
+        params: &[Option<String>],
+        method: bool,
+        body: &CallbackBody<'_, 'a>,
+    ) -> Vec<(String, String)> {
+        let mut known: Vec<String> = params.iter().flatten().cloned().collect();
+        let mut locals = Vec::new();
+        for statement in body.statements() {
+            let Statement::VariableDeclaration(declaration) = statement else {
+                continue;
+            };
+            if declaration.kind != VariableDeclarationKind::Const {
+                continue;
+            }
+            for declarator in &declaration.declarations {
+                if let BindingPattern::BindingIdentifier(id) = &declarator.id
+                    && let Some(init) = &declarator.init
+                    && root_is(init, &known, method)
+                {
+                    known.push(id.name.to_string());
+                    locals.push((id.name.to_string(), normalize(init)));
+                }
+            }
+        }
+        locals
+    }
+
+    /// A call to a function by its name, or to a method, which may be a helper: kept if one
+    /// turns up.
     fn call(&mut self, call: &CallExpression<'a>) {
-        let Expression::Identifier(callee) = call.callee.get_inner_expression() else {
-            return;
-        };
         if matches!(self.owner, Owner::Outside) {
             return;
         }
+        let (name, receiver) = match call.callee.get_inner_expression() {
+            Expression::Identifier(callee) => (callee.name.to_string(), None),
+            Expression::StaticMemberExpression(member) if is_receiver(&member.object) => (
+                member.property.name.to_string(),
+                Some(normalize(&member.object)),
+            ),
+            _ => return,
+        };
         let args: Vec<Value> = call
             .arguments
             .iter()
@@ -484,7 +539,8 @@ impl<'a> Collector<'_, 'a> {
         // The text is written once the call is known to be kept.
         self.push(
             ItemKind::Call(Call {
-                name: callee.name.to_string(),
+                name,
+                receiver,
                 args,
                 text: String::new(),
                 awaited,
@@ -707,6 +763,7 @@ impl<'a> Collector<'_, 'a> {
         let facts = facts::facts(&found, &self.values, &self.consts);
         let assertion = Assertion {
             subject: found.subject.map(normalize).unwrap_or_default(),
+            written: None,
             expect: found.kind,
             negated: found.negated,
             promise: found.promise,
@@ -771,6 +828,42 @@ impl<'a> Collector<'_, 'a> {
         }
         walk(self);
         (self.context, self.depth, self.in_helper, self.runner_waits) = saved;
+    }
+
+    /// Notes a name the file builds objects from or extends.
+    fn constructed(&mut self, name: &str) {
+        if !self.file.constructed.iter().any(|known| known == name) {
+            self.file.constructed.push(name.to_owned());
+        }
+    }
+
+    /// The functions of an object defined outside tests, as its methods: `expectOk(res) { … }`
+    /// and `expectOk: (res) => { … }`. Anything else in it is walked as usual.
+    fn object_methods(&mut self, owner: &str, object: &ObjectExpression<'a>) {
+        for property in &object.properties {
+            match property {
+                ObjectPropertyKind::ObjectProperty(property) => {
+                    if let Some(name) = property.key.static_name()
+                        && let Some(name) = name.as_str().map(str::to_owned)
+                        && !property.computed
+                        && let Some(callback) = as_callback(&property.value)
+                    {
+                        let is_async = is_async(&property.value);
+                        self.helper(
+                            name,
+                            Some((owner.to_owned(), true)),
+                            callback.params,
+                            is_async,
+                            property.span,
+                            &callback.body,
+                        );
+                    } else {
+                        self.visit_object_property(property);
+                    }
+                }
+                ObjectPropertyKind::SpreadProperty(spread) => self.visit_spread_element(spread),
+            }
+        }
     }
 }
 
@@ -974,7 +1067,14 @@ impl<'a> Visit<'a> for Collector<'_, 'a> {
             && let (Some(id), Some(body)) = (&it.id, &it.body)
         {
             let body = CallbackBody::Block(body);
-            self.helper(id.name.to_string(), &it.params, it.r#async, it.span, &body);
+            self.helper(
+                id.name.to_string(),
+                None,
+                &it.params,
+                it.r#async,
+                it.span,
+                &body,
+            );
             return;
         }
         if it.is_declaration()
@@ -992,13 +1092,25 @@ impl<'a> Visit<'a> for Collector<'_, 'a> {
             && let Some(init) = &it.init
             && let Some(callback) = as_callback(init)
         {
-            let is_async = match init.get_inner_expression() {
-                Expression::ArrowFunctionExpression(arrow) => arrow.r#async,
-                Expression::FunctionExpression(function) => function.r#async,
-                _ => false,
-            };
+            let is_async = is_async(init);
             let name = id.name.to_string();
-            self.helper(name, callback.params, is_async, it.span, &callback.body);
+            self.helper(
+                name,
+                None,
+                callback.params,
+                is_async,
+                it.span,
+                &callback.body,
+            );
+            return;
+        }
+        // `const app = { expectOk(res) { … } }` outside tests: its methods are helpers.
+        if self.can_define_helper()
+            && let BindingPattern::BindingIdentifier(id) = &it.id
+            && let Some(Expression::ObjectExpression(object)) =
+                it.init.as_ref().map(Expression::get_inner_expression)
+        {
+            self.object_methods(id.name.as_ref(), object);
             return;
         }
         // `const hover = () => {…}` inside a test: walked where it's called.
@@ -1090,6 +1202,80 @@ impl<'a> Visit<'a> for Collector<'_, 'a> {
         self.nested_function(|this| walk::walk_arrow_function_expression(this, it));
     }
 
+    /// A class outside tests: its methods are helpers, called on the objects it builds.
+    fn visit_class(&mut self, it: &Class<'a>) {
+        if let Some(Expression::Identifier(base)) = it
+            .heritage
+            .as_ref()
+            .map(|heritage| heritage.expression.get_inner_expression())
+        {
+            self.constructed(base.name.as_str());
+        }
+        let name = it
+            .id
+            .as_ref()
+            .filter(|_| self.can_define_helper())
+            .map(|id| id.name.to_string());
+        let saved = std::mem::replace(&mut self.class, name);
+        walk::walk_class(self, it);
+        self.class = saved;
+    }
+
+    /// `assertSyncResponse(response, records) { … }` in a class outside tests. Constructors,
+    /// getters and setters aren't helpers: nothing calls them by name.
+    fn visit_method_definition(&mut self, it: &MethodDefinition<'a>) {
+        if let Some(owner) = self.class.clone()
+            && self.can_define_helper()
+            && it.kind == MethodDefinitionKind::Method
+            && let Some(name) = it.key.static_name()
+            && let Some(name) = name.as_str().map(str::to_owned)
+            && let Some(body) = it.value.body.as_deref()
+        {
+            let body = CallbackBody::Block(body);
+            let function = &it.value;
+            self.helper(
+                name,
+                Some((owner, it.r#static)),
+                &function.params,
+                function.r#async,
+                it.span,
+                &body,
+            );
+            return;
+        }
+        walk::walk_method_definition(self, it);
+    }
+
+    /// `expectVisible = async () => { … }` in a class outside tests is a method too.
+    fn visit_property_definition(&mut self, it: &PropertyDefinition<'a>) {
+        if let Some(owner) = self.class.clone()
+            && self.can_define_helper()
+            && let Some(name) = it.key.static_name()
+            && let Some(name) = name.as_str().map(str::to_owned)
+            && let Some(value) = &it.value
+            && let Some(callback) = as_callback(value)
+        {
+            let is_async = is_async(value);
+            self.helper(
+                name,
+                Some((owner, it.r#static)),
+                callback.params,
+                is_async,
+                it.span,
+                &callback.body,
+            );
+            return;
+        }
+        walk::walk_property_definition(self, it);
+    }
+
+    fn visit_new_expression(&mut self, it: &NewExpression<'a>) {
+        if let Expression::Identifier(callee) = it.callee.get_inner_expression() {
+            self.constructed(callee.name.as_str());
+        }
+        walk::walk_new_expression(self, it);
+    }
+
     /// A method on an object a helper builds (`return { serverAborted() { expect(…) } }`)
     /// runs when it's called, not with the helper: its checks aren't the helper's.
     fn visit_object_property(&mut self, it: &ObjectProperty<'a>) {
@@ -1101,6 +1287,75 @@ impl<'a> Visit<'a> for Collector<'_, 'a> {
             return;
         }
         walk::walk_object_property(self, it);
+    }
+}
+
+/// A function value that's `async`.
+fn is_async(expr: &Expression) -> bool {
+    match expr.get_inner_expression() {
+        Expression::ArrowFunctionExpression(arrow) => arrow.r#async,
+        Expression::FunctionExpression(function) => function.r#async,
+        _ => false,
+    }
+}
+
+/// Built-ins and test-framework objects, whose methods are never helpers.
+const NOT_RECEIVERS: &[&str] = &[
+    "expect",
+    "vi",
+    "jest",
+    "console",
+    "Object",
+    "JSON",
+    "Math",
+    "Promise",
+    "Array",
+    "Date",
+    "Number",
+    "String",
+    "Reflect",
+    "Symbol",
+    "Buffer",
+    "process",
+    "globalThis",
+    "window",
+    "document",
+];
+
+/// What a method that may be a helper is called on: a name, `this`, or properties read from
+/// one (`ctx`, `this`, `app.album`), not a built-in.
+fn is_receiver(expr: &Expression) -> bool {
+    match expr.get_inner_expression() {
+        Expression::Identifier(id) => !NOT_RECEIVERS.contains(&id.name.as_str()),
+        Expression::ThisExpression(_) => true,
+        Expression::StaticMemberExpression(member) => is_receiver(&member.object),
+        _ => false,
+    }
+}
+
+/// Whether `expr` reads from one of `names` (or `this`, in a method): the name, then
+/// properties, method calls and `await` on it (`response.slice(0, -1)`, `this.page`,
+/// `(await res.json()).items`).
+fn root_is(expr: &Expression, names: &[String], method: bool) -> bool {
+    match expr.get_inner_expression() {
+        Expression::Identifier(id) => names.iter().any(|name| name == id.name.as_str()),
+        Expression::ThisExpression(_) => method,
+        Expression::AwaitExpression(inner) => root_is(&inner.argument, names, method),
+        Expression::CallExpression(call) => match call.callee.get_inner_expression() {
+            Expression::Identifier(_) => false,
+            callee => root_is(callee, names, method),
+        },
+        Expression::ChainExpression(chain) => match &chain.expression {
+            oxc::ast::ast::ChainElement::CallExpression(call) => {
+                root_is(&call.callee, names, method)
+            }
+            element => element
+                .as_member_expression()
+                .is_some_and(|member| root_is(member.object(), names, method)),
+        },
+        expr => expr
+            .as_member_expression()
+            .is_some_and(|member| root_is(member.object(), names, method)),
     }
 }
 

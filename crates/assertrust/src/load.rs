@@ -12,7 +12,7 @@
 use std::collections::HashSet;
 
 use assertrust_git::{Classifier, Comparison, FileChange, FileKind, Repo, Rev};
-use assertrust_ir::{FileIr, Gate, Item, ItemKind, ParseError, Via};
+use assertrust_ir::{FileIr, Gate, Helper, Import, Item, ItemKind, ParseError, Via};
 use assertrust_match::{FilePair, Side};
 use assertrust_rules::{GateFile, GateSide, TestFile};
 
@@ -356,56 +356,83 @@ fn load_importers(
     Ok(())
 }
 
-/// Whether a changed helper file may have changed what tests check: its helpers changed,
-/// and they check something on one side, themselves or through helper files they follow. A
-/// file of fixtures or factories with no checks doesn't send the search for importers off.
+/// Whether a changed helper file may have changed what tests check: a helper that checks
+/// something (itself or through helper files it follows) changed on one side, or the file's
+/// imports changed while it checks something. A file of fixtures or factories with no checks
+/// doesn't send the search for importers off, and neither does a change to a page object's
+/// methods that check nothing (`click()`, next to an `expectOpen()` that didn't change).
 fn checks_changed(
     before: &Read,
     after: &Read,
     modules: &mut (Modules, Modules),
 ) -> Result<bool, String> {
-    if !helpers_changed(before, after) {
-        return Ok(false);
-    }
-    let checks = |side: &Read, modules: &mut Modules| match side {
-        Read::Missing => Ok(false),
-        Read::Skipped(_) => Ok(true),
-        Read::Parsed(parsed) => {
-            modules.follow(&parsed.path, &parsed.ir)?;
-            Ok::<_, String>(modules.has_checks(&parsed.path, &parsed.ir))
-        }
+    // Each side's helpers, with what decides their checks for the ones that check
+    // something. A file that checks only through the files it follows still checks, so its
+    // imports count.
+    type Side = (FileIr, Vec<Option<Vec<Item>>>, bool);
+    let side = |read: &Read, modules: &mut Modules| -> Result<Option<Side>, String> {
+        let parsed = match read {
+            Read::Missing => return Ok(Some((FileIr::default(), Vec::new(), false))),
+            Read::Skipped(_) => return Ok(None),
+            Read::Parsed(parsed) => parsed,
+        };
+        modules.follow(&parsed.path, &parsed.ir)?;
+        let helpers = assertrust_ir::helper_checks(&parsed.path, &parsed.ir, &*modules);
+        let checks = modules.has_checks(&parsed.path, &parsed.ir);
+        Ok(Some((parsed.ir.clone(), helpers, checks)))
     };
-    Ok(checks(before, &mut modules.0)? || checks(after, &mut modules.1)?)
-}
-
-/// Whether a changed file holds helpers (and no tests) and they changed, beyond moving
-/// lines. A side that doesn't parse counts as changed: the tests that call it then say
-/// they were skipped.
-fn helpers_changed(before: &Read, after: &Read) -> bool {
-    fn ir<'r>(side: &'r Read, empty: &'r FileIr) -> Option<&'r FileIr> {
-        match side {
-            Read::Missing => Some(empty),
-            Read::Parsed(parsed) => Some(&parsed.ir),
-            Read::Skipped(_) => None,
-        }
-    }
-    let empty = FileIr::default();
-    let (Some(before), Some(after)) = (ir(before, &empty), ir(after, &empty)) else {
-        return true;
+    // A side that doesn't parse counts as changed: the tests that call it then say they
+    // were skipped.
+    let (Some((before, olds, checks_before)), Some((after, news, checks_after))) =
+        (side(before, &mut modules.0)?, side(after, &mut modules.1)?)
+    else {
+        return Ok(true);
     };
     if !before.tests.is_empty() || !after.tests.is_empty() {
-        return false;
+        return Ok(false);
     }
-    before.imports != after.imports
-        || before.helpers.len() != after.helpers.len()
-        || before.helpers.iter().zip(&after.helpers).any(|(a, b)| {
+    let checking = |ir: &'_ FileIr, helpers: &[Option<Vec<Item>>]| -> Vec<(Helper, Vec<Item>)> {
+        ir.helpers
+            .iter()
+            .zip(helpers)
+            .filter_map(|(helper, items)| Some((helper.clone(), items.clone()?)))
+            .collect()
+    };
+    let (olds, news) = (checking(&before, &olds), checking(&after, &news));
+    // The imports that may lead to checks: the ones those helpers call (or call methods
+    // on), and the ones passed on.
+    let mut used: HashSet<&str> = HashSet::new();
+    for (_, items) in olds.iter().chain(&news) {
+        for item in items {
+            if let ItemKind::Call(call) = &item.kind {
+                used.insert(match &call.receiver {
+                    Some(receiver) => receiver.split('.').next().unwrap_or_default(),
+                    None => call.name.as_str(),
+                });
+            }
+        }
+    }
+    let imports = |ir: &'_ FileIr| -> Vec<Import> {
+        ir.imports
+            .iter()
+            .filter(|import| import.reexport || used.contains(import.local.as_str()))
+            .cloned()
+            .collect()
+    };
+    if (checks_before || checks_after) && imports(&before) != imports(&after) {
+        return Ok(true);
+    }
+    Ok(olds.len() != news.len()
+        || olds.iter().zip(&news).any(|((a, a_items), (b, b_items))| {
             a.name != b.name
+                || a.owner != b.owner
                 || a.suites != b.suites
                 || a.params != b.params
+                || a.locals != b.locals
                 || a.is_async != b.is_async
                 || a.default_export != b.default_export
-                || !same_items(&a.body.items, &b.body.items)
-        })
+                || !same_items(a_items, b_items)
+        }))
 }
 
 /// Whether two versions of the same file check the same things in every test, ignoring

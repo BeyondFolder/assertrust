@@ -503,7 +503,10 @@ fn action_yml_is_valid_and_passes_every_input_run_sh_reads() {
         .expect("the run step's env");
     for (name, input) in inputs {
         let name = name.as_str().unwrap();
-        assert!(input["description"].as_str().is_some(), "{name} has a description");
+        assert!(
+            input["description"].as_str().is_some(),
+            "{name} has a description"
+        );
         let var = format!("INPUT_{}", name.to_uppercase().replace('-', "_"));
         if name == "github-token" {
             continue;

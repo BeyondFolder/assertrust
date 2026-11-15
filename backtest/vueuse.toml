@@ -21,6 +21,54 @@ label = "wrong"
 note = "The not.toThrow wrapper became a bare scope2.stop() call, which still fails the test if it throws, and DOM checks for the new ref counting were added."
 
 [[finding]]
+unit = "0116e9a5ecea"
+pr = 5305
+rule = "outcome-changed"
+path = "packages/core/onStartTyping/index.browser.test.ts"
+test = "onStartTyping > triggers callback with any number"
+before = ["expect(callBackFn).toBeCalledTimes(numbers.length + numpadNumbers.length)"]
+after = ["expect(callBackFn).toBeCalledTimes(numbers.length + numpadNumbers.length - 1)"]
+message = "toHaveBeenCalledTimes(numbers.length + numpadNumbers.length) → toHaveBeenCalledTimes(numbers.length + numpadNumbers.length…"
+label = "unexplained"
+note = "The browser-test migration (no code change) lowered the expected count by one with a \"todo: why -1?\" comment; nothing explains it (char 96 typed as '`' is likely no longer a digit key)."
+
+[[finding]]
+unit = "0116e9a5ecea"
+pr = 5305
+rule = "outcome-changed"
+path = "packages/core/useFocus/index.browser.test.ts"
+test = "useFocus > reflect reactive ref `focused` state changes in DOM"
+before = ["expect(document.activeElement).toBe(target.value)"]
+after = ["expect(document.activeElement).toBe(target)"]
+message = "toBe(target.value) → toBe(target)"
+label = "wrong"
+note = "assertrust misread: target changed from a shallowRef of the button to the button itself, so target.value and target are the same element."
+
+[[finding]]
+unit = "0116e9a5ecea"
+pr = 5305
+rule = "outcome-changed"
+path = "packages/core/useFocus/index.browser.test.ts"
+test = "useFocus > reflect reactive ref `focused` state changes in DOM"
+before = ["expect(document.activeElement).not.toBe(target.value)"]
+after = ["expect(document.activeElement).not.toBe(target)"]
+message = ".not.toBe(target.value) → .not.toBe(target)"
+label = "wrong"
+note = "assertrust misread: target is now the plain button rather than a ref to it, so .not.toBe(target) is the same check."
+
+[[finding]]
+unit = "0116e9a5ecea"
+pr = 5305
+rule = "outcome-changed"
+path = "packages/core/useFocus/index.browser.test.ts"
+test = "useFocus > when initialValue=true passed in > should initialize focus"
+before = ["expect(document.activeElement).toBe(target.value)"]
+after = ["expect(document.activeElement).toBe(target)"]
+message = "toBe(target.value) → toBe(target)"
+label = "wrong"
+note = "assertrust misread: target became the element itself instead of a ref, so toBe(target) checks the same element as toBe(target.value)."
+
+[[finding]]
 unit = "5b2721ff083b"
 pr = 5509
 rule = "gate-loosened"

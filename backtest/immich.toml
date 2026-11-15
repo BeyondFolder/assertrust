@@ -21,6 +21,18 @@ label = "unexplained"
 note = "The walk exclusion and asset-filter test was dropped in the move to medium tests; the new walk test only checks batching."
 
 [[finding]]
+unit = "9d0048b232ef"
+pr = 33007
+rule = "outcome-changed"
+path = "server/test/medium/specs/repositories/storage.repository.spec.ts"
+test = "StorageRepository.name > %s should skip symbolic links to files and directories"
+before = ["expect(batches.flat().toSorted()).toEqual(['/photos/image.jpg', '/photos/subfolder/image.jpg'])"]
+after = ["expect(batches.flat().toSorted()).toEqual([`${root.path}/photos/image.jpg`, `${root.path}/photos/subfolder/image.jpg`])"]
+message = "toEqual(['/photos/image.jpg', '/photos/subfolder/image.jpg'… → toEqual([`${root.path}/photos/image.jpg`, `${root.path}/pho…"
+label = "wrong"
+note = "The spec moved from mock-fs to a real temp dir, so the same two files are now asserted under root.path; same check."
+
+[[finding]]
 unit = "862059712620"
 pr = 32983
 rule = "test-disabled"
@@ -669,6 +681,222 @@ label = "wrong"
 note = "Same locator moved to the app.dialog helper (page.getByRole('dialog'))."
 
 [[finding]]
+unit = "862059712620"
+pr = 32983
+rule = "outcome-changed"
+path = "web/src/lib/actions/__test__/FocusTrap.spec.ts"
+test = "focusTrap action > sets focus to the first focusable element"
+before = ["expect(document.activeElement).toEqual(screen.getByTestId('one'))"]
+after = ["expect(document.activeElement).toEqual(screen.getByTestId('one').element())"]
+message = "toEqual(screen.getByTestId('one')) → toEqual(screen.getByTestId('one').element())"
+label = "wrong"
+note = "Migration to vitest browser mode: getByTestId now returns a locator, so .element() picks the same DOM node; same check."
+
+[[finding]]
+unit = "862059712620"
+pr = 32983
+rule = "outcome-changed"
+path = "web/src/lib/actions/__test__/FocusTrap.spec.ts"
+test = "focusTrap action > supports backward focus wrapping"
+before = ["expect(document.activeElement).toEqual(screen.getByTestId('three'))"]
+after = ["expect(document.activeElement).toEqual(screen.getByTestId('three').element())"]
+message = "toEqual(screen.getByTestId('three')) → toEqual(screen.getByTestId('three').element())"
+label = "wrong"
+note = "Migration to vitest browser mode: getByTestId now returns a locator, so .element() picks the same DOM node; same check."
+
+[[finding]]
+unit = "862059712620"
+pr = 32983
+rule = "outcome-changed"
+path = "web/src/lib/actions/__test__/FocusTrap.spec.ts"
+test = "focusTrap action > supports forward focus wrapping"
+before = ["expect(document.activeElement).toEqual(screen.getByTestId('one'))"]
+after = ["expect(document.activeElement).toEqual(screen.getByTestId('one').element())"]
+message = "toEqual(screen.getByTestId('one')) → toEqual(screen.getByTestId('one').element())"
+label = "wrong"
+note = "Migration to vitest browser mode: getByTestId now returns a locator, so .element() picks the same DOM node; same check."
+
+[[finding]]
+unit = "862059712620"
+pr = 32983
+rule = "outcome-changed"
+path = "web/src/lib/actions/__test__/FocusTrap.spec.ts"
+test = "focusTrap action > restores focus to the triggering element"
+before = ["expect(document.activeElement).toEqual(screen.getByTestId('one'))"]
+after = ["expect(document.activeElement).toEqual(screen.getByTestId('one').element())"]
+message = "toEqual(screen.getByTestId('one')) → toEqual(screen.getByTestId('one').element())"
+label = "wrong"
+note = "Migration to vitest browser mode: getByTestId now returns a locator, so .element() picks the same DOM node; same check."
+
+[[finding]]
+unit = "862059712620"
+pr = 32983
+rule = "outcome-changed"
+path = "web/src/lib/actions/__test__/FocusTrap.spec.ts"
+test = "focusTrap action > restores focus to the triggering element"
+before = ["expect(document.activeElement).toEqual(openButton)"]
+after = ["expect(document.activeElement).toEqual(openButton.element())"]
+message = "toEqual(openButton) → toEqual(openButton.element())"
+label = "wrong"
+note = "Migration to vitest browser mode: the button is now a locator, so .element() picks the same DOM node; same check."
+
+[[finding]]
+unit = "862059712620"
+pr = 32983
+rule = "outcome-changed"
+path = "web/src/lib/elements/__test__/FormatMessage.spec.ts"
+test = "FormatMessage component > throws an error when locale is empty"
+before = ["expect(() => render(FormatMessage, { key: '' as Translations })).toThrow()"]
+after = ["await expect(render(FormatMessage, { key: '' as Translations })).rejects.toThrow()"]
+message = "expect(() => render(FormatMessage, { key: '' as Translations })).toThrow() → await expect(render(FormatMessage, { key: '' as Translations })).rejects.toThrow()"
+label = "wrong"
+note = "vitest-browser-svelte's render is async, so the sync toThrow became rejects.toThrow on the same call; same check."
+
+[[finding]]
+unit = "862059712620"
+pr = 32983
+rule = "outcome-changed"
+path = "web/src/lib/i18n.spec.ts"
+test = "i18n > loaders > ${filename} should have a loader"
+before = ["expect(translations === content).toEqual(true)"]
+after = ["expect(module.default).toEqual(content)"]
+message = "toBe(true) → toEqual(content)"
+label = "wrong"
+note = "Browser mode has no fs, so the loader's module is deep-compared with the JSON loaded via import.meta.glob instead of comparing text; still checks it loads the right file."
+
+[[finding]]
+unit = "862059712620"
+pr = 32983
+rule = "outcome-changed"
+path = "web/src/lib/managers/timeline-manager/timeline-manager.svelte.spec.ts"
+test = "TimelineManager > init > calculates timeline height"
+before = ["expect(timelineManager.totalViewerHeight).toBe(8337)"]
+after = ["expect(timelineManager.totalViewerHeight).toBe(4434)"]
+message = "toBe(8337) → toBe(4434)"
+label = "unexplained"
+note = "No timeline code changed; the setup now never resolves getTimeBucket, so the height is the unloaded estimate, not the laid-out height, and the PR (\"refactor: web tests\") gives no reason."
+
+[[finding]]
+unit = "862059712620"
+pr = 32983
+rule = "outcome-changed"
+path = "web/src/lib/route.spec.ts"
+test = "Route > Route.continue.name > should resolve relative URLs"
+before = ["expect(Route.continue('/some/path', '/fallback')).property('href', 'https://my.immich.server/some/path')"]
+after = ["expect(Route.continue('/some/path', '/fallback')).property('href', `${location.origin}/some/path`)"]
+message = "property('href', 'https://my.immich.server/some/path') → property('href', `${location.origin}/some/path`)"
+label = "wrong"
+note = "Browser mode can't override location, so the hard-coded https://my.immich.server origin became location.origin; same exact href check."
+
+[[finding]]
+unit = "862059712620"
+pr = 32983
+rule = "outcome-changed"
+path = "web/src/lib/route.spec.ts"
+test = "Route > Route.continue.name > should resolve absolute URLs on the same origin"
+before = ["expect(Route.continue('https://my.immich.server/some/path', '/fallback')).property('href', 'https://my.immich.server/some/path')"]
+after = ["expect(Route.continue(`${location.origin}/some/path`, '/fallback')).property('href', `${location.origin}/some/path`)"]
+message = "property('href', 'https://my.immich.server/some/path') → property('href', `${location.origin}/some/path`)"
+label = "wrong"
+note = "Browser mode can't override location, so the hard-coded https://my.immich.server origin became location.origin; same exact href check."
+
+[[finding]]
+unit = "862059712620"
+pr = 32983
+rule = "outcome-changed"
+path = "web/src/lib/route.spec.ts"
+test = "Route > Route.continue.name > should return fallback for null URLs"
+before = ["expect(Route.continue(null, '/fallback')).property('href', 'https://my.immich.server/fallback')"]
+after = ["expect(Route.continue(null, '/fallback')).property('href', `${location.origin}/fallback`)"]
+message = "property('href', 'https://my.immich.server/fallback') → property('href', `${location.origin}/fallback`)"
+label = "wrong"
+note = "Browser mode can't override location, so the hard-coded https://my.immich.server origin became location.origin; same exact href check."
+
+[[finding]]
+unit = "862059712620"
+pr = 32983
+rule = "outcome-changed"
+path = "web/src/lib/utils/date-time.spec.ts"
+test = "getShortDateRange > should correctly return month range if start and end date are in separate months within the same year"
+before = ["expect(getShortDateRange('2022-01-01T00:00:00.000Z', '2022-02-01T00:00:00.000Z')).toEqual('Jan – Feb 2022')"]
+after = ["expect(getShortDateRange('2022-01-01T00:00:00.000Z', '2022-02-01T00:00:00.000Z')).toEqual('Jan – Feb 2022')"]
+message = "toBe('Jan – Feb 2022') → toBe('Jan – Feb 2022')"
+label = "wrong"
+note = "Tests now run in Chromium, whose Intl range output uses plain spaces instead of Node's thin spaces (U+2009) around the dash; exact string still checked."
+
+[[finding]]
+unit = "862059712620"
+pr = 32983
+rule = "outcome-changed"
+path = "web/src/lib/utils/date-time.spec.ts"
+test = "getShortDateRange > should correctly return range if start and end date are in separate months and years"
+before = ["expect(getShortDateRange('2021-12-01T00:00:00.000Z', '2022-01-01T00:00:00.000Z')).toEqual('Dec 2021 – Jan 2022')"]
+after = ["expect(getShortDateRange('2021-12-01T00:00:00.000Z', '2022-01-01T00:00:00.000Z')).toEqual('Dec 2021 – Jan 2022')"]
+message = "toBe('Dec 2021 – Jan 2022') → toBe('Dec 2021 – Jan 2022')"
+label = "wrong"
+note = "Tests now run in Chromium, whose Intl range output uses plain spaces instead of Node's thin spaces (U+2009) around the dash; exact string still checked."
+
+[[finding]]
+unit = "862059712620"
+pr = 32983
+rule = "outcome-changed"
+path = "web/src/lib/utils/date-time.spec.ts"
+test = "getShortDateRange > should use the correct locale to return month-year range"
+before = ["expect(getShortDateRange('2021-12-01T00:00:00.000Z', '2022-01-01T00:00:00.000Z')).toEqual('déc. 2021 – janv. 2022')"]
+after = ["expect(getShortDateRange('2021-12-01T00:00:00.000Z', '2022-01-01T00:00:00.000Z')).toEqual('déc. 2021 – janv. 2022')"]
+message = "toBe('déc. 2021 – janv. 2022') → toBe('déc. 2021 – janv. 2022')"
+label = "wrong"
+note = "Tests now run in Chromium, whose Intl range output uses plain spaces instead of Node's thin spaces (U+2009) around the dash; exact string still checked."
+
+[[finding]]
+unit = "862059712620"
+pr = 32983
+rule = "outcome-changed"
+path = "web/src/lib/utils/date-time.spec.ts"
+test = "getAlbumDateRange > should work"
+before = ["expect(getAlbumDateRange('2021-01-01T00:00:00Z', '2021-01-05T00:00:00Z')).toEqual('Jan 1 – 5, 2021')"]
+after = ["expect(getAlbumDateRange('2021-01-01T00:00:00Z', '2021-01-05T00:00:00Z')).toEqual('Jan 1 – 5, 2021')"]
+message = "toBe('Jan 1 – 5, 2021') → toBe('Jan 1 – 5, 2021')"
+label = "wrong"
+note = "Tests now run in Chromium, whose Intl range output uses plain spaces instead of Node's thin spaces (U+2009) around the dash; exact string still checked."
+
+[[finding]]
+unit = "862059712620"
+pr = 32983
+rule = "outcome-changed"
+path = "web/src/lib/utils/date-time.spec.ts"
+test = "getAlbumDateRange > should use the proper locale"
+before = ["expect(getAlbumDateRange('2020-03-26T12:00:00Z', '2021-12-01T00:00:00Z')).toEqual('26 mars 2020 – 1 déc. 2021')"]
+after = ["expect(getAlbumDateRange('2020-03-26T12:00:00Z', '2021-12-01T00:00:00Z')).toEqual('26 mars 2020 – 1 déc. 2021')"]
+message = "toBe('26 mars 2020 – 1 déc. 2021') → toBe('26 mars 2020 – 1 déc. 2021')"
+label = "wrong"
+note = "Tests now run in Chromium, whose Intl range output uses plain spaces instead of Node's thin spaces (U+2009) around the dash; exact string still checked."
+
+[[finding]]
+unit = "862059712620"
+pr = 32983
+rule = "outcome-changed"
+path = "web/src/lib/utils/maintenance.spec.ts"
+test = "maintenance > maintenanceReturnUrl.name > should resolve a same-origin continue url"
+before = ["expect(maintenanceReturnUrl(new URLSearchParams({ continue: '/photos' }))).property('href', 'https://my.immich.server/photos')"]
+after = ["expect(maintenanceReturnUrl(new URLSearchParams({ continue: '/photos' }))).property('href', `${location.origin}/photos`)"]
+message = "property('href', 'https://my.immich.server/photos') → property('href', `${location.origin}/photos`)"
+label = "wrong"
+note = "Browser mode can't override location, so the hard-coded https://my.immich.server origin became location.origin; same exact href check."
+
+[[finding]]
+unit = "862059712620"
+pr = 32983
+rule = "outcome-changed"
+path = "web/src/lib/utils/maintenance.spec.ts"
+test = "maintenance > maintenanceReturnUrl.name > should fall back to the root route when continue is missing"
+before = ["expect(maintenanceReturnUrl(new URLSearchParams())).property('href', 'https://my.immich.server/')"]
+after = ["expect(maintenanceReturnUrl(new URLSearchParams())).property('href', `${location.origin}/`)"]
+message = "property('href', 'https://my.immich.server/') → property('href', `${location.origin}/`)"
+label = "wrong"
+note = "Browser mode can't override location, so the hard-coded https://my.immich.server origin became location.origin; same exact href check."
+
+[[finding]]
 unit = "fa44c744e33d"
 pr = 33010
 rule = "expectation-loosened"
@@ -739,3 +967,27 @@ after = []
 message = "deleted: MaintenanceWorkerService.name > init > leaves the backups SDK lock to whoever already holds it"
 label = "intended"
 note = "The FutoBackupsModuleConfig lock code was removed in the same commit (replaced by setDatabaseHooks), and the enum entry with it."
+
+[[finding]]
+unit = "f6dfe1a93ede"
+pr = 33126
+rule = "outcome-changed"
+path = "server/src/services/download.service.spec.ts"
+test = "DownloadService.name > downloadArchive > should not return the unedited version when requested using a shared link"
+before = ["expect(archiveMock.addFile).toHaveBeenCalledWith('/data/edited.jpg', asset.originalFileName)"]
+after = ["expect(archiveMock.addFile).toHaveBeenCalledWith('/data/edited.jpg', 'foo.jpg')"]
+message = "toHaveBeenCalledWith('/data/edited.jpg', asset.originalFile… → toHaveBeenCalledWith('/data/edited.jpg', 'foo.jpg')"
+label = "wrong"
+note = "The fix makes archive names take the extension of the edited file, so foo.heic downloads as foo.jpg; the test follows the code."
+
+[[finding]]
+unit = "f6dfe1a93ede"
+pr = 33126
+rule = "outcome-changed"
+path = "server/src/services/download.service.spec.ts"
+test = "DownloadService.name > downloadArchive > should sanitize unsafe originalFileName \"$input\" to \"$expected\""
+before = ["{ expected: '........tmppwn.jpg', input: '../../../../tmp/pwn.jpg' }", "{ expected: 'Ctempabs3.jpg', input: String.raw`C:\\temp\\abs3.jpg` }", "{ expected: 'a....b.jpg', input: 'a/../../b.jpg' }", "{ expected: '....win1.jpg', input: String.raw`..\\..\\win1.jpg` }", "{ expected: 'etcpasswd', input: '/etc/passwd' }", "{ expected: 'unnamed', input: '..' }", "{ expected: 'unnamed', input: '' }"]
+after = ["{ expected: '........tmppwn.jpg', input: '../../../../tmp/pwn.jpg' }", "{ expected: 'Ctempabs3.jpg', input: String.raw`C:\\temp\\abs3.jpg` }", "{ expected: 'a....b.jpg', input: 'a/../../b.jpg' }", "{ expected: '....win1.jpg', input: String.raw`..\\..\\win1.jpg` }", "{ expected: 'etcpasswd.jpg', input: '/etc/passwd' }", "{ expected: 'unnamed.jpg', input: '..' }", "{ expected: 'unnamed.jpg', input: '' }"]
+message = ".each rows changed: { expected: 'etcpasswd', input: '/etc/passwd' }, { expected…"
+label = "wrong"
+note = "The fix appends the stored file's extension to sanitized names, so etcpasswd/unnamed became etcpasswd.jpg/unnamed.jpg; the test follows the code."

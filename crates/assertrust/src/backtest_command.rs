@@ -17,6 +17,15 @@
 //! labels: 1 unexplained · precision 100% (1 of 1 right) · high 1 of 1
 //! ```
 //!
+//! With `--judge`, every finding a PR check would report goes to the AI judge (step 7), and
+//! changed outcomes too, with no cap. With labels, its verdicts are matched against them:
+//!
+//! ```text
+//! judge on shown findings:
+//!   wrong (12): 9 fine, 2 unsure, 1 coverage lost · 1 would fail (8%)
+//!   unexplained (3): 3 suspicious · 3 would fail (100%)
+//! ```
+//!
 //! The first commit of a repo isn't checked: there's nothing before it to weaken.
 
 use std::collections::HashSet;
@@ -29,13 +38,15 @@ use std::thread;
 use std::time::Instant;
 
 use assertrust_git::{Commit, Mode, Repo};
+use assertrust_judge::{Judgment, Prompt, PullRequest, Verdict};
 use assertrust_rules::{Confidence, Finding, RuleId};
 use serde_json::{Value, json};
 
 use crate::check_command::{self, judged};
 use crate::cli::{BacktestArgs, BacktestFormat};
-use crate::config::Config;
+use crate::config::{Config, JudgeConfig};
 use crate::json;
+use crate::judge::{self, Scope, Summary};
 use crate::labels::{Entry, Label, Labels, Pairing};
 use crate::output::{count, line};
 use crate::report::{self, Reported, Status};
@@ -60,11 +71,15 @@ pub fn run(args: &BacktestArgs) -> Result<ExitCode, String> {
         .map(|path| Labels::read(path, args.update_labels))
         .transpose()?;
     let (range, commits) = walk(&repo, args, labels.as_ref())?;
-    let units = check_all(&repo, &commits, args);
+    let mut units = check_all(&repo, &commits, args);
+    let judged = args
+        .judge
+        .on()
+        .then(|| judge_all(&repo, &mut units, &judge_config(args)));
     let scored = labels.as_ref().map(|labels| Scored::new(labels, &units));
     let output = match args.format {
-        BacktestFormat::Terminal => render(&units, scored.as_ref(), args, started),
-        BacktestFormat::Json => render_json(&range, &units, scored.as_ref()),
+        BacktestFormat::Terminal => render(&units, scored.as_ref(), judged.as_ref(), args, started),
+        BacktestFormat::Json => render_json(&range, &units, scored.as_ref(), judged.as_ref()),
     };
     crate::print_stdout(&output)?;
     if let (Some(path), Some(labels), Some(scored)) = (&args.labels, &labels, &scored)
@@ -82,6 +97,56 @@ pub fn run(args: &BacktestArgs) -> Result<ExitCode, String> {
     } else {
         ExitCode::SUCCESS
     })
+}
+
+/// The judge's settings for a backtest: the flags', whatever each repo's config says, since
+/// a backtest measures one model across them all.
+fn judge_config(args: &BacktestArgs) -> JudgeConfig {
+    args.judge.apply(None)
+}
+
+/// What the judge did over the whole backtest, and notes on what went wrong.
+struct Judged {
+    summary: Summary,
+    notes: Vec<String>,
+    /// The verdicts that fail a check.
+    fail_on: Vec<Verdict>,
+}
+
+/// Asks the judge about every finding that has a prompt, all at once, and puts the verdicts
+/// on them: a changed outcome it doesn't call fine is then shown, as a check would.
+fn judge_all(repo: &Repo, units: &mut [Unit], config: &JudgeConfig) -> Judged {
+    let prompts: Vec<Prompt> = units
+        .iter()
+        .flat_map(|unit| &unit.findings)
+        .filter_map(|owned| owned.prompt.clone())
+        .collect();
+    let asked = judge::ask(repo.root(), config, &prompts);
+    let mut judgments = asked.judgments.into_iter();
+    for owned in units
+        .iter_mut()
+        .flat_map(|unit| &mut unit.findings)
+        .filter(|owned| owned.prompt.is_some())
+    {
+        owned.judgment = judgments.next().flatten();
+        if let Some(judgment) = &owned.judgment
+            && owned.status == Status::Hidden
+            && judgment.verdict != Verdict::Fine
+        {
+            // As a check would show it: on code the PR added, it's hidden by default.
+            if owned.added {
+                owned.status = Status::PrAdded;
+            } else {
+                owned.status = Status::Shown;
+                owned.quiet = true;
+            }
+        }
+    }
+    Judged {
+        summary: asked.summary,
+        notes: asked.notes,
+        fail_on: config.fail_on.clone(),
+    }
 }
 
 /// The commits to replay, oldest first, and their range with full SHAs (`BASE..HEAD`).
@@ -260,13 +325,19 @@ struct Owned {
     commits: Vec<Commit>,
     /// Its rule is left to the judge, so only `-v` shows it.
     judged: bool,
-    /// A PR check would report it: shown, allowed, or added by its PR (shown only with
-    /// `--show-pr-added`, but labelled either way), and not left to the judge. Labels are
-    /// about these.
+    /// Labels are about it: a PR check would report it (shown, allowed, or added by its PR,
+    /// shown only with `--show-pr-added`), or it's left to the judge and not allowed (a
+    /// changed outcome, shown only with `-v`, or by the judge).
     reported: bool,
     /// Shown without `-v`, and with it.
     quiet: bool,
     verbose: bool,
+    /// About code its PR added (`judge::pr_added`).
+    added: bool,
+    /// What the judge is sent about it, with `--judge`.
+    prompt: Option<Prompt>,
+    /// What the judge said.
+    judgment: Option<Judgment>,
 }
 
 impl Owned {
@@ -279,6 +350,8 @@ impl Owned {
             finding: self.finding.clone(),
             commits: self.commits.iter().collect(),
             status: self.status.clone(),
+            comparison: None,
+            judgment: self.judgment.clone(),
         }
     }
 }
@@ -308,7 +381,12 @@ impl Unit {
             notes: Vec::new(),
             error: None,
         };
-        match run_check(repo, &Mode::Range(range), &head, args) {
+        // The PR's title, from the commit that landed it; its description isn't in git.
+        let pull_request = unit.landing.pr().map(|_| PullRequest {
+            title: title(&unit.commit).to_owned(),
+            body: String::new(),
+        });
+        match run_check(repo, &Mode::Range(range), &head, args, pull_request) {
             Ok((walked, findings, notes)) => {
                 unit.walked = walked;
                 unit.findings = findings;
@@ -362,12 +440,14 @@ fn title(commit: &Commit) -> &str {
     subject
 }
 
-/// Runs `check` on one landing: how many commits it walked, its findings and notes.
+/// Runs `check` on one landing: how many commits it walked, its findings and notes. With
+/// `--judge`, each finding the judge is asked about gets its prompt.
 fn run_check(
     repo: &Repo,
     mode: &Mode,
     head: &str,
     args: &BacktestArgs,
+    pull_request: Option<PullRequest>,
 ) -> Result<(usize, Vec<Owned>, Vec<String>), String> {
     let (mut config, mut notes) = Config::as_ci_ran(repo, mode, head)?;
     config.show_transient |= args.show_transient;
@@ -377,6 +457,18 @@ fn run_check(
         .map_err(|err| err.to_string())?;
     let report = report::build(repo, &analysis, &config)?;
     notes.extend(report.notes.iter().cloned());
+    let mut prompts: Vec<Option<Prompt>> = vec![None; report.findings.len()];
+    if args.judge.on() {
+        let scope = Scope {
+            pr_added: true,
+            cap: None,
+        };
+        let (picked, _) = judge::select(&report, &scope, analysis.net.as_ref());
+        let built = judge::prompts(repo, &report, &picked, pull_request.as_ref());
+        for (i, prompt) in picked.into_iter().zip(built) {
+            prompts[i] = Some(prompt);
+        }
+    }
     let findings = report
         .findings
         .iter()
@@ -389,13 +481,19 @@ fn run_check(
                 .map(|&commit| commit.clone())
                 .collect(),
             judged: judged(reported, &config),
-            reported: matches!(
-                reported.status,
-                Status::Shown | Status::PrAdded | Status::Allowed { .. }
-            ) && !judged(reported, &config),
+            reported: match reported.status {
+                Status::Shown | Status::PrAdded | Status::Hidden => true,
+                Status::Allowed { .. } => !judged(reported, &config),
+                Status::Transient => false,
+            },
             quiet: check_command::visible(reported, &config, false),
             verbose: check_command::visible(reported, &config, true),
+            added: judge::pr_added(reported, analysis.net.as_ref()),
+            prompt: None,
+            judgment: None,
         })
+        .zip(prompts)
+        .map(|(owned, prompt)| Owned { prompt, ..owned })
         .collect();
     Ok((analysis.steps.len(), findings, notes))
 }
@@ -514,6 +612,7 @@ impl Scored {
 fn render(
     units: &[Unit],
     scored: Option<&Scored>,
+    judged: Option<&Judged>,
     args: &BacktestArgs,
     started: Instant,
 ) -> String {
@@ -574,7 +673,98 @@ fn render(
     if let Some(scored) = scored {
         label_summary(&mut out, units, scored, args.verbose);
     }
+    if let Some(judged) = judged {
+        for note in &judged.notes {
+            line(&mut out, &format!("note: {note}"));
+        }
+        line(&mut out, &judged.summary.line());
+        if let Some(scored) = scored {
+            judge_summary(&mut out, units, scored, &judged.fail_on);
+        }
+    }
     out
+}
+
+/// Each kind's labelled findings, with how many got each verdict.
+/// Each kind: its JSON key, its name in the terminal, and its rows.
+type Matrix = Vec<(
+    &'static str,
+    &'static str,
+    Vec<(Label, Vec<(Option<Verdict>, usize)>)>,
+)>;
+
+/// How the judge's verdicts fall on each label, for each kind of finding.
+fn matrix(units: &[Unit], scored: &Scored) -> Matrix {
+    let Split {
+        shown,
+        pr_added,
+        judged,
+    } = labelled(units, scored);
+    [
+        ("shown", "shown findings", shown),
+        ("pr_added", "findings on code its PR added", pr_added),
+        ("judged", "changed outcomes", judged),
+    ]
+    .into_iter()
+    .filter(|(_, _, labelled)| labelled.iter().any(|(_, owned)| owned.prompt.is_some()))
+    .map(|(key, kind, labelled)| {
+        let rows = [Label::Wrong, Label::Unexplained, Label::Intended]
+            .into_iter()
+            .filter_map(|label| {
+                let of: Vec<Option<Verdict>> = labelled
+                    .iter()
+                    .filter(|(l, owned)| *l == label && owned.prompt.is_some())
+                    .map(|(_, owned)| owned.judgment.as_ref().map(|j| j.verdict))
+                    .collect();
+                if of.is_empty() {
+                    return None;
+                }
+                let counts = Verdict::ALL
+                    .into_iter()
+                    .map(Some)
+                    .chain([None])
+                    .map(|verdict| (verdict, of.iter().filter(|v| **v == verdict).count()))
+                    .filter(|(_, n)| *n > 0)
+                    .collect();
+                Some((label, counts))
+            })
+            .collect();
+        (key, kind, rows)
+    })
+    .collect()
+}
+
+/// `judge on shown findings:`, then per label how the verdicts fall and how many would fail
+/// a check: on a wrong finding that's a false alarm the judge confirmed, on an unexplained
+/// one a weakening it caught.
+fn judge_summary(out: &mut String, units: &[Unit], scored: &Scored, fail_on: &[Verdict]) {
+    for (_, kind, rows) in matrix(units, scored) {
+        line(out, &format!("judge on {kind}:"));
+        for (label, counts) in rows {
+            let total: usize = counts.iter().map(|(_, n)| n).sum();
+            let failing: usize = counts
+                .iter()
+                .filter(|(verdict, _)| verdict.is_some_and(|v| fail_on.contains(&v)))
+                .map(|(_, n)| n)
+                .sum();
+            let split: Vec<String> = counts
+                .iter()
+                .map(|(verdict, n)| match verdict {
+                    Some(verdict) => format!("{n} {}", verdict.words()),
+                    None => format!("{n} without a verdict"),
+                })
+                .collect();
+            line(
+                out,
+                &format!(
+                    "  {} ({total}): {} · {failing} would fail ({}%)",
+                    label.as_str(),
+                    split.join(", "),
+                    failing * 100 / total
+                ),
+            );
+        }
+    }
 }
 
 /// `100 commits: 61 PRs, 39 pushes · 3 findings · 2 changed outcomes hidden (-v shows them)
@@ -678,24 +868,47 @@ fn pushes(n: usize) -> String {
     }
 }
 
-/// Each labelled finding with its label, split into findings on code their PR added (hidden
-/// by default, so counted apart) and the rest.
-type Split<'a> = (Vec<(Label, &'a Owned)>, Vec<(Label, &'a Owned)>);
+/// Each labelled finding with its label, split by how a check shows it, since each kind is
+/// counted apart.
+#[derive(Default)]
+struct Split<'a> {
+    /// Shown, or allowed.
+    shown: Vec<(Label, &'a Owned)>,
+    /// On code its PR added: hidden by default.
+    pr_added: Vec<(Label, &'a Owned)>,
+    /// Left to the judge (changed outcomes): hidden until it's on.
+    judged: Vec<(Label, &'a Owned)>,
+}
 
 fn labelled<'a>(units: &'a [Unit], scored: &Scored) -> Split<'a> {
-    units
+    let mut split = Split::default();
+    let tagged = units
         .iter()
         .zip(&scored.tags)
         .flat_map(|(unit, row)| unit.findings.iter().zip(row))
-        .filter_map(|(owned, tag)| Some((tag.as_ref()?.label()?, owned)))
-        .partition(|(_, owned)| owned.status == Status::PrAdded)
+        .filter_map(|(owned, tag)| Some((tag.as_ref()?.label()?, owned)));
+    for (label, owned) in tagged {
+        // Left to the judge, whether it showed them or not.
+        if owned.judged {
+            split.judged.push((label, owned));
+        } else if owned.status == Status::PrAdded {
+            split.pr_added.push((label, owned));
+        } else {
+            split.shown.push((label, owned));
+        }
+    }
+    split
 }
 
 /// What the labels say: how often assertrust is right, and what isn't labelled or is gone.
-/// Findings on code a PR added, hidden by default, are counted apart.
+/// Findings on code a PR added and changed outcomes, hidden by default, are counted apart.
 fn label_summary(out: &mut String, units: &[Unit], scored: &Scored, verbose: bool) {
-    let (pr_added, shown) = labelled(units, scored);
-    if shown.is_empty() && pr_added.is_empty() {
+    let Split {
+        shown,
+        pr_added,
+        judged,
+    } = labelled(units, scored);
+    if shown.is_empty() && pr_added.is_empty() && judged.is_empty() {
         line(out, "labels: none of the findings are labelled yet");
     }
     if !shown.is_empty() {
@@ -729,36 +942,65 @@ fn label_summary(out: &mut String, units: &[Unit], scored: &Scored, verbose: boo
             ),
         );
     }
+    if !judged.is_empty() {
+        line(
+            out,
+            &format!(
+                "changed outcomes (hidden until the judge is on): {}",
+                precision(&judged)
+            ),
+        );
+    }
     // Those not labelled are marked, unless hidden: say how to see them.
-    let (marked, hidden) = units
+    let unlabelled: Vec<&Owned> = units
         .iter()
         .zip(&scored.tags)
         .flat_map(|(unit, row)| unit.findings.iter().zip(row))
         .filter(|(_, tag)| tag.as_ref().is_some_and(|tag| tag.label().is_none()))
-        .fold((0, 0), |(marked, hidden), (owned, _)| {
-            if owned.shown(verbose) {
-                (marked + 1, hidden)
-            } else {
-                (marked, hidden + 1)
+        .map(|(owned, _)| owned)
+        .collect();
+    let marked = unlabelled.iter().filter(|o| o.shown(verbose)).count();
+    let added = unlabelled
+        .iter()
+        .filter(|o| !o.shown(verbose) && o.status == Status::PrAdded)
+        .count();
+    let outcomes = unlabelled
+        .iter()
+        .filter(|o| !o.shown(verbose) && o.status == Status::Hidden)
+        .count();
+    let total = unlabelled.len();
+    match (marked, added, outcomes) {
+        (0, 0, 0) => {}
+        (_, 0, 0) => line(out, &format!("{total} not labelled yet (marked above)")),
+        (0, _, 0) => line(
+            out,
+            &format!("{total} not labelled yet, on code its PR added (--show-pr-added shows them)"),
+        ),
+        (0, 0, _) => line(
+            out,
+            &format!("{total} not labelled yet, changed outcomes (-v shows them)"),
+        ),
+        _ => {
+            let mut parts = Vec::new();
+            if marked > 0 {
+                parts.push(format!("{marked} marked above"));
             }
-        });
-    match (marked, hidden) {
-        (0, 0) => {}
-        (marked, 0) => line(out, &format!("{marked} not labelled yet (marked above)")),
-        (0, hidden) => line(
-            out,
-            &format!(
-                "{hidden} not labelled yet, on code its PR added (--show-pr-added shows them)"
-            ),
-        ),
-        (marked, hidden) => line(
-            out,
-            &format!(
-                "{} not labelled yet: {marked} marked above, {hidden} on code its PR added \
-                 (--show-pr-added shows them)",
-                marked + hidden
-            ),
-        ),
+            if added > 0 {
+                parts.push(format!(
+                    "{added} on code its PR added (--show-pr-added shows them)"
+                ));
+            }
+            if outcomes > 0 {
+                parts.push(format!(
+                    "{} (-v shows them)",
+                    count(outcomes, "changed outcome")
+                ));
+            }
+            line(
+                out,
+                &format!("{total} not labelled yet: {}", parts.join(", ")),
+            );
+        }
     }
     let missed: Vec<&Entry> = scored.missed().collect();
     if !missed.is_empty() {
@@ -816,7 +1058,12 @@ fn lost_entry(out: &mut String, entry: &Entry) {
     );
 }
 
-fn render_json(range: &str, units: &[Unit], scored: Option<&Scored>) -> String {
+fn render_json(
+    range: &str,
+    units: &[Unit],
+    scored: Option<&Scored>,
+    judged: Option<&Judged>,
+) -> String {
     let units_json: Vec<Value> = units
         .iter()
         .enumerate()
@@ -874,8 +1121,13 @@ fn render_json(range: &str, units: &[Unit], scored: Option<&Scored>) -> String {
                 })
                 .collect()
         };
-        // Labels of findings on code their PR added (hidden by default) are counted apart.
-        let (pr_added, shown) = labelled(units, scored);
+        // Labels of findings on code their PR added and of changed outcomes (hidden by
+        // default) are counted apart.
+        let Split {
+            shown,
+            pr_added,
+            judged,
+        } = labelled(units, scored);
         let with =
             |of: &[(Label, &Owned)], label: Label| of.iter().filter(|(l, _)| *l == label).count();
         document["labels"] = json!({
@@ -887,10 +1139,41 @@ fn render_json(range: &str, units: &[Unit], scored: Option<&Scored>) -> String {
                 "intended": with(&pr_added, Label::Intended),
                 "unexplained": with(&pr_added, Label::Unexplained),
             },
+            "judged": {
+                "wrong": with(&judged, Label::Wrong),
+                "intended": with(&judged, Label::Intended),
+                "unexplained": with(&judged, Label::Unexplained),
+            },
             "not_labelled": scored.not_labelled(),
             "missed": entries(scored.missed().collect()),
             "fixed": entries(scored.fixed().collect()),
         });
+    }
+    if let Some(judged) = judged {
+        let mut judge = json::judge(&judged.summary);
+        judge["notes"] = json!(judged.notes);
+        if let Some(scored) = scored {
+            let kinds: serde_json::Map<String, Value> = matrix(units, scored)
+                .into_iter()
+                .map(|(key, _, rows)| {
+                    let rows: serde_json::Map<String, Value> = rows
+                        .into_iter()
+                        .map(|(label, counts)| {
+                            let counts: serde_json::Map<String, Value> = counts
+                                .into_iter()
+                                .map(|(verdict, n)| {
+                                    (verdict.map_or("none", Verdict::as_str).to_owned(), json!(n))
+                                })
+                                .collect();
+                            (label.as_str().to_owned(), Value::Object(counts))
+                        })
+                        .collect();
+                    (key.to_owned(), Value::Object(rows))
+                })
+                .collect();
+            judge["labels"] = Value::Object(kinds);
+        }
+        document["judge"] = judge;
     }
     json::pretty(&document)
 }

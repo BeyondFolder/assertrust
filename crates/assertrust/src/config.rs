@@ -21,6 +21,11 @@
 //!
 //! [rules]
 //! matcher-swapped = "off"      # off | on | judge
+//!
+//! [judge]                      # the AI judge: on when this table is here, or with --judge
+//! model = "anthropic/claude-sonnet-5-5"
+//! fail-on = ["suspicious", "coverage-lost"]   # or "never"
+//! max-findings = 20
 //! ```
 
 use std::collections::HashMap;
@@ -28,6 +33,7 @@ use std::fs;
 use std::io;
 
 use assertrust_git::{Classifier, Mode, Repo, Rev};
+use assertrust_judge::Verdict;
 use assertrust_rules::{Confidence, Finding, RuleId};
 use toml::{Table, Value};
 
@@ -35,6 +41,12 @@ use crate::cli::FailOn;
 
 /// The file's name, at the repo root.
 pub const FILE: &str = "assertrust.toml";
+
+/// The judge's model when neither `[judge]` nor `--judge-model` names one, and its
+/// effort: chosen by measuring models on the backtests' labels (`docs/architecture.md`,
+/// step 7).
+pub const DEFAULT_MODEL: &str = "anthropic/claude-sonnet-5-5";
+pub const DEFAULT_EFFORT: &str = "medium";
 
 #[derive(Debug)]
 pub struct Config {
@@ -46,6 +58,43 @@ pub struct Config {
     /// The `[files]` patterns behind `classifier`, to tell when a change drops some.
     patterns: Patterns,
     rules: HashMap<RuleId, Setting>,
+    /// The AI judge's settings: `Some` when it's on (`[judge]`, or `--judge`).
+    pub judge: Option<JudgeConfig>,
+}
+
+/// `[judge]`: how the AI judge runs (step 7).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct JudgeConfig {
+    /// `provider/model`.
+    pub model: String,
+    /// How hard the model thinks: `low`, `medium` or `high`, when set (see
+    /// [`JudgeConfig::effort`]).
+    pub effort: Option<String>,
+    /// The verdicts that make the check fail.
+    pub fail_on: Vec<Verdict>,
+    /// The most findings one check sends to the judge.
+    pub max_findings: usize,
+}
+
+impl JudgeConfig {
+    /// How hard the model thinks: as set; else, for the default model, the effort it was
+    /// measured at; else the model's own default.
+    pub fn effort(&self) -> Option<&str> {
+        self.effort.as_deref().or_else(|| {
+            (crate::judge::model_name(&self.model) == DEFAULT_MODEL).then_some(DEFAULT_EFFORT)
+        })
+    }
+}
+
+impl Default for JudgeConfig {
+    fn default() -> Self {
+        Self {
+            model: DEFAULT_MODEL.to_owned(),
+            effort: None,
+            fail_on: vec![Verdict::CoverageLost, Verdict::Suspicious],
+            max_findings: 20,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -61,7 +110,8 @@ pub enum Setting {
     Off,
     /// Shown.
     On,
-    /// Left to the LLM judge (step 7). Until it exists, shown only with `-v`.
+    /// Left to the AI judge (step 7): shown when it's on and says the change isn't fine,
+    /// else only with `-v`.
     Judge,
 }
 
@@ -74,6 +124,7 @@ impl Default for Config {
             classifier: Classifier::default(),
             patterns: Patterns::default(),
             rules: HashMap::new(),
+            judge: None,
         }
     }
 }
@@ -181,6 +232,7 @@ impl Config {
                 }
                 "files" => (config.classifier, config.patterns) = files(value)?,
                 "rules" => config.rules = rules(value)?,
+                "judge" => config.judge = Some(judge(value)?),
                 other => return Err(format!("unknown key `{other}`")),
             }
         }
@@ -255,6 +307,38 @@ impl Config {
                 &after.patterns.gate,
             ),
         ];
+        match (&before.judge, &after.judge) {
+            (Some(_), None) => push(
+                None,
+                // CI may turn it on with --judge instead.
+                Confidence::Medium,
+                "turned the judge off: findings get no verdicts, and none fail the check"
+                    .to_owned(),
+                vec!["[judge]".to_owned()],
+                Vec::new(),
+            ),
+            (Some(old), Some(new)) => {
+                let dropped: Vec<&str> = old
+                    .fail_on
+                    .iter()
+                    .filter(|verdict| !new.fail_on.contains(verdict))
+                    .map(|verdict| verdict.as_str())
+                    .collect();
+                if !dropped.is_empty() {
+                    push(
+                        key_line(text, Some("judge"), "fail-on"),
+                        Confidence::High,
+                        format!(
+                            "the judge's {} verdicts no longer fail the check",
+                            dropped.join(" and ")
+                        ),
+                        vec![format!("fail-on = {}", verdict_list(&old.fail_on))],
+                        vec![format!("fail-on = {}", verdict_list(&new.fail_on))],
+                    );
+                }
+            }
+            _ => {}
+        }
         for (key, what, old, new) in kinds {
             let dropped: Vec<String> = old
                 .iter()
@@ -397,6 +481,71 @@ fn files(value: &Value) -> Result<(Classifier, Patterns), String> {
     Ok((classifier, Patterns { test, gate }))
 }
 
+/// `[judge]`: `model`, `effort`, `fail-on` (verdicts, or `"never"`), `max-findings`.
+fn judge(value: &Value) -> Result<JudgeConfig, String> {
+    let table = value
+        .as_table()
+        .ok_or_else(|| "`judge` must be a table".to_owned())?;
+    let mut judge = JudgeConfig::default();
+    for (key, value) in table {
+        match key.as_str() {
+            "model" => string("judge.model", value)?.clone_into(&mut judge.model),
+            "effort" => {
+                let effort = string("judge.effort", value)?;
+                if !["low", "medium", "high"].contains(&effort) {
+                    return Err(format!(
+                        "`judge.effort` is `{effort}`; it can be low, medium or high"
+                    ));
+                }
+                judge.effort = Some(effort.to_owned());
+            }
+            "fail-on" => {
+                let wrong = || {
+                    "`judge.fail-on` must be \"never\" or a list of verdicts: suspicious, coverage-lost, unsure".to_owned()
+                };
+                judge.fail_on = match value {
+                    Value::String(never) if never == "never" => Vec::new(),
+                    Value::Array(items) => items
+                        .iter()
+                        .map(|item| {
+                            item.as_str()
+                                .and_then(Verdict::parse)
+                                .filter(|verdict| *verdict != Verdict::Fine)
+                        })
+                        .collect::<Option<Vec<_>>>()
+                        .ok_or_else(wrong)?,
+                    _ => return Err(wrong()),
+                };
+            }
+            "max-findings" => {
+                judge.max_findings = value
+                    .as_integer()
+                    .and_then(|n| usize::try_from(n).ok())
+                    .filter(|n| *n > 0)
+                    .ok_or_else(|| "`judge.max-findings` must be a number above 0".to_owned())?;
+            }
+            other => {
+                return Err(format!(
+                    "unknown key `judge.{other}`; it can be model, effort, fail-on or max-findings"
+                ));
+            }
+        }
+    }
+    Ok(judge)
+}
+
+/// `["coverage-lost", "suspicious"]`, or `"never"`.
+fn verdict_list(verdicts: &[Verdict]) -> String {
+    if verdicts.is_empty() {
+        return "\"never\"".to_owned();
+    }
+    let names: Vec<String> = verdicts
+        .iter()
+        .map(|verdict| format!("\"{verdict}\""))
+        .collect();
+    format!("[{}]", names.join(", "))
+}
+
 /// `[rules]`: `rule-id = "off" | "on" | "judge"`.
 fn rules(value: &Value) -> Result<HashMap<RuleId, Setting>, String> {
     let table = value
@@ -508,6 +657,69 @@ outcome-changed = "on"
                 "no longer counts `src/**/*.test.ts` as test files"
             ]
         );
+    }
+
+    #[test]
+    fn reads_the_judge() {
+        assert_eq!(Config::parse("").unwrap().judge, None);
+        assert_eq!(
+            Config::parse("[judge]").unwrap().judge,
+            Some(JudgeConfig::default())
+        );
+        let judge = Config::parse(
+            "[judge]\nmodel = \"openai/gpt-5.2\"\neffort = \"low\"\nfail-on = [\"suspicious\"]\nmax-findings = 5\n",
+        )
+        .unwrap()
+        .judge
+        .unwrap();
+        assert_eq!(judge.model, "openai/gpt-5.2");
+        assert_eq!(judge.effort.as_deref(), Some("low"));
+        assert_eq!(judge.fail_on, [Verdict::Suspicious]);
+        assert_eq!(judge.max_findings, 5);
+        let never = Config::parse("[judge]\nfail-on = \"never\"").unwrap();
+        assert!(never.judge.unwrap().fail_on.is_empty());
+        for (text, error) in [
+            ("[judge]\nfail-on = [\"fine\"]", "`judge.fail-on` must be"),
+            ("[judge]\nmax-findings = 0", "`judge.max-findings` must be"),
+            ("[judge]\neffort = \"max\"", "`judge.effort` is `max`"),
+            ("[judge]\nkey = \"x\"", "unknown key `judge.key`"),
+        ] {
+            let err = Config::parse(text).unwrap_err();
+            assert!(err.starts_with(error), "{err}");
+        }
+    }
+
+    #[test]
+    fn the_default_model_thinks_at_the_effort_it_was_measured_at() {
+        let mut judge = JudgeConfig::default();
+        assert_eq!(judge.effort(), Some(DEFAULT_EFFORT));
+        judge.model = "anthropic/claude-haiku-5-5".to_owned();
+        assert_eq!(judge.effort(), None);
+        judge.effort = Some("high".to_owned());
+        assert_eq!(judge.effort(), Some("high"));
+    }
+
+    #[test]
+    fn turning_the_judge_down_is_a_finding() {
+        let on = Config::parse("[judge]\n").unwrap();
+        let text = "[judge]\nfail-on = [\"suspicious\"]\n";
+        let fewer = Config::parse(text).unwrap();
+        let found: Vec<(Option<u32>, Confidence, String)> = Config::loosened(&on, &fewer, text)
+            .into_iter()
+            .map(|finding| (finding.line, finding.confidence, finding.message))
+            .collect();
+        assert_eq!(
+            found,
+            [(
+                Some(2),
+                Confidence::High,
+                "the judge's coverage-lost verdicts no longer fail the check".to_owned()
+            )]
+        );
+        let off = Config::loosened(&on, &Config::default(), "");
+        assert_eq!(off.len(), 1);
+        assert_eq!(off[0].confidence, Confidence::Medium);
+        assert!(Config::loosened(&Config::default(), &on, "").is_empty());
     }
 
     #[test]

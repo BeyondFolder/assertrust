@@ -8,7 +8,7 @@ mod common;
 use std::fs;
 use std::os::unix::fs::PermissionsExt as _;
 
-use common::{Run, TestRepo};
+use common::{FakeModel, Run, TestRepo};
 use tempfile::TempDir;
 
 const SCRIPT: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../action/run.sh");
@@ -446,5 +446,36 @@ fn the_release_for_the_runner_is_downloaded_and_checked() {
         run.stdout.contains("only Linux and macOS"),
         "{}",
         run.stdout
+    );
+}
+
+#[test]
+fn judge_asks_the_ai_judge_and_its_verdict_fails_the_job() {
+    let (repo, base, head) = weakened();
+    let runner = Runner::new(&pull_request(&base, &head));
+    let model = FakeModel::new(&[], ("coverage-lost", "nothing checks ok any more"));
+    let [base_url, key] = model.env();
+    let env = [
+        ("INPUT_JUDGE", "true"),
+        ("INPUT_JUDGE_MODEL", "anthropic/claude-haiku-5-5"),
+        ("INPUT_JUDGE_EFFORT", "high"),
+        base_url,
+        key,
+    ];
+    let run = runner.run(&repo, "pull_request", &env);
+    assert_eq!(run.code, 1, "{}{}", run.stdout, run.stderr);
+    assert!(
+        run.stdout
+            .contains("· judge: coverage lost: nothing checks ok any more"),
+        "{}",
+        run.stdout
+    );
+    assert!(model.requests()[0].contains("claude-haiku-5-5"));
+    assert!(model.requests()[0].contains("\"effort\":\"high\""));
+    let run = runner.run(&repo, "pull_request", &[("INPUT_JUDGE", "yes")]);
+    assert_eq!(run.code, 2);
+    assert!(
+        run.stdout
+            .contains("judge is `yes`; it can be true or false")
     );
 }

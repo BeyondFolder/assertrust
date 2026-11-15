@@ -11,6 +11,18 @@ range = "51caf01038d3339d7b9db94b959482c549aba2e3..19c40d2072288b4cafec851e9d056
 [[finding]]
 unit = "cafbee4772ef"
 pr = 6530
+rule = "outcome-changed"
+path = "packages/zod/src/v4/classic/tests/cyclic-data.test.ts"
+test = "the walk reports a cycle for a deferred edge instead of resolving it"
+before = ["expect(z.core.isRecursiveSchema(z.lazy(() => Leaf) as any)).toBe(true)"]
+after = ["expect(z.core.isRecursiveSchema(z.lazy(() => Leaf) as any)).toBe(false)"]
+message = "toBe(true) → toBe(false)"
+label = "wrong"
+note = "The PR commit makes the cycle walk follow a lazy edge one hop so z.compile can see past it; the message explains it, and a two-hop lazy case still expects true."
+
+[[finding]]
+unit = "cafbee4772ef"
+pr = 6530
 rule = "check-removed"
 path = "packages/zod/src/v4/classic/tests/cyclic-data.test.ts"
 test = "a deferred edge stops being assumed a cycle once the graph resolves"
@@ -116,6 +128,30 @@ label = "wrong"
 note = "The same length bounds are now asserted as minItems/maxItems through z.toJSONSchema."
 
 [[finding]]
+unit = "6f0483671e62"
+pr = 6554
+rule = "outcome-changed"
+path = "packages/zod/src/v4/classic/tests/instance-footprint.test.ts"
+test = "a live member keeps the descriptor a prototype member had"
+before = ["expect(keys).toEqual(['def', 'type', 'format', 'minLength', 'maxLength'])"]
+after = ["expect(keys).toEqual(['def', 'type'])"]
+message = "toEqual(['def', 'type', 'format', 'minLength', 'maxLength']) → toEqual(['def', 'type'])"
+label = "wrong"
+note = "The commit turns format/minLength/maxLength into prototype getters that shadow on first read, so for-in no longer lists them; the test now also checks minLength appears after a read."
+
+[[finding]]
+unit = "741981ffdbc8"
+pr = 6567
+rule = "outcome-changed"
+path = "packages/zod/src/v4/core/tests/compile-generative.test.ts"
+test = "random schemas parse identically through the interpreter and the compiler"
+before = ["expect(n).toBeLessThanOrEqual(2 * (runtimeCalls.get(id) ?? 0)) (in loop, in try) via checkSeed(seed)"]
+after = ["expect(n).toBeLessThanOrEqual(2 * r) (in loop, in try) via checkSeed(seed)"]
+message = "toBeLessThanOrEqual(2 * (runtimeCalls.get(id) ?? 0)) → toBeLessThanOrEqual(2 * r)"
+label = "wrong"
+note = "assertrust misread: r is the same runtimeCalls.get(id) ?? 0 bound to a variable, and the loop now also covers runtime-only callbacks and adds a lower bound, so it is stricter."
+
+[[finding]]
 unit = "eb1c1089f7f9"
 pr = 6569
 rule = "gate-loosened"
@@ -136,6 +172,54 @@ after = ["if: inputs.mini_version == ''"]
 message = "job build_and_publish: now runs only if inputs.mini_version == ''"
 label = "wrong"
 note = "Same trigger move; build_and_publish still needs test-node, lint and check-circular before it publishes."
+
+[[finding]]
+unit = "f7fd5548063f"
+pr = 6573
+rule = "outcome-changed"
+path = "packages/zod/src/v4/classic/tests/continuability.test.ts"
+test = "continuability"
+before = ["expect(z.email().refine(() => false).safeParse('invalid_value').error!.issues).toMatchInlineSnapshot('\\n    [\\n      {\\n        \"code\": \"invalid_format\",\\n        \"format\": \"email\",\\n        \"message\": \"Invalid email address\",\\n        \"origin\": \"string\",\\n        \"path\": [],\\n        \"pattern\": \"/^(?!\\\\.)(?!.*\\\\.\\\\.)([A-Za-z0-9_\\'+\\\\-\\\\.]*)[A-Za-z0-9_+-]@([A-Za-z0-9][A-Za-z0-9\\\\-]*\\\\.)+[A-Za-z]{2,}$/\",\\n      },\\n      {\\n        \"code\": \"custom\",\\n        \"message\": \"Invalid input\",\\n        \"path\": [],\\n      },\\n    ]\\n  ')"]
+after = ["expect(z.email().refine(() => false).safeParse('invalid_value').error!.issues).toMatchInlineSnapshot('\\n    [\\n      {\\n        \"code\": \"invalid_format\",\\n        \"format\": \"email\",\\n        \"message\": \"Invalid email address\",\\n        \"origin\": \"string\",\\n        \"path\": [],\\n        \"pattern\": \"/^(?:[A-Za-z0-9_\\'+\\\\-]+\\\\.)*[A-Za-z0-9_\\'+\\\\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\\\\-]*\\\\.)+[A-Za-z]{2,}$/\",\\n      },\\n      {\\n        \"code\": \"custom\",\\n        \"message\": \"Invalid input\",\\n        \"path\": [],\\n      },\\n    ]\\n  ')"]
+message = "toMatchInlineSnapshot('\\n    [\\n      {\\n        \"code\": \"i… → toMatchInlineSnapshot('\\n    [\\n      {\\n        \"code\": \"i…"
+label = "wrong"
+note = "The PR rewrites the email regex in regexes.ts without lookaheads (same language, per the message), and the issue snapshot shows the new pattern source."
+
+[[finding]]
+unit = "f7fd5548063f"
+pr = 6573
+rule = "outcome-changed"
+path = "packages/zod/src/v4/classic/tests/template-literal.test.ts"
+test = "regexes"
+before = ["expect(email._zod.pattern.source).toMatchInlineSnapshot('\"^(?!\\\\.)(?!.*\\\\.\\\\.)([A-Za-z0-9_\\'+\\\\-\\\\.]*)[A-Za-z0-9_+-]@([A-Za-z0-9][A-Za-z0-9\\\\-]*\\\\.)+[A-Za-z]{2,}$\"')"]
+after = ["expect(email._zod.pattern.source).toMatchInlineSnapshot('\"^(?:[A-Za-z0-9_\\'+\\\\-]+\\\\.)*[A-Za-z0-9_\\'+\\\\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\\\\-]*\\\\.)+[A-Za-z]{2,}$\"')"]
+message = "toMatchInlineSnapshot('\"^(?!\\\\.)(?!.*\\\\.\\\\.)([A-Za-z0-9_\\'+… → toMatchInlineSnapshot('\"^(?:[A-Za-z0-9_\\'+\\\\-]+\\\\.)*[A-Za-z…"
+label = "wrong"
+note = "The email regex source changed in regexes.ts in the same PR; the inline snapshot of the pattern follows the new source exactly."
+
+[[finding]]
+unit = "f7fd5548063f"
+pr = 6573
+rule = "outcome-changed"
+path = "packages/zod/src/v4/classic/tests/to-json-schema.test.ts"
+test = "toJSONSchema > primitive types"
+before = ["expect(z.toJSONSchema(z.email())).toMatchInlineSnapshot('\\n      {\\n        \"$schema\": \"https://json-schema.org/draft/2020-12/schema\",\\n        \"format\": \"email\",\\n        \"pattern\": \"^(?!\\\\.)(?!.*\\\\.\\\\.)([A-Za-z0-9_\\'+\\\\-\\\\.]*)[A-Za-z0-9_+-]@([A-Za-z0-9][A-Za-z0-9\\\\-]*\\\\.)+[A-Za-z]{2,}$\",\\n        \"type\": \"string\",\\n      }\\n    ')"]
+after = ["expect(z.toJSONSchema(z.email())).toMatchInlineSnapshot('\\n      {\\n        \"$schema\": \"https://json-schema.org/draft/2020-12/schema\",\\n        \"format\": \"email\",\\n        \"pattern\": \"^(?:[A-Za-z0-9_\\'+\\\\-]+\\\\.)*[A-Za-z0-9_\\'+\\\\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\\\\-]*\\\\.)+[A-Za-z]{2,}$\",\\n        \"type\": \"string\",\\n      }\\n    ')"]
+message = "toMatchInlineSnapshot('\\n      {\\n        \"$schema\": \"https… → toMatchInlineSnapshot('\\n      {\\n        \"$schema\": \"https…"
+label = "wrong"
+note = "The email regex was rewritten without lookaheads in the same PR, and the message says the toJSONSchema snapshots move with the source."
+
+[[finding]]
+unit = "f7fd5548063f"
+pr = 6573
+rule = "outcome-changed"
+path = "packages/zod/src/v4/classic/tests/to-json-schema.test.ts"
+test = "toJSONSchema > string formats"
+before = ["expect(z.toJSONSchema(z.string().email())).toMatchInlineSnapshot('\\n      {\\n        \"$schema\": \"https://json-schema.org/draft/2020-12/schema\",\\n        \"format\": \"email\",\\n        \"pattern\": \"^(?!\\\\.)(?!.*\\\\.\\\\.)([A-Za-z0-9_\\'+\\\\-\\\\.]*)[A-Za-z0-9_+-]@([A-Za-z0-9][A-Za-z0-9\\\\-]*\\\\.)+[A-Za-z]{2,}$\",\\n        \"type\": \"string\",\\n      }\\n    ')"]
+after = ["expect(z.toJSONSchema(z.string().email())).toMatchInlineSnapshot('\\n      {\\n        \"$schema\": \"https://json-schema.org/draft/2020-12/schema\",\\n        \"format\": \"email\",\\n        \"pattern\": \"^(?:[A-Za-z0-9_\\'+\\\\-]+\\\\.)*[A-Za-z0-9_\\'+\\\\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\\\\-]*\\\\.)+[A-Za-z]{2,}$\",\\n        \"type\": \"string\",\\n      }\\n    ')"]
+message = "toMatchInlineSnapshot('\\n      {\\n        \"$schema\": \"https… → toMatchInlineSnapshot('\\n      {\\n        \"$schema\": \"https…"
+label = "wrong"
+note = "Same email regex rewrite; the toJSONSchema snapshot of z.string().email() shows the new pattern, nothing else changed."
 
 [[finding]]
 unit = "b12aa523e7e2"

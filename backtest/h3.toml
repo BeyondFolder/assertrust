@@ -20,6 +20,18 @@ label = "wrong"
 note = "Follows the previous push's switch to execFileSync; moved to a new test that checks execFileSync, the mdzilla/docsDir args and no shell template, which is stronger."
 
 [[finding]]
+unit = "516c2a0ad0e4"
+pr = 1549
+rule = "outcome-changed"
+path = "test/unit/package.test.ts"
+test = "h3 package > package exports (snapshot)"
+before = ["expect(exportNames).toMatchInlineSnapshot('\\n      [\\n        \"EventStream\",\\n        \"H3\",\\n        \"H3Core\",\\n        \"H3Error\",\\n        \"H3Event\",\\n        \"HTTPError\",\\n        \"HTTPResponse\",\\n        \"appendAcceptQuery\",\\n        \"appendCorsHeaders\",\\n        \"appendCorsPreflightHeaders\",\\n        \"appendHeader\",\\n        \"appendHeaders\",\\n        \"appendResponseHeader\",\\n        \"appendResponseHeaders\",\\n        \"assertBodySize\",\\n        \"assertMethod\",\\n        \"basicAuth\",\\n        \"bodyLimit\",\\n        \"callMiddleware\",\\n        \"clearResponseHeaders\",\\n        \"clearSession\",\\n        \"composeMiddleware\",\\n        \"createApp\",\\n        \"createError\",\\n        \"createEventStream\",\\n        \"createRouter\",\\n        \"defaultContentType\",\\n        \"defineEventHandler\",\\n        \"defineHandler\",\\n        \"defineJsonRpcHandler\",\\n        \"defineJsonRpcWebSocketHandler\",\\n        \"defineLazyEventHandler\",\\n        \"defineMiddleware\",\\n        \"defineNodeHandler\",\\n        \"defineNodeListener\",\\n        \"defineNodeMiddleware\",\\n        \"definePlugin\",\\n        \"defineRoute\",\\n        \"defineValidatedHandler\",\\n        \"defineWebSocket\",\\n        \"defineWebSocketHandler\",\\n        \"deleteChunkedCookie\",\\n        \"deleteCookie\",\\n        \"dynamicEventHandler\",\\n        \"eventHandler\",\\n        \"fetchWithEvent\",\\n        \"fromNodeHandler\",\\n        \"fromNodeMiddleware\",\\n        \"fromWebHandler\",\\n        \"getBodyStream\",\\n        \"getChunkedCookie\",\\n        \"getCookie\",\\n        \"getEventContext\",\\n        \"getHeader\",\\n        \"getHeaders\",\\n        \"getMethod\",\\n        \"getProxyRequestHeaders\",\\n        \"getQuery\",\\n        \"getRequestFingerprint\",\\n        \"getRequestHeader\",\\n        \"getRequestHeaders\",\\n        \"getRequestHost\",\\n        \"getRequestIP\",\\n        \"getRequestPath\",\\n        \"getRequestProtocol\",\\n        \"getRequestURL\",\\n        \"getRequestWebStream\",\\n        \"getResponseHeader\",\\n        \"getResponseHeaders\",\\n        \"getResponseStatus\",\\n        \"getResponseStatusText\",\\n        \"getRouterParam\",\\n        \"getRouterParams\",\\n        \"getSession\",\\n        \"getValidatedCookies\",\\n        \"getValidatedQuery\",\\n        \"getValidatedRouterParams\",\\n        \"handleCacheHeaders\",\\n        \"handleCors\",\\n        \"html\",\\n        \"isCanonicalPath\",\\n        \"isCorsOriginAllowed\",\\n        \"isError\",\\n        \"isEvent\",\\n        \"isHTTPEvent\",\\n        \"isMethod\",\\n        \"isPreflightRequest\",\\n        \"iterable\",\\n        \"lazyEventHandler\",\\n        \"mockEvent\",\\n        \"noContent\",\\n        \"onDispose\",\\n        \"onError\",\\n        \"onRequest\",\\n        \"onResponse\",\\n        \"parseCookies\",\\n        \"proxy\",\\n        \"proxyRequest\",\\n        \"raw\",\\n        \"readBody\",\\n        \"readFormData\",\\n        \"readFormDataBody\",\\n        \"readMultipartFormData\",\\n        \"readRawBody\",\\n        \"readValidatedBody\",\\n        \"redirect\",\\n        \"redirectBack\",\\n        \"removeResponseHeader\",\\n        \"removeRoute\",\\n        \"requestWithBaseURL\",\\n        \"requestWithURL\",\\n        \"requireBasicAuth\",\\n        \"requireContentType\",\\n        \"resolveDotSegments\",\\n        \"sanitizeStatusCode\",\\n        \"sanitizeStatusMessage\",\\n        \"sealSession\",\\n        \"sendIterable\",\\n        \"sendNoContent\",\\n        \"sendProxy\",\\n        \"sendRedirect\",\\n        \"sendStream\",\\n        \"sendWebResponse\",\\n        \"serve\",\\n        \"serveStatic\",\\n        \"setChunkedCookie\",\\n        \"setCookie\",\\n        \"setHeader\",\\n        \"setHeaders\",\\n        \"setResponseHeader\",\\n        \"setResponseHeaders\",\\n        \"setResponseStatus\",\\n        \"setServerTiming\",\\n        \"toEventHandler\",\\n        \"toMiddleware\",\\n        \"toNodeHandler\",\\n        \"toNodeListener\",\\n        \"toRequest\",\\n        \"toResponse\",\\n        \"toWebHandler\",\\n        \"unsealSession\",\\n        \"updateSession\",\\n        \"useBase\",\\n        \"useSession\",\\n        \"withBase\",\\n        \"withServerTiming\",\\n        \"writeEarlyHints\",\\n      ]\\n    ')"]
+after = ["expect(exportNames).toMatchInlineSnapshot('\\n      [\\n        \"EventStream\",\\n        \"H3\",\\n        \"H3Core\",\\n        \"H3Error\",\\n        \"H3Event\",\\n        \"HTTPError\",\\n        \"HTTPResponse\",\\n        \"appendAcceptQuery\",\\n        \"appendCorsHeaders\",\\n        \"appendCorsPreflightHeaders\",\\n        \"appendHeader\",\\n        \"appendHeaders\",\\n        \"appendResponseHeader\",\\n        \"appendResponseHeaders\",\\n        \"assertBodySize\",\\n        \"assertMethod\",\\n        \"basicAuth\",\\n        \"bodyLimit\",\\n        \"callMiddleware\",\\n        \"clearResponseHeaders\",\\n        \"clearSession\",\\n        \"composeMiddleware\",\\n        \"createApp\",\\n        \"createError\",\\n        \"createEventStream\",\\n        \"createRouter\",\\n        \"defaultContentType\",\\n        \"defineEventHandler\",\\n        \"defineHandler\",\\n        \"defineJsonRpcHandler\",\\n        \"defineJsonRpcWebSocketHandler\",\\n        \"defineLazyEventHandler\",\\n        \"defineMiddleware\",\\n        \"defineNodeHandler\",\\n        \"defineNodeListener\",\\n        \"defineNodeMiddleware\",\\n        \"definePlugin\",\\n        \"defineRoute\",\\n        \"defineValidatedHandler\",\\n        \"defineWebSocket\",\\n        \"defineWebSocketHandler\",\\n        \"deleteChunkedCookie\",\\n        \"deleteCookie\",\\n        \"dynamicEventHandler\",\\n        \"eventHandler\",\\n        \"fetchWithEvent\",\\n        \"fromNodeHandler\",\\n        \"fromNodeMiddleware\",\\n        \"fromWebHandler\",\\n        \"getBodyStream\",\\n        \"getChunkedCookie\",\\n        \"getCookie\",\\n        \"getEventContext\",\\n        \"getHeader\",\\n        \"getHeaders\",\\n        \"getMethod\",\\n        \"getProxyRequestHeaders\",\\n        \"getQuery\",\\n        \"getRequestFingerprint\",\\n        \"getRequestHeader\",\\n        \"getRequestHeaders\",\\n        \"getRequestHost\",\\n        \"getRequestIP\",\\n        \"getRequestPath\",\\n        \"getRequestProtocol\",\\n        \"getRequestURL\",\\n        \"getRequestWebStream\",\\n        \"getResponseHeader\",\\n        \"getResponseHeaders\",\\n        \"getResponseStatus\",\\n        \"getResponseStatusText\",\\n        \"getRouterParam\",\\n        \"getRouterParams\",\\n        \"getSession\",\\n        \"getValidatedCookies\",\\n        \"getValidatedQuery\",\\n        \"getValidatedRouterParams\",\\n        \"handleCacheHeaders\",\\n        \"handleCors\",\\n        \"html\",\\n        \"isCanonicalPath\",\\n        \"isCorsOriginAllowed\",\\n        \"isError\",\\n        \"isEvent\",\\n        \"isHTTPEvent\",\\n        \"isMethod\",\\n        \"isPreflightRequest\",\\n        \"iterable\",\\n        \"lazyEventHandler\",\\n        \"mockEvent\",\\n        \"noContent\",\\n        \"normalizeRoute\",\\n        \"onDispose\",\\n        \"onError\",\\n        \"onRequest\",\\n        \"onResponse\",\\n        \"parseCookies\",\\n        \"proxy\",\\n        \"proxyRequest\",\\n        \"raw\",\\n        \"readBody\",\\n        \"readFormData\",\\n        \"readFormDataBody\",\\n        \"readMultipartFormData\",\\n        \"readRawBody\",\\n        \"readValidatedBody\",\\n        \"redirect\",\\n        \"redirectBack\",\\n        \"removeResponseHeader\",\\n        \"removeRoute\",\\n        \"requestWithBaseURL\",\\n        \"requestWithURL\",\\n        \"requireBasicAuth\",\\n        \"requireContentType\",\\n        \"resolveDotSegments\",\\n        \"sanitizeStatusCode\",\\n        \"sanitizeStatusMessage\",\\n        \"sealSession\",\\n        \"sendIterable\",\\n        \"sendNoContent\",\\n        \"sendProxy\",\\n        \"sendRedirect\",\\n        \"sendStream\",\\n        \"sendWebResponse\",\\n        \"serve\",\\n        \"serveStatic\",\\n        \"setChunkedCookie\",\\n        \"setCookie\",\\n        \"setHeader\",\\n        \"setHeaders\",\\n        \"setResponseHeader\",\\n        \"setResponseHeaders\",\\n        \"setResponseStatus\",\\n        \"setServerTiming\",\\n        \"toEventHandler\",\\n        \"toMiddleware\",\\n        \"toNodeHandler\",\\n        \"toNodeListener\",\\n        \"toRequest\",\\n        \"toResponse\",\\n        \"toWebHandler\",\\n        \"unsealSession\",\\n        \"updateSession\",\\n        \"useBase\",\\n        \"useSession\",\\n        \"withBase\",\\n        \"withServerTiming\",\\n        \"writeEarlyHints\",\\n      ]\\n    ')"]
+message = "toMatchInlineSnapshot('\\n      [\\n        \"EventStream\",\\n … → toMatchInlineSnapshot('\\n      [\\n        \"EventStream\",\\n …"
+label = "wrong"
+note = "The PR exports normalizeRoute from src/index.ts, and the exports snapshot gains that one name."
+
+[[finding]]
 unit = "f5b33e4e3170"
 pr = 1559
 rule = "test-disabled"
@@ -142,6 +154,127 @@ label = "intended"
 note = "Bundle-size budget raised for the rou3 v0.12 upgrade in the same commit; the message notes the bundle-size impact."
 
 [[finding]]
+unit = "48e6982ac47c"
+rule = "outcome-changed"
+path = "test/rules/match.test.ts"
+test = "method-agnostic rules vs node-aliased method-scoped siblings > keeps the agnostic rule for %s alongside %s"
+before = ["['/a/*', 'GET /a/:id', '/a/b']", "['/a/:id', 'GET /a/:userId', '/a/b']", "['/a/**', 'GET /a/**:rest', '/a/b']", "['/**', 'GET /**:path', '/a/b']", "['/admin', 'GET /admin/', '/admin']", "['/a/:id', 'GET /a/*', '/a/b']", "['/a/b', 'GET /a/b', '/a/b']"]
+after = ["['/a/*', 'GET /a/**', '/a/b']", "['/a/:id', 'GET /a/:userId', '/a/b']", "['/a/**', 'GET /a/**:rest', '/a/b']", "['/**', 'GET /**:path', '/a/b']", "['/admin', 'GET /admin/', '/admin']", "['/a/**:rest', 'GET /a/*', '/a/b']", "['/a/b', 'GET /a/b', '/a/b']"]
+message = ".each rows changed: ['/a/*', 'GET /a/:id', '/a/b'], ['/a/:id', 'GET /a/*', '/a/…"
+label = "wrong"
+note = "rou3 v0.12 made * a catch-all on the wildcard node, so the aliasing rows were respelled (/a/** and /a/**:rest) to keep pairing patterns that share a node."
+
+[[finding]]
+unit = "48e6982ac47c"
+rule = "outcome-changed"
+path = "test/rules/match.test.ts"
+test = "method-agnostic rules vs node-aliased method-scoped siblings > compiled matcher matches runtime for %s + %s"
+before = ["['/a/*', 'GET /a/:id', '/a/b']", "['/a/:id', 'GET /a/:userId', '/a/b']", "['/a/**', 'GET /a/**:rest', '/a/b']", "['/**', 'GET /**:path', '/a/b']", "['/admin', 'GET /admin/', '/admin']", "['/a/:id', 'GET /a/*', '/a/b']", "['/a/b', 'GET /a/b', '/a/b']"]
+after = ["['/a/*', 'GET /a/**', '/a/b']", "['/a/:id', 'GET /a/:userId', '/a/b']", "['/a/**', 'GET /a/**:rest', '/a/b']", "['/**', 'GET /**:path', '/a/b']", "['/admin', 'GET /admin/', '/admin']", "['/a/**:rest', 'GET /a/*', '/a/b']", "['/a/b', 'GET /a/b', '/a/b']"]
+message = ".each rows changed: ['/a/*', 'GET /a/:id', '/a/b'], ['/a/:id', 'GET /a/*', '/a/…"
+label = "wrong"
+note = "rou3 v0.12 made * a catch-all on the wildcard node, so the aliasing rows were respelled (/a/** and /a/**:rest) to keep pairing patterns that share a node."
+
+[[finding]]
+unit = "48e6982ac47c"
+rule = "outcome-changed"
+path = "test/rules/match.test.ts"
+test = "method-agnostic rules vs node-aliased method-scoped siblings > registers an agnostic rule once, never per method"
+before = ["expect(code.match(/data:\\$0/g)).toHaveLength(1)"]
+after = ["expect(code.match(/data:\\$0/g)).toHaveLength(2)"]
+message = "toHaveLength(1) → toHaveLength(2)"
+label = "wrong"
+note = "After the rou3 v0.12 upgrade the compiled code spells the one push twice (whether ** took a segment), as the comment says; a new r.push count is also pinned."
+
+[[finding]]
+unit = "48e6982ac47c"
+rule = "outcome-changed"
+path = "test/rules/match.test.ts"
+test = "method-agnostic rules vs node-aliased method-scoped siblings > registers an agnostic rule once, never per method"
+before = ["expect(find('POST', '/a/b').map((layer) => (layer.data as { route: string; }[])[0]!.route)).toEqual(['/a/*', '/a/:id'])"]
+after = ["expect(find('POST', '/a/b').map((layer) => (layer.data as { route: string; }[])[0]!.route)).toEqual(['/a/:x', '/a/:id'])"]
+message = "toEqual(['/a/*', '/a/:id']) → toEqual(['/a/:x', '/a/:id'])"
+label = "wrong"
+note = "rou3 v0.12 no longer puts * on the param node, so the config used /a/:x instead of /a/* to keep the aliasing case, and the expected routes follow."
+
+[[finding]]
+unit = "48e6982ac47c"
+rule = "outcome-changed"
+path = "test/rules/merge.test.ts"
+test = "merge algorithm > matched layers are merged in containment order, not findAllRoutes order > %s: the narrower pattern's options win"
+before = ["['stable inversion', '/api/*/**', '/api/*/:path*', '/api/v1/x']", "['unsorted (config order)', '/admin', '/admin/:page?', '/admin']"]
+after = ["['stable inversion', '/api/:path+', '/api/:id/**', '/api/v1/x']", "['unsorted (config order)', '/admin', '/admin/:page?', '/admin']"]
+message = ".each rows changed: ['stable inversion', '/api/*/**', '/api/*/:path*', '/api/v1…"
+label = "wrong"
+note = "In rou3 v0.12 * counts as a catch-all and a route allows one, so /api/*/** became invalid; the stable-inversion row was respelled with an equivalent shape."
+
+[[finding]]
+unit = "48e6982ac47c"
+rule = "outcome-changed"
+path = "test/rules/merge.test.ts"
+test = "merge algorithm > matched layers are merged in containment order, not findAllRoutes order > %s: a broader `false` never resets the narrower rule"
+before = ["['stable inversion', '/api/*/**', '/api/*/:path*', '/api/v1/x']", "['unsorted (config order)', '/admin', '/admin/:page?', '/admin']"]
+after = ["['stable inversion', '/api/:path+', '/api/:id/**', '/api/v1/x']", "['unsorted (config order)', '/admin', '/admin/:page?', '/admin']"]
+message = ".each rows changed: ['stable inversion', '/api/*/**', '/api/*/:path*', '/api/v1…"
+label = "wrong"
+note = "In rou3 v0.12 * counts as a catch-all and a route allows one, so /api/*/** became invalid; the stable-inversion row was respelled with an equivalent shape."
+
+[[finding]]
+unit = "48e6982ac47c"
+rule = "outcome-changed"
+path = "test/rules/merge.test.ts"
+test = "merge algorithm > matched layers are merged in containment order, not findAllRoutes order > %s: a narrower `false` still resets a broader rule"
+before = ["['stable inversion', '/api/*/**', '/api/*/:path*', '/api/v1/x']", "['unsorted (config order)', '/admin', '/admin/:page?', '/admin']"]
+after = ["['stable inversion', '/api/:path+', '/api/:id/**', '/api/v1/x']", "['unsorted (config order)', '/admin', '/admin/:page?', '/admin']"]
+message = ".each rows changed: ['stable inversion', '/api/*/**', '/api/*/:path*', '/api/v1…"
+label = "wrong"
+note = "In rou3 v0.12 * counts as a catch-all and a route allows one, so /api/*/** became invalid; the stable-inversion row was respelled with an equivalent shape."
+
+[[finding]]
+unit = "48e6982ac47c"
+rule = "outcome-changed"
+path = "test/rules/rules.test.ts"
+test = "redirect rule > rejects a key with more than one multi-segment wildcard"
+before = ["expect(() => createApp({ [key]: { redirect: '/new/**' } })).toThrow(`rou3: a route can have only one \\`**\\`, \\`:name+\\` or \\`:name*\\` (${key})`)"]
+after = ["expect(() => createApp({ [key]: { redirect: '/new/**' } })).toThrow(`rou3: a route can have only one \\`*\\`, \\`**\\`, \\`:name+\\` or \\`:name*\\` (${key})`)"]
+message = "toThrow(`rou3: a route can have only one \\`**\\`, \\`:name+\\`… → toThrow(`rou3: a route can have only one \\`*\\`, \\`**\\`, \\`:…"
+label = "wrong"
+note = "rou3 v0.12 now counts * as a catch-all, and its error message lists it; the test adds a /x/*/old/** case and follows the new message."
+
+[[finding]]
+unit = "48e6982ac47c"
+rule = "outcome-changed"
+path = "test/unit/route-matcher.test.ts"
+test = "createRouteMatcher > binds `**` params"
+before = ["expect(match('/api')).toEqual({ _: '' })"]
+after = ["expect(match('/api')).toBeUndefined()"]
+message = "toEqual({ _: '' }) → toBe(undefined)"
+label = "wrong"
+note = "The commit changes createRouteMatcher so a ** that takes no segment binds nothing (returns undefined), per the rou3 v0.12 upgrade."
+
+[[finding]]
+unit = "48e6982ac47c"
+rule = "outcome-changed"
+path = "test/unit/route-matcher.test.ts"
+test = "createRouteMatcher > binds `**` params"
+before = ["expect(match('/api/')).toEqual({ _: '' })"]
+after = ["expect(match('/api/')).toBeUndefined()"]
+message = "toEqual({ _: '' }) → toBe(undefined)"
+label = "wrong"
+note = "The commit changes createRouteMatcher so a ** that takes no segment binds nothing (returns undefined), per the rou3 v0.12 upgrade."
+
+[[finding]]
+unit = "48e6982ac47c"
+rule = "outcome-changed"
+path = "test/unit/route-matcher.test.ts"
+test = "createRouteMatcher > binds `**` params"
+before = ["expect(match('/api/x/y')).toEqual({ _: 'x/y' })"]
+after = ["expect(match('/api/x/y')).toEqual({ '0': 'x/y', _: 'x/y' })"]
+message = "toEqual({ _: 'x/y' }) → toEqual({ '0': 'x/y', _: 'x/y' })"
+label = "wrong"
+note = "The commit changes createRouteMatcher to bind ** as key 0 plus the deprecated _ alias, per rou3 v0.12; stricter than before."
+
+[[finding]]
 unit = "7cbf21ce9cf0"
 rule = "test-disabled"
 path = "test/rules/encoding.test.ts"
@@ -153,6 +286,17 @@ label = "wrong"
 note = "Renamed to 'normalizes a key exactly like a route'; the same two inputs are still asserted, with new expected values since keys now keep those escapes like routes do."
 
 [[finding]]
+unit = "7cbf21ce9cf0"
+rule = "outcome-changed"
+path = "test/rules/merge.test.ts"
+test = "dual-path union (Nitro #4396) > skips the second lookup when canonical === raw (fast path)"
+before = ["expect(findRouteRules).toHaveBeenNthCalledWith(2, 'GET', '/enc/oded')"]
+after = ["expect(findRouteRules).toHaveBeenNthCalledWith(3, 'GET', '/enc/oded')"]
+message = "toHaveBeenNthCalledWith(2, 'GET', '/enc/oded') → toHaveBeenNthCalledWith(3, 'GET', '/enc/oded')"
+label = "wrong"
+note = "The fix adds a hex-recased lookup of the served path before the canonical one, so the canonical call moved to 3rd and the new 2nd call is pinned too."
+
+[[finding]]
 unit = "3f1c9e5ef77c"
 rule = "test-disabled"
 path = "test/rules/merge.test.ts"
@@ -162,6 +306,18 @@ after = []
 message = "deleted: dual-path union (Nitro #4396) > an alternate reading never reinstates a permission, even from a narrower pattern"
 label = "wrong"
 note = "Renamed; the commit deliberately lets a narrower pattern reinstate a reset rule, and the same scenario is still asserted with the new result plus a no-predicate control."
+
+[[finding]]
+unit = "3c2a205ce2f7"
+pr = 1565
+rule = "outcome-changed"
+path = "test/cookies.test.ts"
+test = "setChunkedCookie > does not split a surrogate pair across chunks"
+before = ["expect(await readResult.text()).toBe('123456789😀abc')"]
+after = ["expect(await readResult.text()).toBe('12345678901😀abc')"]
+message = "toBe('123456789😀abc') → toBe('12345678901😀abc')"
+label = "wrong"
+note = "The PR makes a code point that can't fit chunkMaxLength throw, so the input and limit moved from 10 to 12 to keep the surrogate split; still an exact round trip."
 
 [[finding]]
 unit = "1161eb7e05fe"
@@ -195,6 +351,18 @@ after = []
 message = "deleted: withBase > collapses leading slashes after stripping base"
 label = "wrong"
 note = "Renamed to 'rejects an empty segment after base': the same /api//evil.com request is now asserted to 404 without reaching the handler, which is stronger."
+
+[[finding]]
+unit = "b69f8e05fe01"
+pr = 1588
+rule = "outcome-changed"
+path = "test/utils.test.ts"
+test = "getRequestFingerprint > uses the request ip when no x-forwarded-for header set"
+before = ["expect(await res.text()).toMatch(/^0\\.0\\.0\\.0|::1$/) (in if)"]
+after = ["expect(await res.text()).toMatch(/^(?:0\\.0\\.0\\.0|127\\.0\\.0\\.1|::1|::ffff:127\\.0\\.0\\.1)$/) (in if)"]
+message = "toMatch(/^0\\.0\\.0\\.0|::1$/) → toMatch(/^(?:0\\.0\\.0\\.0|127\\.0\\.0\\.1|::1|::ffff:127\\.0\\.0\\.…"
+label = "intended"
+note = "Test-only: the regex now also accepts 127.0.0.1 and ::ffff:127.0.0.1 (anchoring was also fixed); the PR says dual-stack listeners report ::ffff:127.0.0.1."
 
 [[finding]]
 unit = "b48b480030be"
@@ -231,6 +399,18 @@ after = []
 message = "deleted: h3 CLI docs > fileURLToPath correctly handles spaces and special characters compared to URL.pathname"
 label = "intended"
 note = "`h3 docs` now opens h3.dev; the bundled docs and mdzilla runner these tests checked were removed in the same PR."
+
+[[finding]]
+unit = "1326e74d5569"
+pr = 1608
+rule = "outcome-changed"
+path = "test/unit/package.test.ts"
+test = "h3 package > package exports (snapshot)"
+before = ["expect(exportNames).toMatchInlineSnapshot('\\n      [\\n        \"EventStream\",\\n        \"H3\",\\n        \"H3Core\",\\n        \"H3Error\",\\n        \"H3Event\",\\n        \"HTTPError\",\\n        \"HTTPResponse\",\\n        \"appendAcceptQuery\",\\n        \"appendCorsHeaders\",\\n        \"appendCorsPreflightHeaders\",\\n        \"appendHeader\",\\n        \"appendHeaders\",\\n        \"appendResponseHeader\",\\n        \"appendResponseHeaders\",\\n        \"assertBodySize\",\\n        \"assertMethod\",\\n        \"basicAuth\",\\n        \"bodyLimit\",\\n        \"callMiddleware\",\\n        \"clearResponseHeaders\",\\n        \"clearSession\",\\n        \"composeMiddleware\",\\n        \"createApp\",\\n        \"createError\",\\n        \"createEventStream\",\\n        \"createRouter\",\\n        \"defaultContentType\",\\n        \"defineEventHandler\",\\n        \"defineHandler\",\\n        \"defineJsonRpcHandler\",\\n        \"defineJsonRpcWebSocketHandler\",\\n        \"defineLazyEventHandler\",\\n        \"defineMiddleware\",\\n        \"defineNodeHandler\",\\n        \"defineNodeListener\",\\n        \"defineNodeMiddleware\",\\n        \"definePlugin\",\\n        \"defineRoute\",\\n        \"defineValidatedHandler\",\\n        \"defineWebSocket\",\\n        \"defineWebSocketHandler\",\\n        \"deleteChunkedCookie\",\\n        \"deleteCookie\",\\n        \"dynamicEventHandler\",\\n        \"eventHandler\",\\n        \"fetchWithEvent\",\\n        \"fromNodeHandler\",\\n        \"fromNodeMiddleware\",\\n        \"fromWebHandler\",\\n        \"getBodyStream\",\\n        \"getChunkedCookie\",\\n        \"getCookie\",\\n        \"getEventContext\",\\n        \"getHeader\",\\n        \"getHeaders\",\\n        \"getMethod\",\\n        \"getProxyRequestHeaders\",\\n        \"getQuery\",\\n        \"getRequestFingerprint\",\\n        \"getRequestHeader\",\\n        \"getRequestHeaders\",\\n        \"getRequestHost\",\\n        \"getRequestIP\",\\n        \"getRequestPath\",\\n        \"getRequestProtocol\",\\n        \"getRequestURL\",\\n        \"getRequestWebStream\",\\n        \"getResponseHeader\",\\n        \"getResponseHeaders\",\\n        \"getResponseStatus\",\\n        \"getResponseStatusText\",\\n        \"getRouterParam\",\\n        \"getRouterParams\",\\n        \"getSession\",\\n        \"getValidatedCookies\",\\n        \"getValidatedQuery\",\\n        \"getValidatedRouterParams\",\\n        \"handleCacheHeaders\",\\n        \"handleCors\",\\n        \"html\",\\n        \"isCanonicalPath\",\\n        \"isCorsOriginAllowed\",\\n        \"isError\",\\n        \"isEvent\",\\n        \"isHTTPEvent\",\\n        \"isMethod\",\\n        \"isPreflightRequest\",\\n        \"iterable\",\\n        \"lazyEventHandler\",\\n        \"mockEvent\",\\n        \"noContent\",\\n        \"normalizeRoute\",\\n        \"onDispose\",\\n        \"onError\",\\n        \"onRequest\",\\n        \"onResponse\",\\n        \"parseCookies\",\\n        \"proxy\",\\n        \"proxyRequest\",\\n        \"raw\",\\n        \"readBody\",\\n        \"readFormData\",\\n        \"readFormDataBody\",\\n        \"readMultipartFormData\",\\n        \"readRawBody\",\\n        \"readValidatedBody\",\\n        \"redirect\",\\n        \"redirectBack\",\\n        \"removeResponseHeader\",\\n        \"removeRoute\",\\n        \"requestWithBaseURL\",\\n        \"requestWithURL\",\\n        \"requireBasicAuth\",\\n        \"requireContentType\",\\n        \"resolveDotSegments\",\\n        \"sanitizeStatusCode\",\\n        \"sanitizeStatusMessage\",\\n        \"sealSession\",\\n        \"sendIterable\",\\n        \"sendNoContent\",\\n        \"sendProxy\",\\n        \"sendRedirect\",\\n        \"sendStream\",\\n        \"sendWebResponse\",\\n        \"serve\",\\n        \"serveStatic\",\\n        \"setChunkedCookie\",\\n        \"setCookie\",\\n        \"setHeader\",\\n        \"setHeaders\",\\n        \"setResponseHeader\",\\n        \"setResponseHeaders\",\\n        \"setResponseStatus\",\\n        \"setServerTiming\",\\n        \"toEventHandler\",\\n        \"toMiddleware\",\\n        \"toNodeHandler\",\\n        \"toNodeListener\",\\n        \"toRequest\",\\n        \"toResponse\",\\n        \"toWebHandler\",\\n        \"unsealSession\",\\n        \"updateSession\",\\n        \"useBase\",\\n        \"useSession\",\\n        \"withBase\",\\n        \"withServerTiming\",\\n        \"writeEarlyHints\",\\n      ]\\n    ')"]
+after = ["expect(exportNames).toMatchInlineSnapshot('\\n      [\\n        \"EventStream\",\\n        \"H3\",\\n        \"H3Core\",\\n        \"H3Error\",\\n        \"H3Event\",\\n        \"HTTPError\",\\n        \"HTTPResponse\",\\n        \"appendAcceptQuery\",\\n        \"appendCorsHeaders\",\\n        \"appendCorsPreflightHeaders\",\\n        \"appendHeader\",\\n        \"appendHeaders\",\\n        \"appendResponseHeader\",\\n        \"appendResponseHeaders\",\\n        \"assertBodySize\",\\n        \"assertMethod\",\\n        \"basicAuth\",\\n        \"bodyLimit\",\\n        \"callMiddleware\",\\n        \"clearResponseHeaders\",\\n        \"clearSession\",\\n        \"composeMiddleware\",\\n        \"createApp\",\\n        \"createError\",\\n        \"createEventStream\",\\n        \"createRouter\",\\n        \"defaultContentType\",\\n        \"defineEventHandler\",\\n        \"defineHandler\",\\n        \"defineJsonRpcHandler\",\\n        \"defineJsonRpcWebSocketHandler\",\\n        \"defineLazyEventHandler\",\\n        \"defineMiddleware\",\\n        \"defineNodeHandler\",\\n        \"defineNodeListener\",\\n        \"defineNodeMiddleware\",\\n        \"definePlugin\",\\n        \"defineRoute\",\\n        \"defineValidatedHandler\",\\n        \"defineWebSocket\",\\n        \"defineWebSocketHandler\",\\n        \"deleteChunkedCookie\",\\n        \"deleteCookie\",\\n        \"dynamicEventHandler\",\\n        \"eventHandler\",\\n        \"fetchWithEvent\",\\n        \"fromNodeHandler\",\\n        \"fromNodeMiddleware\",\\n        \"fromWebHandler\",\\n        \"getBodyStream\",\\n        \"getChunkedCookie\",\\n        \"getCookie\",\\n        \"getEventContext\",\\n        \"getHeader\",\\n        \"getHeaders\",\\n        \"getMethod\",\\n        \"getProxyRequestHeaders\",\\n        \"getQuery\",\\n        \"getRequestFingerprint\",\\n        \"getRequestHeader\",\\n        \"getRequestHeaders\",\\n        \"getRequestHost\",\\n        \"getRequestIP\",\\n        \"getRequestPath\",\\n        \"getRequestProtocol\",\\n        \"getRequestURL\",\\n        \"getRequestWebStream\",\\n        \"getResponseHeader\",\\n        \"getResponseHeaders\",\\n        \"getResponseStatus\",\\n        \"getResponseStatusText\",\\n        \"getRouterParam\",\\n        \"getRouterParams\",\\n        \"getSession\",\\n        \"getValidatedCookies\",\\n        \"getValidatedQuery\",\\n        \"getValidatedRouterParams\",\\n        \"handleCacheHeaders\",\\n        \"handleCors\",\\n        \"html\",\\n        \"isCanonicalPath\",\\n        \"isCorsOriginAllowed\",\\n        \"isError\",\\n        \"isEvent\",\\n        \"isHTTPEvent\",\\n        \"isMethod\",\\n        \"isPreflightRequest\",\\n        \"iterable\",\\n        \"lazyEventHandler\",\\n        \"mockEvent\",\\n        \"noContent\",\\n        \"normalizeRoute\",\\n        \"onDispose\",\\n        \"onError\",\\n        \"onRequest\",\\n        \"onResponse\",\\n        \"parseCookies\",\\n        \"proxy\",\\n        \"proxyRequest\",\\n        \"raw\",\\n        \"readBody\",\\n        \"readFormData\",\\n        \"readFormDataBody\",\\n        \"readMultipartFormData\",\\n        \"readRawBody\",\\n        \"readValidatedBody\",\\n        \"redirect\",\\n        \"redirectBack\",\\n        \"removeResponseHeader\",\\n        \"removeRoute\",\\n        \"requestWithBaseURL\",\\n        \"requestWithURL\",\\n        \"requireBasicAuth\",\\n        \"requireContentType\",\\n        \"resolveDotSegments\",\\n        \"sanitizeStatusCode\",\\n        \"sanitizeStatusMessage\",\\n        \"sealSession\",\\n        \"sendIterable\",\\n        \"sendNoContent\",\\n        \"sendProxy\",\\n        \"sendRedirect\",\\n        \"sendStream\",\\n        \"sendWebResponse\",\\n        \"serve\",\\n        \"serveStatic\",\\n        \"setChunkedCookie\",\\n        \"setCookie\",\\n        \"setHeader\",\\n        \"setHeaders\",\\n        \"setResponseHeader\",\\n        \"setResponseHeaders\",\\n        \"setResponseStatus\",\\n        \"setServerTiming\",\\n        \"toEventHandler\",\\n        \"toMiddleware\",\\n        \"toNodeHandler\",\\n        \"toNodeListener\",\\n        \"toRequest\",\\n        \"toResponse\",\\n        \"toWebHandler\",\\n        \"unsealSession\",\\n        \"updateSession\",\\n        \"useBase\",\\n        \"useSession\",\\n        \"withBase\",\\n        \"withCacheIsolation\",\\n        \"withServerTiming\",\\n        \"writeEarlyHints\",\\n      ]\\n    ')"]
+message = "toMatchInlineSnapshot('\\n      [\\n        \"EventStream\",\\n … → toMatchInlineSnapshot('\\n      [\\n        \"EventStream\",\\n …"
+label = "wrong"
+note = "The PR exports withCacheIsolation from src/index.ts, and the exports snapshot gains that one name."
 
 [[finding]]
 unit = "f90f4c8e4d80"

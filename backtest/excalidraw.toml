@@ -9,6 +9,18 @@ repo = "https://github.com/excalidraw/excalidraw.git"
 range = "f179f7ffd23cd47a8f013c3fd0051cb07a83d1d6..701b901a0f1ba3d0b390d9cdf63d112e25abac4b"
 
 [[finding]]
+unit = "1acf66edabc2"
+pr = 11777
+rule = "outcome-changed"
+path = "packages/excalidraw/tests/arrowEndpointTextBinding.test.tsx"
+test = "binding text to an arrow endpoint > hover affordance > highlights a free arrow endpoint while the text tool is active"
+before = ["expect(h.state.hoveredArrowEndpoint).toEqual({ elementId: 'arrow', startOrEnd: 'end' })"]
+after = ["expect(h.state.hoveredArrowTextAnchor).toEqual({ anchor: 'end', elementId: 'arrow' })"]
+message = "toEqual({ elementId: 'arrow', startOrEnd: 'end' }) → toEqual({ anchor: 'end', elementId: 'arrow' })"
+label = "wrong"
+note = "Commit 63d7436 renamed appState hoveredArrowEndpoint to hoveredArrowTextAnchor and its startOrEnd field to anchor (now also \"label\"); the test follows the new state shape."
+
+[[finding]]
 unit = "786ab266ff3a"
 pr = 11782
 rule = "test-disabled"
@@ -47,6 +59,102 @@ note = "The toggle was removed on purpose and the tests rewritten as \"should no
 [[finding]]
 unit = "792ea3a06c60"
 pr = 11799
+rule = "outcome-changed"
+path = "packages/excalidraw/tests/bucketFill.test.tsx"
+test = "bucket fill tool > creates a selected line polygon with the current background color"
+before = ["expect(fill!.customData?.bucketFill?.ownerId).toBe(rect.id)"]
+after = ["expect(fill!.customData).toEqual({ bucketFill: { version: 1 } })"]
+message = "toBe(rect.id) → toEqual({ bucketFill: { version: 1 } })"
+label = "wrong"
+note = "Commit b2722a9 stopped storing ownerId/boundaryElementIds in the fill's customData (only { bucketFill: { version: 1 } }); the test now checks the whole customData exactly."
+
+[[finding]]
+unit = "792ea3a06c60"
+pr = 11799
+rule = "outcome-changed"
+path = "packages/excalidraw/tests/bucketFill.test.tsx"
+test = "bucket fill tool > creates a selected line polygon with the current background color"
+before = ["expect(fill!.customData).toEqual({ bucketFill: { version: 1 } })"]
+after = ["expect(fill!.customData).toBeUndefined()"]
+message = "toEqual({ bucketFill: { version: 1 } }) → toBe(undefined)"
+label = "wrong"
+note = "Commit c0f1fa1 dropped the customData marker on generated fills (\"recognized by shape, not provenance\"), so customData is now undefined."
+
+[[finding]]
+unit = "792ea3a06c60"
+pr = 11799
+rule = "outcome-changed"
+path = "packages/excalidraw/tests/bucketFill.test.tsx"
+test = "bucket fill tool > creates a unselected line polygon with the current background color"
+before = ["expect(h.state.activeTool.type).toBe('bucketFill')"]
+after = ["expect(h.state.activeTool.type).toBe('bucketfill')"]
+message = "toBe('bucketFill') → toBe('bucketfill')"
+label = "wrong"
+note = "Commit cbc1fe8 renamed the tool type from \"bucketFill\" to \"bucketfill\" in TOOL_TYPE, ToolType and all callers; same check, new name."
+
+[[finding]]
+unit = "792ea3a06c60"
+pr = 11799
+rule = "outcome-changed"
+path = "packages/excalidraw/tests/bucketFill.test.tsx"
+test = "bucket fill tool > dragging with the bucket tool neither selects nor creates extras"
+before = ["expect(h.state.activeTool.type).toBe('bucketFill')"]
+after = ["expect(h.state.activeTool.type).toBe('bucketfill')"]
+message = "toBe('bucketFill') → toBe('bucketfill')"
+label = "wrong"
+note = "Commit cbc1fe8 renamed the tool type from \"bucketFill\" to \"bucketfill\" in TOOL_TYPE, ToolType and all callers; same check, new name."
+
+[[finding]]
+unit = "792ea3a06c60"
+pr = 11799
+rule = "outcome-changed"
+path = "packages/excalidraw/tests/bucketFill.test.tsx"
+test = "bucket fill tool > can fill multiple regions in a row without re-selecting the tool"
+before = ["expect(h.state.activeTool.type).toBe('bucketFill')"]
+after = ["expect(h.state.activeTool.type).toBe('bucketfill')"]
+message = "toBe('bucketFill') → toBe('bucketfill')"
+label = "wrong"
+note = "Commit cbc1fe8 renamed the tool type from \"bucketFill\" to \"bucketfill\" in TOOL_TYPE, ToolType and all callers; same check, new name."
+
+[[finding]]
+unit = "792ea3a06c60"
+pr = 11799
+rule = "outcome-changed"
+path = "packages/excalidraw/tests/bucketFill.test.tsx"
+test = "bucket fill tool > can fill multiple regions in a row without re-selecting the tool"
+before = ["expect(h.state.activeTool.type).toBe('bucketFill')"]
+after = ["expect(h.state.activeTool.type).toBe('bucketfill')"]
+message = "toBe('bucketFill') → toBe('bucketfill')"
+label = "wrong"
+note = "Commit cbc1fe8 renamed the tool type from \"bucketFill\" to \"bucketfill\" in TOOL_TYPE, ToolType and all callers; same check, new name."
+
+[[finding]]
+unit = "792ea3a06c60"
+pr = 11799
+rule = "outcome-changed"
+path = "packages/excalidraw/tests/bucketFill.test.tsx"
+test = "bucket fill tool > selects the tool with the b shortcut"
+before = ["expect(h.state.activeTool.type).toBe('bucketFill')"]
+after = ["expect(h.state.activeTool.type).toBe('bucketfill')"]
+message = "toBe('bucketFill') → toBe('bucketfill')"
+label = "wrong"
+note = "Commit cbc1fe8 renamed the tool type from \"bucketFill\" to \"bucketfill\" in TOOL_TYPE, ToolType and all callers; same check, new name."
+
+[[finding]]
+unit = "792ea3a06c60"
+pr = 11799
+rule = "outcome-changed"
+path = "packages/excalidraw/tests/bucketFill.test.tsx"
+test = "bucket fill tool > shift+f opens the font popup instead of switching to bucket fill"
+before = ["expect(h.state.activeTool.type).not.toBe('bucketFill')"]
+after = ["expect(h.state.activeTool.type).not.toBe('bucketfill')"]
+message = ".not.toBe('bucketFill') → .not.toBe('bucketfill')"
+label = "wrong"
+note = "Commit cbc1fe8 renamed the tool type from \"bucketFill\" to \"bucketfill\"; the negative check follows the new name."
+
+[[finding]]
+unit = "792ea3a06c60"
+pr = 11799
 rule = "check-removed"
 path = "packages/excalidraw/tests/bucketFill.test.tsx"
 test = "bucket fill tool > inserts the overlap fill below the lowest participating shape"
@@ -81,6 +189,42 @@ label = "wrong"
 note = "Test renamed to \"bridges endpoint gaps up to gapTolerance without distorting the shape\"; the default tolerance was raised, so the fillable check runs as result.ok with defaults, plus new fidelity checks."
 
 [[finding]]
+unit = "5e375b4331fe"
+pr = 11834
+rule = "outcome-changed"
+path = "packages/element/tests/linearElementEditor.test.tsx"
+test = "Test Linear Elements > should allow dragging line from midpoint in 2 pointer lines outside editor"
+before = ["expect(renderStaticScene.mock.calls.length).toMatchInlineSnapshot('6')"]
+after = ["expect(renderStaticScene.mock.calls.length).toMatchInlineSnapshot('7')"]
+message = "toMatchInlineSnapshot('6') → toMatchInlineSnapshot('7')"
+label = "wrong"
+note = "The PR sets isDragging: true when drag-creating a line midpoint (App.tsx) to hide the bbox, which adds one static render; the exact count follows."
+
+[[finding]]
+unit = "cf212b2f3354"
+pr = 11859
+rule = "outcome-changed"
+path = "packages/excalidraw/tests/eyeDropper.test.tsx"
+test = "eye dropper > keeps the color preview within the editor container"
+before = ["expect(preview.style.left).toBe('312px')"]
+after = ["expect(preview.style.left).toBe('325px')"]
+message = "toBe('312px') → toBe('325px')"
+label = "wrong"
+note = "Commit 2f71c20 changed the eyedropper preview gap from 20 to 7 px, shifting the preview position by 13 px."
+
+[[finding]]
+unit = "cf212b2f3354"
+pr = 11859
+rule = "outcome-changed"
+path = "packages/excalidraw/tests/eyeDropper.test.tsx"
+test = "eye dropper > keeps the color preview within the editor container"
+before = ["expect(preview.style.top).toBe('212px')"]
+after = ["expect(preview.style.top).toBe('225px')"]
+message = "toBe('212px') → toBe('225px')"
+label = "wrong"
+note = "Commit 2f71c20 changed the eyedropper preview gap from 20 to 7 px, shifting the preview position by 13 px."
+
+[[finding]]
 unit = "c5a50d223feb"
 pr = 11862
 rule = "check-removed"
@@ -103,6 +247,162 @@ after = ["expect(label.labelPosition).toBe(0.5)", "expect(centerX).toBeCloseTo(p
 message = "removed 4 checks, including expect(labelPos.x + label.width / 2).toBeCloseTo(arrow.x + …"
 label = "wrong"
 note = "The position checks moved into a helper called after each resize, now comparing against the arc-length midpoint because this PR changed where the label sits."
+
+[[finding]]
+unit = "214cd6e6e8ac"
+pr = 10947
+rule = "outcome-changed"
+path = "packages/element/tests/linearElementEditor.test.tsx"
+test = "Test Linear Elements > should allow dragging line from midpoint in 2 pointer lines outside editor"
+before = ["expect(renderInteractiveScene.mock.calls.length).toMatchInlineSnapshot('5')"]
+after = ["expect(renderInteractiveScene.mock.calls.length).toMatchInlineSnapshot('6')"]
+message = "toMatchInlineSnapshot('5') → toMatchInlineSnapshot('6')"
+label = "wrong"
+note = "Commit d223424 made refreshHoverCursor replay a real pointermove and dropped cursorOnly, adding interactive renders; the exact count follows."
+
+[[finding]]
+unit = "214cd6e6e8ac"
+pr = 10947
+rule = "outcome-changed"
+path = "packages/element/tests/linearElementEditor.test.tsx"
+test = "Test Linear Elements > should allow dragging line from midpoint in 2 pointer lines outside editor"
+before = ["expect(renderInteractiveScene.mock.calls.length).toMatchInlineSnapshot('8')"]
+after = ["expect(renderInteractiveScene.mock.calls.length).toMatchInlineSnapshot('10')"]
+message = "toMatchInlineSnapshot('8') → toMatchInlineSnapshot('10')"
+label = "wrong"
+note = "Commit d223424 made refreshHoverCursor replay a real pointermove and dropped cursorOnly, adding interactive renders; the exact count follows."
+
+[[finding]]
+unit = "214cd6e6e8ac"
+pr = 10947
+rule = "outcome-changed"
+path = "packages/element/tests/linearElementEditor.test.tsx"
+test = "Test Linear Elements > Inside editor > should allow dragging line from midpoint in 2 pointer lines"
+before = ["expect(renderInteractiveScene.mock.calls.length).toMatchInlineSnapshot('12')"]
+after = ["expect(renderInteractiveScene.mock.calls.length).toMatchInlineSnapshot('14')"]
+message = "toMatchInlineSnapshot('12') → toMatchInlineSnapshot('14')"
+label = "wrong"
+note = "Commit d223424 made refreshHoverCursor replay a real pointermove and dropped cursorOnly, adding interactive renders; the exact count follows."
+
+[[finding]]
+unit = "214cd6e6e8ac"
+pr = 10947
+rule = "outcome-changed"
+path = "packages/element/tests/linearElementEditor.test.tsx"
+test = "Test Linear Elements > Inside editor > should update the midpoints when element roundness changed"
+before = ["expect(renderInteractiveScene.mock.calls.length).toMatchInlineSnapshot('10')"]
+after = ["expect(renderInteractiveScene.mock.calls.length).toMatchInlineSnapshot('11')"]
+message = "toMatchInlineSnapshot('10') → toMatchInlineSnapshot('11')"
+label = "wrong"
+note = "Commit d223424 made refreshHoverCursor replay a real pointermove and dropped cursorOnly, adding interactive renders; the exact count follows."
+
+[[finding]]
+unit = "214cd6e6e8ac"
+pr = 10947
+rule = "outcome-changed"
+path = "packages/element/tests/linearElementEditor.test.tsx"
+test = "Test Linear Elements > Inside editor > should update all the midpoints when element position changed"
+before = ["expect(renderInteractiveScene.mock.calls.length).toMatchInlineSnapshot('12')"]
+after = ["expect(renderInteractiveScene.mock.calls.length).toMatchInlineSnapshot('13')"]
+message = "toMatchInlineSnapshot('12') → toMatchInlineSnapshot('13')"
+label = "wrong"
+note = "Commit d223424 made refreshHoverCursor replay a real pointermove and dropped cursorOnly, adding interactive renders; the exact count follows."
+
+[[finding]]
+unit = "214cd6e6e8ac"
+pr = 10947
+rule = "outcome-changed"
+path = "packages/element/tests/linearElementEditor.test.tsx"
+test = "Test Linear Elements > Inside editor > When edges are round > should allow dragging lines from midpoints in between segments"
+before = ["expect(renderInteractiveScene.mock.calls.length).toMatchInlineSnapshot('15')"]
+after = ["expect(renderInteractiveScene.mock.calls.length).toMatchInlineSnapshot('18')"]
+message = "toMatchInlineSnapshot('15') → toMatchInlineSnapshot('18')"
+label = "wrong"
+note = "Commit d223424 made refreshHoverCursor replay a real pointermove and dropped cursorOnly, adding interactive renders; the exact count follows."
+
+[[finding]]
+unit = "214cd6e6e8ac"
+pr = 10947
+rule = "outcome-changed"
+path = "packages/element/tests/linearElementEditor.test.tsx"
+test = "Test Linear Elements > Inside editor > When edges are round > should update only the first segment midpoint when its point is dragged"
+before = ["expect(renderInteractiveScene.mock.calls.length).toMatchInlineSnapshot('12')"]
+after = ["expect(renderInteractiveScene.mock.calls.length).toMatchInlineSnapshot('14')"]
+message = "toMatchInlineSnapshot('12') → toMatchInlineSnapshot('14')"
+label = "wrong"
+note = "Commit d223424 made refreshHoverCursor replay a real pointermove and dropped cursorOnly, adding interactive renders; the exact count follows."
+
+[[finding]]
+unit = "214cd6e6e8ac"
+pr = 10947
+rule = "outcome-changed"
+path = "packages/element/tests/linearElementEditor.test.tsx"
+test = "Test Linear Elements > Inside editor > When edges are round > should hide midpoints in the segment when points moved close"
+before = ["expect(renderInteractiveScene.mock.calls.length).toMatchInlineSnapshot('12')"]
+after = ["expect(renderInteractiveScene.mock.calls.length).toMatchInlineSnapshot('14')"]
+message = "toMatchInlineSnapshot('12') → toMatchInlineSnapshot('14')"
+label = "wrong"
+note = "Hover refactor in d223424 (12→13) plus 9cb08c5, whose message says hover now updates within the handle radius so the count moves 13→14."
+
+[[finding]]
+unit = "214cd6e6e8ac"
+pr = 10947
+rule = "outcome-changed"
+path = "packages/element/tests/linearElementEditor.test.tsx"
+test = "Test Linear Elements > Inside editor > When edges are round > should remove the midpoint when one of the points in the segment is deleted"
+before = ["expect(renderInteractiveScene.mock.calls.length).toMatchInlineSnapshot('18')"]
+after = ["expect(renderInteractiveScene.mock.calls.length).toMatchInlineSnapshot('22')"]
+message = "toMatchInlineSnapshot('18') → toMatchInlineSnapshot('22')"
+label = "wrong"
+note = "Commit d223424 made refreshHoverCursor replay a real pointermove and dropped cursorOnly, adding interactive renders; the exact count follows."
+
+[[finding]]
+unit = "214cd6e6e8ac"
+pr = 10947
+rule = "outcome-changed"
+path = "packages/element/tests/linearElementEditor.test.tsx"
+test = "Test Linear Elements > Inside editor > When edges are round > should allow dragging lines from midpoints in between segments"
+before = ["expect(renderInteractiveScene.mock.calls.length).toMatchInlineSnapshot('15')"]
+after = ["expect(renderInteractiveScene.mock.calls.length).toMatchInlineSnapshot('18')"]
+message = "toMatchInlineSnapshot('15') → toMatchInlineSnapshot('18')"
+label = "wrong"
+note = "Commit d223424 made refreshHoverCursor replay a real pointermove and dropped cursorOnly, adding interactive renders; the exact count follows."
+
+[[finding]]
+unit = "214cd6e6e8ac"
+pr = 10947
+rule = "outcome-changed"
+path = "packages/element/tests/linearElementEditor.test.tsx"
+test = "Test Linear Elements > Inside editor > When edges are round > should hide midpoints in the segment when points moved close"
+before = ["expect(renderInteractiveScene.mock.calls.length).toMatchInlineSnapshot('12')"]
+after = ["expect(renderInteractiveScene.mock.calls.length).toMatchInlineSnapshot('14')"]
+message = "toMatchInlineSnapshot('12') → toMatchInlineSnapshot('14')"
+label = "wrong"
+note = "Hover refactor in d223424 (12→13) plus 9cb08c5, whose message says hover now updates within the handle radius so the count moves 13→14."
+
+[[finding]]
+unit = "214cd6e6e8ac"
+pr = 10947
+rule = "outcome-changed"
+path = "packages/excalidraw/tests/selection.test.tsx"
+test = "select single element on the scene > arrow"
+before = ["expect(renderInteractiveScene).toHaveBeenCalledTimes(10)"]
+after = ["expect(renderInteractiveScene).toHaveBeenCalledTimes(11)"]
+message = "toHaveBeenCalledTimes(10) → toHaveBeenCalledTimes(11)"
+label = "wrong"
+note = "Commit d223424 made refreshHoverCursor replay a real pointermove after pointer up, adding one interactive render; the exact count follows."
+
+[[finding]]
+unit = "214cd6e6e8ac"
+pr = 10947
+rule = "outcome-changed"
+path = "packages/excalidraw/tests/selection.test.tsx"
+test = "select single element on the scene > arrow escape"
+before = ["expect(renderInteractiveScene).toHaveBeenCalledTimes(10)"]
+after = ["expect(renderInteractiveScene).toHaveBeenCalledTimes(11)"]
+message = "toHaveBeenCalledTimes(10) → toHaveBeenCalledTimes(11)"
+label = "wrong"
+note = "Commit d223424 made refreshHoverCursor replay a real pointermove after pointer up, adding one interactive render; the exact count follows."
 
 [[finding]]
 unit = "214cd6e6e8ac"
@@ -155,6 +455,354 @@ note = "mouse.select ran API.clearSelection's own check that the selection is em
 [[finding]]
 unit = "afa3a653fc5d"
 pr = 12064
+rule = "outcome-changed"
+path = "packages/element/tests/linearElementEditor.test.tsx"
+test = "Test Linear Elements > Test bound text element > should resize and position the bound text and bounding box correctly when 3 pointer arrow element resized"
+before = ["expect(({ width: container.width, height: container.height })).toMatchInlineSnapshot('\\n          {\\n            \"height\": 130,\\n            \"width\": \"366.11716\",\\n          }\\n        ')"]
+after = ["expect(({ width: container.width, height: container.height })).toMatchInlineSnapshot('\\n          {\\n            \"height\": 150,\\n            \"width\": \"366.11716\",\\n          }\\n        ')"]
+message = "toMatchInlineSnapshot('\\n          {\\n            \"height\":… → toMatchInlineSnapshot('\\n          {\\n            \"height\":…"
+label = "wrong"
+note = "Commit f532334 applies resize min sizes to magnitudes and restores the sign, so the arrow's flipped \"ne\" resize now ends 150 high instead of clamping to 130."
+
+[[finding]]
+unit = "afa3a653fc5d"
+pr = 12064
+rule = "outcome-changed"
+path = "packages/element/tests/linearElementEditor.test.tsx"
+test = "Test Linear Elements > Test bound text element > should resize and position the bound text and bounding box correctly when 3 pointer arrow element resized"
+before = ["expect(LinearElementEditor.getElementAbsoluteCoords(container, h.app.scene.getNonDeletedElementsMap(), true)).toMatchInlineSnapshot('\\n        [\\n          20,\\n          35,\\n          \"501.11716\",\\n          95,\\n          \"205.45894\",\\n          \"52.50000\",\\n        ]\\n      ')"]
+after = ["expect(LinearElementEditor.getElementAbsoluteCoords(container, h.app.scene.getNonDeletedElementsMap(), true)).toMatchInlineSnapshot('\\n        [\\n          20,\\n          45,\\n          \"501.11716\",\\n          220,\\n          \"205.45894\",\\n          145,\\n        ]\\n      ')"]
+message = "toMatchInlineSnapshot('\\n        [\\n          20,\\n        … → toMatchInlineSnapshot('\\n        [\\n          20,\\n        …"
+label = "wrong"
+note = "Commit f532334 preserves flips when resizing (min size on magnitudes, sign restored), changing the arrow's resulting coords; same exact snapshot."
+
+[[finding]]
+unit = "afa3a653fc5d"
+pr = 12064
+rule = "outcome-changed"
+path = "packages/element/tests/linearElementEditor.test.tsx"
+test = "Test Linear Elements > Test bound text element > should wrap the bound text when arrow bound container moves"
+before = ["expect(handleBindTextResizeSpy).toHaveBeenCalledWith(h.elements[0], h.app.scene, 'nw', false, false)"]
+after = ["expect(handleBindTextResizeSpy).toHaveBeenCalledWith(h.elements[0], h.app.scene, 'nw', false, false, false)"]
+message = "toHaveBeenCalledWith(h.elements[0], h.app.scene, 'nw', fals… → toHaveBeenCalledWith(h.elements[0], h.app.scene, 'nw', fals…"
+label = "wrong"
+note = "Commit f532334 added a flipByY parameter to handleBindTextResize; the call check now includes the extra false argument."
+
+[[finding]]
+unit = "afa3a653fc5d"
+pr = 12064
+rule = "outcome-changed"
+path = "packages/excalidraw/tests/created.test.tsx"
+test = "element creation timestamps > preserves $type created=$created through capture, edits, and creation undo/redo"
+before = ["123", "null"]
+after = ["{ created: 123, type: 'rectangle' }", "{ created: null, type: 'rectangle' }", "{ created: 123, type: 'stickynote' }", "{ created: null, type: 'stickynote' }"]
+message = ".each rows changed: 123, null"
+label = "wrong"
+note = "The .each table keeps both rectangle rows (123, null) and adds the same two cases for sticky notes; nothing dropped."
+
+[[finding]]
+unit = "afa3a653fc5d"
+pr = 12064
+rule = "outcome-changed"
+path = "packages/excalidraw/wysiwyg/textWysiwyg.test.tsx"
+test = "textWysiwyg > Test container-bound text > undo should work"
+before = ["expect(rectangle.x).toBe(80)"]
+after = ["expect(rectangle.x).toBe(100)"]
+message = "toBe(80) → toBe(100)"
+label = "wrong"
+note = "Commit f532334 preserves flips on resize; the test now resizes via UI.resize and notes the NW handle crosses the right edge so the container flips to x=100."
+
+[[finding]]
+unit = "afa3a653fc5d"
+pr = 12064
+rule = "outcome-changed"
+path = "packages/excalidraw/wysiwyg/textWysiwyg.test.tsx"
+test = "textWysiwyg > Test container-bound text > undo should work"
+before = ["expect(text.x).toBe(85)"]
+after = ["expect(text.x).toBe(105)"]
+message = "toBe(85) → toBe(105)"
+label = "wrong"
+note = "Commit f532334 preserves flips on resize; the bound text follows the flipped container to x=105."
+
+[[finding]]
+unit = "afa3a653fc5d"
+pr = 12064
+rule = "outcome-changed"
+path = "packages/element/src/__tests__/stickyNote.test.ts"
+test = "sticky note text layout > normalizes non-finite and out-of-range font ceilings"
+before = ["expect(normalizeStickyNoteFontSize(NaN)).toBe(STICKY_NOTE_DEFAULT_FONT_SIZE)"]
+after = ["expect(normalizeStickyNoteFontSize(NaN)).toBe(STICKY_NOTE_FALLBACK_FONT_SIZE)"]
+message = "toBe(STICKY_NOTE_DEFAULT_FONT_SIZE) → toBe(STICKY_NOTE_FALLBACK_FONT_SIZE)"
+label = "wrong"
+note = "Commit ecaf107 renamed STICKY_NOTE_DEFAULT_FONT_SIZE to STICKY_NOTE_FALLBACK_FONT_SIZE, same value 28."
+
+[[finding]]
+unit = "afa3a653fc5d"
+pr = 12064
+rule = "outcome-changed"
+path = "packages/element/src/__tests__/stickyNote.test.ts"
+test = "sticky note text layout > normalizes non-finite and out-of-range font ceilings"
+before = ["expect(normalizeStickyNoteFontSize(Infinity)).toBe(STICKY_NOTE_DEFAULT_FONT_SIZE)"]
+after = ["expect(normalizeStickyNoteFontSize(Infinity)).toBe(STICKY_NOTE_FALLBACK_FONT_SIZE)"]
+message = "toBe(STICKY_NOTE_DEFAULT_FONT_SIZE) → toBe(STICKY_NOTE_FALLBACK_FONT_SIZE)"
+label = "wrong"
+note = "Commit ecaf107 renamed STICKY_NOTE_DEFAULT_FONT_SIZE to STICKY_NOTE_FALLBACK_FONT_SIZE, same value 28."
+
+[[finding]]
+unit = "afa3a653fc5d"
+pr = 12064
+rule = "outcome-changed"
+path = "packages/element/src/__tests__/stickyNote.test.ts"
+test = "sticky note text layout > normalizes non-finite and out-of-range font ceilings"
+before = ["expect(normalizeStickyNoteFontSize(-Infinity)).toBe(STICKY_NOTE_DEFAULT_FONT_SIZE)"]
+after = ["expect(normalizeStickyNoteFontSize(-Infinity)).toBe(STICKY_NOTE_FALLBACK_FONT_SIZE)"]
+message = "toBe(STICKY_NOTE_DEFAULT_FONT_SIZE) → toBe(STICKY_NOTE_FALLBACK_FONT_SIZE)"
+label = "wrong"
+note = "Commit ecaf107 renamed STICKY_NOTE_DEFAULT_FONT_SIZE to STICKY_NOTE_FALLBACK_FONT_SIZE, same value 28."
+
+[[finding]]
+unit = "afa3a653fc5d"
+pr = 12064
+rule = "outcome-changed"
+path = "packages/excalidraw/tests/data/restore.test.ts"
+test = "restoreElements > should sanitize non-finite font sizes on text elements"
+before = ["expect(restoredText.fontSizeMax).toBe(undefined)"]
+after = ["expect(restoredText.fontSizeMax).toBe(null)"]
+message = "toBe(undefined) → toBe(null)"
+label = "wrong"
+note = "Commit ea9497a made fontSizeMax number | null and restore now writes null instead of undefined for non-finite values."
+
+[[finding]]
+unit = "afa3a653fc5d"
+pr = 12064
+rule = "outcome-changed"
+path = "packages/excalidraw/tests/dragCreate.test.tsx"
+test = "Test dragCreate > sticky note creation > previews a drag at its true size and snaps to the minimum on release"
+before = ["expect(stickyNote.width).toBe(STICKY_NOTE_MIN_BASE_WIDTH)"]
+after = ["expect(stickyNote.width).toBe(STICKY_NOTE_MIN_SIZE)"]
+message = "toBe(STICKY_NOTE_MIN_BASE_WIDTH) → toBe(STICKY_NOTE_MIN_SIZE)"
+label = "wrong"
+note = "Commit 0a29293 replaced the 40x40 STICKY_NOTE_MIN_BASE_WIDTH/HEIGHT floor with STICKY_NOTE_MIN_SIZE = 75; the snap check follows."
+
+[[finding]]
+unit = "afa3a653fc5d"
+pr = 12064
+rule = "outcome-changed"
+path = "packages/excalidraw/tests/dragCreate.test.tsx"
+test = "Test dragCreate > sticky note creation > previews a drag at its true size and snaps to the minimum on release"
+before = ["expect(stickyNote.height).toBe(STICKY_NOTE_MIN_BASE_HEIGHT)"]
+after = ["expect(stickyNote.height).toBe(STICKY_NOTE_MIN_SIZE)"]
+message = "toBe(STICKY_NOTE_MIN_BASE_HEIGHT) → toBe(STICKY_NOTE_MIN_SIZE)"
+label = "wrong"
+note = "Commit 0a29293 replaced the 40x40 STICKY_NOTE_MIN_BASE_WIDTH/HEIGHT floor with STICKY_NOTE_MIN_SIZE = 75; the snap check follows."
+
+[[finding]]
+unit = "afa3a653fc5d"
+pr = 12064
+rule = "outcome-changed"
+path = "packages/excalidraw/tests/dragCreate.test.tsx"
+test = "Test dragCreate > sticky note creation > previews a drag at its true size and snaps to the minimum on release"
+before = ["expect(stickyNote.baseHeight).toBe(STICKY_NOTE_MIN_BASE_HEIGHT)"]
+after = ["expect(stickyNote.baseHeight).toBe(STICKY_NOTE_MIN_SIZE)"]
+message = "toBe(STICKY_NOTE_MIN_BASE_HEIGHT) → toBe(STICKY_NOTE_MIN_SIZE)"
+label = "wrong"
+note = "Commit 0a29293 replaced the 40x40 STICKY_NOTE_MIN_BASE_WIDTH/HEIGHT floor with STICKY_NOTE_MIN_SIZE = 75; the snap check follows."
+
+[[finding]]
+unit = "afa3a653fc5d"
+pr = 12064
+rule = "outcome-changed"
+path = "packages/excalidraw/tests/dragCreate.test.tsx"
+test = "Test dragCreate > sticky note creation > keeps the origin corner fixed when a drag toward the top-left snaps to the minimum"
+before = ["expect(stickyNote.width).toBe(STICKY_NOTE_MIN_BASE_WIDTH)"]
+after = ["expect(stickyNote.width).toBe(STICKY_NOTE_MIN_SIZE)"]
+message = "toBe(STICKY_NOTE_MIN_BASE_WIDTH) → toBe(STICKY_NOTE_MIN_SIZE)"
+label = "wrong"
+note = "Commit 0a29293 replaced the 40x40 STICKY_NOTE_MIN_BASE_WIDTH/HEIGHT floor with STICKY_NOTE_MIN_SIZE = 75; the snap check follows."
+
+[[finding]]
+unit = "afa3a653fc5d"
+pr = 12064
+rule = "outcome-changed"
+path = "packages/element/src/__tests__/stickyNote.test.ts"
+test = "sticky note text layout > sizes the minimum note to fit one line at the ceiling"
+before = ["expect(getStickyNoteMinSize({ fontSize: 20, fontFamily: FONT_FAMILY.Excalifont })).toBe(75)"]
+after = ["expect(getStickyNoteMinSize({ fontSize: 20, fontFamily: FONT_FAMILY.Excalifont })).toEqual({ height: 25 + STICKY_NOTE_BODY_INSET_Y, width: STICKY_NOTE_MIN_SIZE })"]
+message = "toBe(75) → toEqual({ height: 25 + STICKY_NOTE_BODY_INSET_Y, width: STI…"
+label = "wrong"
+note = "Commit 157d28f made getStickyNoteMinSize return { width, height } with a footer band added to the height; the test checks both exactly."
+
+[[finding]]
+unit = "afa3a653fc5d"
+pr = 12064
+rule = "outcome-changed"
+path = "packages/element/src/__tests__/stickyNote.test.ts"
+test = "sticky note text layout > sizes the minimum note to fit one line at the ceiling"
+before = ["expect(getStickyNoteMinSize({ fontSize: 48, fontFamily: FONT_FAMILY.Excalifont })).toBe(92)"]
+after = ["expect(getStickyNoteMinSize({ fontSize: 48, fontFamily: FONT_FAMILY.Excalifont })).toEqual({ height: 60 + STICKY_NOTE_BODY_INSET_Y, width: 60 + STICKY_NOTE_PADDING * 2 })"]
+message = "toBe(92) → toEqual({ height: 60 + STICKY_NOTE_BODY_INSET_Y, width: 60 …"
+label = "wrong"
+note = "Commit 157d28f made getStickyNoteMinSize return { width, height } with a footer band added to the height; the test checks both exactly."
+
+[[finding]]
+unit = "afa3a653fc5d"
+pr = 12064
+rule = "outcome-changed"
+path = "packages/excalidraw/tests/dragCreate.test.tsx"
+test = "Test dragCreate > sticky note creation > previews a drag at its true size and snaps to the minimum on release"
+before = ["expect(stickyNote.height).toBe(STICKY_NOTE_MIN_SIZE)"]
+after = ["expect(stickyNote.height).toBe(25 + STICKY_NOTE_BODY_INSET_Y)"]
+message = "toBe(STICKY_NOTE_MIN_SIZE) → toBe(25 + STICKY_NOTE_BODY_INSET_Y)"
+label = "wrong"
+note = "Commit 157d28f added a creation-date footer band, so the minimum note height is now one line plus STICKY_NOTE_BODY_INSET_Y."
+
+[[finding]]
+unit = "afa3a653fc5d"
+pr = 12064
+rule = "outcome-changed"
+path = "packages/excalidraw/tests/dragCreate.test.tsx"
+test = "Test dragCreate > sticky note creation > previews a drag at its true size and snaps to the minimum on release"
+before = ["expect(stickyNote.baseHeight).toBe(STICKY_NOTE_MIN_SIZE)"]
+after = ["expect(stickyNote.baseHeight).toBe(25 + STICKY_NOTE_BODY_INSET_Y)"]
+message = "toBe(STICKY_NOTE_MIN_SIZE) → toBe(25 + STICKY_NOTE_BODY_INSET_Y)"
+label = "wrong"
+note = "Commit 157d28f added a creation-date footer band, so the minimum base height is now one line plus STICKY_NOTE_BODY_INSET_Y."
+
+[[finding]]
+unit = "afa3a653fc5d"
+pr = 12064
+rule = "outcome-changed"
+path = "packages/excalidraw/tests/dragCreate.test.tsx"
+test = "Test dragCreate > sticky note creation > sizes the minimum note to fit one line at a large font ceiling"
+before = ["expect(stickyNote.width).toBe(92)"]
+after = ["expect(stickyNote.width).toBe(60 + STICKY_NOTE_PADDING * 2)"]
+message = "toBe(92) → toBe(60 + STICKY_NOTE_PADDING * 2)"
+label = "wrong"
+note = "Commit 157d28f split the min size per axis; width is the same 92 written as 60 + STICKY_NOTE_PADDING * 2."
+
+[[finding]]
+unit = "afa3a653fc5d"
+pr = 12064
+rule = "outcome-changed"
+path = "packages/excalidraw/tests/dragCreate.test.tsx"
+test = "Test dragCreate > sticky note creation > sizes the minimum note to fit one line at a large font ceiling"
+before = ["expect(stickyNote.height).toBe(92)"]
+after = ["expect(stickyNote.height).toBe(60 + STICKY_NOTE_BODY_INSET_Y)"]
+message = "toBe(92) → toBe(60 + STICKY_NOTE_BODY_INSET_Y)"
+label = "wrong"
+note = "Commit 157d28f added a creation-date footer band, so the minimum height is now the 60px line plus STICKY_NOTE_BODY_INSET_Y."
+
+[[finding]]
+unit = "afa3a653fc5d"
+pr = 12064
+rule = "outcome-changed"
+path = "packages/excalidraw/tests/dragCreate.test.tsx"
+test = "Test dragCreate > sticky note creation > sizes the minimum note to fit one line at a large font ceiling"
+before = ["expect((h.elements.find((element) => element.type === 'stickynote') as ExcalidrawStickyNoteElement).height).toBe(92)"]
+after = ["expect((h.elements.find((element) => element.type === 'stickynote') as ExcalidrawStickyNoteElement).height).toBe(60 + STICKY_NOTE_BODY_INSET_Y)"]
+message = "toBe(92) → toBe(60 + STICKY_NOTE_BODY_INSET_Y)"
+label = "wrong"
+note = "Commit 157d28f added a creation-date footer band, so the minimum height is now the 60px line plus STICKY_NOTE_BODY_INSET_Y."
+
+[[finding]]
+unit = "afa3a653fc5d"
+pr = 12064
+rule = "outcome-changed"
+path = "packages/element/src/__tests__/stickyNote.test.ts"
+test = "sticky note text layout > never resizes a note below one line at its ceiling plus the footer"
+before = ["expect(minSize).toEqual({ height: 99, width: STICKY_NOTE_MIN_SIZE })"]
+after = ["expect(minSize).toEqual({ height: 35 + STICKY_NOTE_BODY_INSET_Y, width: STICKY_NOTE_MIN_SIZE })"]
+message = "toEqual({ height: 99, width: STICKY_NOTE_MIN_SIZE }) → toEqual({ height: 35 + STICKY_NOTE_BODY_INSET_Y, width: STI…"
+label = "wrong"
+note = "Commit 6123132 shrank the footer band (vertical inset 64→52), so the min height is now 35 + STICKY_NOTE_BODY_INSET_Y instead of 99."
+
+[[finding]]
+unit = "afa3a653fc5d"
+pr = 12064
+rule = "outcome-changed"
+path = "packages/element/src/__tests__/stickyNote.test.ts"
+test = "sticky note creation date > picks the footer form by width bucket, without measuring"
+before = ["expect(footer(DEFAULT_STICKY_NOTE_SIZE)).toEqual({ text: '30 May 2025', x: DEFAULT_STICKY_NOTE_SIZE - STICKY_NOTE_PADDING, y: DEFAULT_STICKY_NOTE_SIZE - STICKY_NOTE_PADDING - STICKY_NOTE_FOOTER.baselineOffset })"]
+after = ["expect(footer(DEFAULT_STICKY_NOTE_SIZE)).toEqual({ text: '30 May 2025', x: DEFAULT_STICKY_NOTE_SIZE - STICKY_NOTE_PADDING, y: DEFAULT_STICKY_NOTE_SIZE - STICKY_NOTE_FOOTER.baselineFromBottom })"]
+message = "toEqual({ text: '30 May 2025', x: DEFAULT_STICKY_NOTE_SIZE … → toEqual({ text: '30 May 2025', x: DEFAULT_STICKY_NOTE_SIZE …"
+label = "wrong"
+note = "Commit 6123132 redefined the footer baseline from the note's bottom edge (baselineFromBottom) instead of from the padding; same exact footer check."
+
+[[finding]]
+unit = "afa3a653fc5d"
+pr = 12064
+rule = "outcome-changed"
+path = "packages/excalidraw/tests/dragCreate.test.tsx"
+test = "Test dragCreate > sticky note creation > previews a drag at its true size and snaps to the minimum on release"
+before = ["expect(stickyNote.width).toBe(STICKY_NOTE_MIN_SIZE)"]
+after = ["expect(stickyNote.width).toBe(25 + STICKY_NOTE_BODY_INSET_Y)"]
+message = "toBe(STICKY_NOTE_MIN_SIZE) → toBe(25 + STICKY_NOTE_BODY_INSET_Y)"
+label = "wrong"
+note = "Commit 958a588 made a plain sticky-note drag proportional by default (App.tsx), so the snapped note is now square: width equals the 25 + inset height."
+
+[[finding]]
+unit = "afa3a653fc5d"
+pr = 12064
+rule = "outcome-changed"
+path = "packages/excalidraw/tests/dragCreate.test.tsx"
+test = "Test dragCreate > sticky note creation > sizes the minimum note to fit one line at a large font ceiling"
+before = ["expect(stickyNote.width).toBe(60 + STICKY_NOTE_PADDING * 2)"]
+after = ["expect(stickyNote.width).toBe(60 + STICKY_NOTE_BODY_INSET_Y)"]
+message = "toBe(60 + STICKY_NOTE_PADDING * 2) → toBe(60 + STICKY_NOTE_BODY_INSET_Y)"
+label = "wrong"
+note = "Commit 958a588 made a plain sticky-note drag proportional by default, so at a 48px ceiling the width now matches the 60 + inset height instead of 60 + padding."
+
+[[finding]]
+unit = "afa3a653fc5d"
+pr = 12064
+rule = "outcome-changed"
+path = "packages/excalidraw/tests/dragCreate.test.tsx"
+test = "Test dragCreate > sticky note creation > keeps the origin corner fixed when a drag toward the top-left snaps to the minimum"
+before = ["expect(stickyNote.width).toBe(STICKY_NOTE_MIN_SIZE)"]
+after = ["expect(stickyNote.width).toBe(25 + STICKY_NOTE_BODY_INSET_Y)"]
+message = "toBe(STICKY_NOTE_MIN_SIZE) → toBe(25 + STICKY_NOTE_BODY_INSET_Y)"
+label = "wrong"
+note = "Commit 958a588 made a plain sticky-note drag proportional by default, so the snapped note's width now equals its 25 + inset height."
+
+[[finding]]
+unit = "afa3a653fc5d"
+pr = 12064
+rule = "outcome-changed"
+path = "packages/element/src/__tests__/stickyNote.test.ts"
+test = "sticky note text layout > downscales font to fit the base size before growing height"
+before = ["expect(text.fontSize).toBeLessThan(text.fontSizeMax!)"]
+after = ["expect(text.fontSize).toBeLessThan(text.baseFontSize!)"]
+message = "toBeLessThan(text.fontSizeMax!) → toBeLessThan(text.baseFontSize!)"
+label = "wrong"
+note = "Commit 119f3d8 renamed the label field fontSizeMax to baseFontSize before it shipped; same check against the renamed field."
+
+[[finding]]
+unit = "afa3a653fc5d"
+pr = 12064
+rule = "outcome-changed"
+path = "packages/element/src/__tests__/stickyNote.test.ts"
+test = "sticky note text layout > grows downward at min font and shrinks back to base when text is deleted"
+before = ["expect(updatedText.fontSize).toBe(updatedText.fontSizeMax)"]
+after = ["expect(updatedText.fontSize).toBe(updatedText.baseFontSize)"]
+message = "toBe(updatedText.fontSizeMax) → toBe(updatedText.baseFontSize)"
+label = "wrong"
+note = "Commit 119f3d8 renamed the label field fontSizeMax to baseFontSize; same check against the renamed field."
+
+[[finding]]
+unit = "afa3a653fc5d"
+pr = 12064
+rule = "outcome-changed"
+path = "packages/element/src/__tests__/stickyNote.test.ts"
+test = "sticky note text layout > keeps the requested height as the base when a corner drag is content-pinned"
+before = ["expect(updatedText.fontSizeMax).toBe(originalText.fontSizeMax)"]
+after = ["expect(updatedText.baseFontSize).toBe(originalText.baseFontSize)"]
+message = "toBe(originalText.fontSizeMax) → toBe(originalText.baseFontSize)"
+label = "wrong"
+note = "Commit 119f3d8 renamed the label field fontSizeMax to baseFontSize; same check on both sides against the renamed field."
+
+[[finding]]
+unit = "afa3a653fc5d"
+pr = 12064
 rule = "check-removed"
 path = "packages/excalidraw/tests/actionStyles.test.tsx"
 test = "actionStyles > should hide transparent stroke color for sticky notes"
@@ -175,6 +823,30 @@ after = []
 message = "deleted: wheel navigation > zoomWithScrollWheel preference > is off by default and toggled by its action"
 label = "intended"
 note = "The same commit replaced zoomWithScrollWheel with inputDevice and deleted its toggle action; the default is still checked but nothing replaces the toggle check."
+
+[[finding]]
+unit = "a9186480121a"
+pr = 12100
+rule = "outcome-changed"
+path = "packages/excalidraw/tests/renderOverrides.test.tsx"
+test = "render override geometry > culls a %s by its container offset; its label needs no entry of its own"
+before = ["expect(visible(new Map([[container.id, { offset: { x: -500, y: 0 } }]]))).toEqual([container, label])"]
+after = ["expect(visible(new Map([[container.id, { offset: { x: -500, y: 0 } }]]))).toEqual([container])"]
+message = "toEqual([container, label]) → toEqual([container])"
+label = "wrong"
+note = "Commit 1b45fc8 changed Renderer.ts to stop adding a bound label's entry to the override-culled visible set (it is drawn with its container), so only the container is expected."
+
+[[finding]]
+unit = "a9186480121a"
+pr = 12100
+rule = "outcome-changed"
+path = "packages/excalidraw/tests/renderOverrides.test.tsx"
+test = "render override geometry > culls a %s by its container offset; its label needs no entry of its own"
+before = ["expect(visible(new Map([[container.id, { offset: { x: -500, y: 0 } }], [label.id, { offset: { x: 2e3, y: 0 } }]]))).toEqual([container, label])"]
+after = ["expect(visible(new Map([[container.id, { offset: { x: -500, y: 0 } }], [label.id, { offset: { x: 2e3, y: 0 } }]]))).toEqual([container])"]
+message = "toEqual([container, label]) → toEqual([container])"
+label = "wrong"
+note = "Commit 1b45fc8 changed Renderer.ts to leave bound-label entries out of override culling, so only the container is expected even when the label has its own offset."
 
 [[finding]]
 unit = "a9186480121a"
@@ -225,6 +897,54 @@ label = "wrong"
 note = "Moved to the new parametrized \"shift+wheel with %s input > pans only scrollX on shift+wheel\", which covers mouse with the same exact viewport check."
 
 [[finding]]
+unit = "c0ad61c6743a"
+pr = 12110
+rule = "outcome-changed"
+path = "packages/excalidraw/tests/pan.test.tsx"
+test = "secondary-button pan > lets the platform's contextmenu after mouseup open the menu, as always"
+before = ["expect(h.state.contextMenu).toBe(menu)"]
+after = ["expect(h.state.contextMenu).toBe(null)"]
+message = "toBe(menu) → toBe(null)"
+label = "wrong"
+note = "Commit 6c6e79c changed App.pan.ts so the menu no longer opens on release when contextmenu follows mouseup; the test now expects null at release and the platform event opening it."
+
+[[finding]]
+unit = "c0ad61c6743a"
+pr = 12110
+rule = "outcome-changed"
+path = "packages/excalidraw/tests/pan.test.tsx"
+test = "secondary-button pan > pans past five pixels with no context menu (viewModeEnabled=%s)"
+before = ["expect(getViewport()).toEqual({ ...start, scrollX: start.scrollX + 10 / start.zoom, scrollY: start.scrollY + 15 / start.zoom })"]
+after = ["expect(getViewport()).toEqual({ ...start, scrollX: start.scrollX + 2 / start.zoom, scrollY: start.scrollY + 3 / start.zoom })"]
+message = "toEqual({ ...start, scrollX: start.scrollX + 10 / start.zoo… → toEqual({ ...start, scrollX: start.scrollX + 2 / start.zoom…"
+label = "wrong"
+note = "Commit 74f944b lowered the right-button pan threshold to 5px in App.pan.ts and the test's pointer moves were shortened, so the expected pan deltas follow the new inputs."
+
+[[finding]]
+unit = "31df3e6ef245"
+pr = 12143
+rule = "outcome-changed"
+path = "packages/excalidraw/tests/convertElementType.binding.test.tsx"
+test = "convert element type keeps bound arrows attached > elbowed=${elbowed}: %s -> %s"
+before = ["false", "true"]
+after = ["['rectangle', 'diamond', [1, 0.25]]", "['rectangle', 'ellipse', [1, 0.1]]", "['ellipse', 'rectangle', [0.9, 0.2]]", "['diamond', 'rectangle', [0.75, 0.25]]"]
+message = ".each rows changed: false, true"
+label = "wrong"
+note = "Commit ccdb6f4 (with a binding.ts fix) kept the elbowed false/true loop and added four from/to shape conversion rows, so coverage grew; nothing dropped."
+
+[[finding]]
+unit = "31df3e6ef245"
+pr = 12143
+rule = "outcome-changed"
+path = "packages/excalidraw/tests/convertElementType.binding.test.tsx"
+test = "convert element type keeps bound arrows attached > elbowed=${elbowed}: %s -> %s"
+before = ["expect(h.elements[0].type).toBe('diamond')"]
+after = ["expect(h.elements[0].type).toBe(toType)"]
+message = "toBe('diamond') → toBe(toType)"
+label = "wrong"
+note = "The type check is parameterised over the new conversion cases; toBe(toType) is still the exact target type ('diamond' in the original case)."
+
+[[finding]]
 unit = "31df3e6ef245"
 pr = 12143
 rule = "check-removed"
@@ -235,6 +955,18 @@ after = ["expect(distance).toBeLessThanOrEqual(getBindingGap(converted, arrowAft
 message = "removed 3 checks, including expect(JSON.stringify(arrowAfter.points)).not.toBe(before); the test name dropped \"elbowed=%s\""
 label = "wrong"
 note = "The distance-to-outline check is tighter than the old L1 window, covers more shape pairs, and for rectangle->diamond implies the points moved."
+
+[[finding]]
+unit = "4850bf336fe0"
+pr = 10753
+rule = "outcome-changed"
+path = "packages/excalidraw/tests/convertElementType.binding.test.tsx"
+test = "convert element type keeps bound arrows attached > elbowed=${elbowed}: %s -> %s"
+before = ["expect(distance).toBeLessThanOrEqual(getBindingGap(converted, arrowAfter) + 1)"]
+after = ["expect(distance).toBeLessThanOrEqual(getBindingGap(converted) + 1)"]
+message = "toBeLessThanOrEqual(getBindingGap(converted, arrowAfter) + … → toBeLessThanOrEqual(getBindingGap(converted) + 1)"
+label = "wrong"
+note = "PR #10753 dropped getBindingGap's elbowed option (both gaps were 5), so the call just loses the argument; same bound."
 
 [[finding]]
 unit = "c10499eebb62"
@@ -283,6 +1015,270 @@ after = ["expect(h.state.textToolHover).toEqual({ elementId: label.id, type: 'te
 message = "removed expect(h.state.hoveredArrowTextAnchor).toBeNull(); the test was renamed"
 label = "wrong"
 note = "The three hover fields were merged into textToolHover; asserting it is the label's text target rules out an arrow anchor, so this is equivalent or stronger."
+
+[[finding]]
+unit = "c10499eebb62"
+pr = 12082
+rule = "outcome-changed"
+path = "packages/excalidraw/tests/arrowEndpointTextBinding.test.tsx"
+test = "binding text to an arrow endpoint > hover affordance > highlights a free arrow endpoint while the text tool is active"
+before = ["expect(h.state.hoveredArrowTextAnchor).toEqual({ anchor: 'end', elementId: 'arrow' })"]
+after = ["expect(h.state.textToolHover).toEqual({ anchor: 'end', elementId: 'arrow', type: 'arrow' })"]
+message = "toEqual({ anchor: 'end', elementId: 'arrow' }) → toEqual({ anchor: 'end', elementId: 'arrow', type: 'arrow' …"
+label = "wrong"
+note = "Commit 73387e9 replaced hoveredArrowTextAnchor with a single textToolHover state; same anchor and elementId, plus the new type: 'arrow' field."
+
+[[finding]]
+unit = "c10499eebb62"
+pr = 12082
+rule = "outcome-changed"
+path = "packages/excalidraw/tests/arrowEndpointTextBinding.test.tsx"
+test = "binding text to an arrow endpoint > hover affordance > highlights the label midpoint when hovering the arrow itself"
+before = ["expect(h.state.hoveredArrowTextAnchor).toEqual({ anchor: 'label', elementId: 'arrow' })"]
+after = ["expect(h.state.textToolHover).toEqual({ anchor: 'label', elementId: 'arrow', type: 'arrow' })"]
+message = "toEqual({ anchor: 'label', elementId: 'arrow' }) → toEqual({ anchor: 'label', elementId: 'arrow', type: 'arrow…"
+label = "wrong"
+note = "Commit 73387e9 replaced hoveredArrowTextAnchor with a single textToolHover state; same anchor and elementId, plus the new type: 'arrow' field."
+
+[[finding]]
+unit = "c10499eebb62"
+pr = 12082
+rule = "outcome-changed"
+path = "packages/excalidraw/tests/arrowEndpointTextBinding.test.tsx"
+test = "binding text to an arrow endpoint > hover affordance > does not offer a label midpoint away from the arrow's center"
+before = ["expect(h.state.hoveredArrowTextAnchor).toEqual({ anchor: 'label', elementId: 'arrow' })"]
+after = ["expect(h.state.textToolHover).toEqual({ anchor: 'label', elementId: 'arrow', type: 'arrow' })"]
+message = "toEqual({ anchor: 'label', elementId: 'arrow' }) → toEqual({ anchor: 'label', elementId: 'arrow', type: 'arrow…"
+label = "wrong"
+note = "Commit 73387e9 replaced hoveredArrowTextAnchor with a single textToolHover state; same anchor and elementId, plus the new type: 'arrow' field."
+
+[[finding]]
+unit = "c10499eebb62"
+pr = 12082
+rule = "outcome-changed"
+path = "packages/excalidraw/tests/arrowEndpointTextBinding.test.tsx"
+test = "binding text to an arrow endpoint > binding toggle (ctrl/cmd) > still offers the label anchor — a label is not an arrow binding"
+before = ["expect(h.state.hoveredArrowTextAnchor).toEqual({ anchor: 'label', elementId: 'arrow' })"]
+after = ["expect(h.state.textToolHover).toEqual({ anchor: 'label', elementId: 'arrow', type: 'arrow' })"]
+message = "toEqual({ anchor: 'label', elementId: 'arrow' }) → toEqual({ anchor: 'label', elementId: 'arrow', type: 'arrow…"
+label = "wrong"
+note = "Commit 73387e9 replaced hoveredArrowTextAnchor with a single textToolHover state; same anchor and elementId, plus the new type: 'arrow' field."
+
+[[finding]]
+unit = "c10499eebb62"
+pr = 12082
+rule = "outcome-changed"
+path = "packages/excalidraw/tests/arrowEndpointTextBinding.test.tsx"
+test = "binding text to an arrow endpoint > binding toggle (ctrl/cmd) > clears the highlight the moment ctrl is pressed, restores on release"
+before = ["expect(h.state.hoveredArrowTextAnchor).toEqual({ anchor: 'end', elementId: 'arrow' })"]
+after = ["expect(h.state.textToolHover).toEqual({ anchor: 'end', elementId: 'arrow', type: 'arrow' })"]
+message = "toEqual({ anchor: 'end', elementId: 'arrow' }) → toEqual({ anchor: 'end', elementId: 'arrow', type: 'arrow' …"
+label = "wrong"
+note = "Commit 73387e9 replaced hoveredArrowTextAnchor with a single textToolHover state; same anchor and elementId, plus the new type: 'arrow' field."
+
+[[finding]]
+unit = "c10499eebb62"
+pr = 12082
+rule = "outcome-changed"
+path = "packages/excalidraw/tests/arrowEndpointTextBinding.test.tsx"
+test = "binding text to an arrow endpoint > binding toggle (ctrl/cmd) > does not highlight an endpoint that is already bound"
+before = ["expect(h.state.hoveredArrowTextAnchor).toEqual({ anchor: 'label', elementId: 'arrow' })"]
+after = ["expect(h.state.textToolHover).toEqual({ anchor: 'label', elementId: 'arrow', type: 'arrow' })"]
+message = "toEqual({ anchor: 'label', elementId: 'arrow' }) → toEqual({ anchor: 'label', elementId: 'arrow', type: 'arrow…"
+label = "wrong"
+note = "Commit 73387e9 replaced hoveredArrowTextAnchor with a single textToolHover state; same anchor and elementId, plus the new type: 'arrow' field."
+
+[[finding]]
+unit = "c10499eebb62"
+pr = 12082
+rule = "outcome-changed"
+path = "packages/excalidraw/tests/arrowEndpointTextBinding.test.tsx"
+test = "binding text to an arrow endpoint > occlusion > still offers the endpoint when the arrow is stacked above"
+before = ["expect(h.state.hoveredArrowTextAnchor).toEqual({ anchor: 'end', elementId: 'arrow' })"]
+after = ["expect(h.state.textToolHover).toEqual({ anchor: 'end', elementId: 'arrow', type: 'arrow' })"]
+message = "toEqual({ anchor: 'end', elementId: 'arrow' }) → toEqual({ anchor: 'end', elementId: 'arrow', type: 'arrow' …"
+label = "wrong"
+note = "Commit 73387e9 replaced hoveredArrowTextAnchor with a single textToolHover state; same anchor and elementId, plus the new type: 'arrow' field."
+
+[[finding]]
+unit = "c10499eebb62"
+pr = 12082
+rule = "outcome-changed"
+path = "packages/excalidraw/tests/arrowEndpointTextBinding.test.tsx"
+test = "binding text to an arrow endpoint > occlusion > is not occluded by a transparent element above it"
+before = ["expect(h.state.hoveredArrowTextAnchor).toEqual({ anchor: 'end', elementId: 'arrow' })"]
+after = ["expect(h.state.textToolHover).toEqual({ anchor: 'end', elementId: 'arrow', type: 'arrow' })"]
+message = "toEqual({ anchor: 'end', elementId: 'arrow' }) → toEqual({ anchor: 'end', elementId: 'arrow', type: 'arrow' …"
+label = "wrong"
+note = "Commit 73387e9 replaced hoveredArrowTextAnchor with a single textToolHover state; same anchor and elementId, plus the new type: 'arrow' field."
+
+[[finding]]
+unit = "c10499eebb62"
+pr = 12082
+rule = "outcome-changed"
+path = "packages/excalidraw/tests/arrowEndpointTextBinding.test.tsx"
+test = "binding text to an arrow endpoint > history > removes the text and its binding in a single undo"
+before = ["expect(h.state.hoveredArrowTextAnchor).toEqual({ anchor: 'end', elementId: arrowId })"]
+after = ["expect(h.state.textToolHover).toEqual({ anchor: 'end', elementId: arrowId, type: 'arrow' })"]
+message = "toEqual({ anchor: 'end', elementId: arrowId }) → toEqual({ anchor: 'end', elementId: arrowId, type: 'arrow' …"
+label = "wrong"
+note = "Commit 73387e9 replaced hoveredArrowTextAnchor with a single textToolHover state; same anchor and elementId, plus the new type: 'arrow' field."
+
+[[finding]]
+unit = "c10499eebb62"
+pr = 12082
+rule = "outcome-changed"
+path = "packages/excalidraw/tests/arrowEndpointTextBinding.test.tsx"
+test = "binding text to an arrow endpoint > interaction with existing text-tool behavior > creates a fresh text instead of adopting one lying beyond the tip"
+before = ["expect(h.state.hoveredArrowTextAnchor).toEqual({ anchor: 'end', elementId: 'arrow' })"]
+after = ["expect(h.state.textToolHover).toEqual({ anchor: 'end', elementId: 'arrow', type: 'arrow' })"]
+message = "toEqual({ anchor: 'end', elementId: 'arrow' }) → toEqual({ anchor: 'end', elementId: 'arrow', type: 'arrow' …"
+label = "wrong"
+note = "Commit 73387e9 replaced hoveredArrowTextAnchor with a single textToolHover state; same anchor and elementId, plus the new type: 'arrow' field."
+
+[[finding]]
+unit = "c10499eebb62"
+pr = 12082
+rule = "outcome-changed"
+path = "packages/excalidraw/tests/arrowEndpointTextBinding.test.tsx"
+test = "binding text to an arrow endpoint > interaction with existing text-tool behavior > yields to a free text stacked above the arrow"
+before = ["expect(h.state.elementsToHighlight?.[0]?.id).toBe('overlap')"]
+after = ["expect(h.state.textToolHover).toEqual({ elementId: 'overlap', type: 'text' })"]
+message = "toBe('overlap') → toEqual({ elementId: 'overlap', type: 'text' })"
+label = "wrong"
+note = "Commit 73387e9 moved the text tool's text highlight from elementsToHighlight to textToolHover; it checks the same element id plus type: 'text'."
+
+[[finding]]
+unit = "c10499eebb62"
+pr = 12082
+rule = "outcome-changed"
+path = "packages/excalidraw/tests/arrowEndpointTextBinding.test.tsx"
+test = "binding text to an arrow endpoint > interaction with existing text-tool behavior > wins over a free text stacked below the arrow"
+before = ["expect(h.state.hoveredArrowTextAnchor).toEqual({ anchor: 'end', elementId: 'arrow' })"]
+after = ["expect(h.state.textToolHover).toEqual({ anchor: 'end', elementId: 'arrow', type: 'arrow' })"]
+message = "toEqual({ anchor: 'end', elementId: 'arrow' }) → toEqual({ anchor: 'end', elementId: 'arrow', type: 'arrow' …"
+label = "wrong"
+note = "Commit 73387e9 replaced hoveredArrowTextAnchor with a single textToolHover state; same anchor and elementId, plus the new type: 'arrow' field."
+
+[[finding]]
+unit = "c10499eebb62"
+pr = 12082
+rule = "outcome-changed"
+path = "packages/excalidraw/wysiwyg/textWysiwyg.test.tsx"
+test = "textWysiwyg > start text editing > should clear binding highlights when a locked text tool starts a center drag"
+before = ["expect(h.state.suggestedBinding?.element.id).toBe(container.id)"]
+after = ["expect(h.state.textToolHover).toEqual({ elementId: container.id, type: 'container' })"]
+message = "toBe(container.id) → toEqual({ elementId: container.id, type: 'container' })"
+label = "wrong"
+note = "Commit 73387e9 moved the text tool's container highlight from suggestedBinding to textToolHover; it checks the same container id plus type: 'container'."
+
+[[finding]]
+unit = "c10499eebb62"
+pr = 12082
+rule = "outcome-changed"
+path = "packages/excalidraw/wysiwyg/textWysiwyg.test.tsx"
+test = "textWysiwyg > Test container-bound text > should highlight an empty container the text tool would bind to on hover"
+before = ["expect(h.state.suggestedBinding?.element?.id).toBe(rectangle.id)"]
+after = ["expect(h.state.textToolHover).toEqual({ elementId: rectangle.id, type: 'container' })"]
+message = "toBe(rectangle.id) → toEqual({ elementId: rectangle.id, type: 'container' })"
+label = "wrong"
+note = "Commit 73387e9 moved the text tool's container highlight from suggestedBinding to textToolHover; it checks the same rectangle id plus type: 'container'."
+
+[[finding]]
+unit = "c10499eebb62"
+pr = 12082
+rule = "outcome-changed"
+path = "packages/excalidraw/wysiwyg/textWysiwyg.test.tsx"
+test = "textWysiwyg > Test container-bound text > should hit the arrow label at its derived position after the arrow moves (labelPosition: %s)"
+before = ["expect(h.state.elementsToHighlight?.[0]?.id).toBe(label.id)"]
+after = ["expect(h.state.textToolHover).toEqual({ elementId: label.id, type: 'text' })"]
+message = "toBe(label.id) → toEqual({ elementId: label.id, type: 'text' })"
+label = "wrong"
+note = "Commit 73387e9 moved the text tool's text highlight from elementsToHighlight to textToolHover; it checks the same label id plus type: 'text'."
+
+[[finding]]
+unit = "c10499eebb62"
+pr = 12082
+rule = "outcome-changed"
+path = "packages/excalidraw/wysiwyg/textWysiwyg.test.tsx"
+test = "textWysiwyg > Test container-bound text > should hover arrow anchors as the text tool's target"
+before = ["expect(h.state.hoveredArrowTextAnchor).toEqual({ anchor: 'label', elementId: arrow.id })"]
+after = ["expect(h.state.textToolHover).toEqual({ anchor: 'label', elementId: arrow.id, type: 'arrow' })"]
+message = "toEqual({ anchor: 'label', elementId: arrow.id }) → toEqual({ anchor: 'label', elementId: arrow.id, type: 'arro…"
+label = "wrong"
+note = "Commit 73387e9 replaced hoveredArrowTextAnchor with textToolHover; same label anchor and arrow id, plus type: 'arrow'."
+
+[[finding]]
+unit = "c10499eebb62"
+pr = 12082
+rule = "outcome-changed"
+path = "packages/excalidraw/wysiwyg/textWysiwyg.test.tsx"
+test = "textWysiwyg > Test container-bound text > should hover arrow anchors as the text tool's target"
+before = ["expect(h.state.hoveredArrowTextAnchor).toEqual({ anchor: 'end', elementId: arrow.id })"]
+after = ["expect(h.state.textToolHover).toEqual({ anchor: 'end', elementId: arrow.id, type: 'arrow' })"]
+message = "toEqual({ anchor: 'end', elementId: arrow.id }) → toEqual({ anchor: 'end', elementId: arrow.id, type: 'arrow'…"
+label = "wrong"
+note = "Commit 73387e9 replaced hoveredArrowTextAnchor with textToolHover; same end anchor and arrow id, plus type: 'arrow'."
+
+[[finding]]
+unit = "c10499eebb62"
+pr = 12082
+rule = "outcome-changed"
+path = "packages/excalidraw/wysiwyg/textWysiwyg.test.tsx"
+test = "textWysiwyg > Test container-bound text > should clear the hover highlights when the text tool is canceled"
+before = ["expect(h.state.elementsToHighlight?.[0]?.id).toBe(text.id)"]
+after = ["expect(h.state.textToolHover).toEqual({ elementId: text.id, type: 'text' })"]
+message = "toBe(text.id) → toEqual({ elementId: text.id, type: 'text' })"
+label = "wrong"
+note = "Commit 73387e9 moved the text tool's text highlight from elementsToHighlight to textToolHover; it checks the same text id plus type: 'text'."
+
+[[finding]]
+unit = "c10499eebb62"
+pr = 12082
+rule = "outcome-changed"
+path = "packages/excalidraw/wysiwyg/textWysiwyg.test.tsx"
+test = "textWysiwyg > Test container-bound text > should clear the hover highlights when the text tool is canceled"
+before = ["expect(h.state.suggestedBinding?.element?.id).toBe(rectangle.id)"]
+after = ["expect(h.state.textToolHover).toEqual({ elementId: rectangle.id, type: 'container' })"]
+message = "toBe(rectangle.id) → toEqual({ elementId: rectangle.id, type: 'container' })"
+label = "wrong"
+note = "Commit 73387e9 moved the text tool's container highlight from suggestedBinding to textToolHover; it checks the same rectangle id plus type: 'container'."
+
+[[finding]]
+unit = "c10499eebb62"
+pr = 12082
+rule = "outcome-changed"
+path = "packages/excalidraw/wysiwyg/textWysiwyg.test.tsx"
+test = "textWysiwyg > Test container-bound text > should highlight the text the text tool would edit on hover"
+before = ["expect(h.state.elementsToHighlight?.[0]?.id).toBe(label.id)"]
+after = ["expect(h.state.textToolHover).toEqual({ elementId: label.id, type: 'text' })"]
+message = "toBe(label.id) → toEqual({ elementId: label.id, type: 'text' })"
+label = "wrong"
+note = "Commit 73387e9 moved the text tool's text highlight from elementsToHighlight to textToolHover; it checks the same label id plus type: 'text'."
+
+[[finding]]
+unit = "c10499eebb62"
+pr = 12082
+rule = "outcome-changed"
+path = "packages/excalidraw/wysiwyg/textWysiwyg.test.tsx"
+test = "textWysiwyg > start text editing > should set a fixed text width when ctrl/cmd-dragging at a shape's center"
+before = ["expect(text.width).toBe(160)"]
+after = ["expect(text.width).toBe(80)"]
+message = "toBe(160) → toBe(80)"
+label = "wrong"
+note = "Commit da82832 made ctrl/cmd instead of alt opt out of container labeling; alt resized from the center (160 wide), the ctrl drag is one-sided (80)."
+
+[[finding]]
+unit = "c10499eebb62"
+pr = 12082
+rule = "outcome-changed"
+path = "packages/excalidraw/wysiwyg/textWysiwyg.test.tsx"
+test = "textWysiwyg > start text editing > should set a fixed text width when ctrl/cmd-dragging at a shape's center"
+before = ["expect(text.x).toBe(270)"]
+after = ["expect(text.x).toBe(350)"]
+message = "toBe(270) → toBe(350)"
+label = "wrong"
+note = "Commit da82832 switched the opt-out modifier from alt to ctrl/cmd; a ctrl drag grows one-sided from the origin, so x stays 350 instead of the centered 270."
 
 [[finding]]
 unit = "c10499eebb62"
@@ -379,6 +1375,18 @@ after = []
 message = "deleted: textWysiwyg > Test container-unbound text > text should never go beyond max width (only 2 of its 4 checks moved to other tests)"
 label = "wrong"
 note = "Renamed to \"should not cut the editor off at the viewport's edges\"; both checks still run (text.width 1000, textarea width now the text's width since the editor is no longer cut)."
+
+[[finding]]
+unit = "f3d99c42e905"
+pr = 12175
+rule = "outcome-changed"
+path = "packages/excalidraw/wysiwyg/textWysiwyg.test.tsx"
+test = "textWysiwyg > Test container-unbound text > should pan the canvas instead of letting the editor root scroll to reveal the caret"
+before = ["expect(parseFloat(textarea.style.top)).toBe(editorTop - 120)"]
+after = ["expect(parseFloat(textarea.style.top)).toBe(editorTop - (120 + CARET_FOLLOW_PADDING))"]
+message = "toBe(editorTop - 120) → toBe(editorTop - (120 + CARET_FOLLOW_PADDING))"
+label = "wrong"
+note = "Commit 3896989 made the caret-following pan go a further CARET_FOLLOW_PADDING in textWysiwyg.tsx, so the expected offset includes it."
 
 [[finding]]
 unit = "f3d99c42e905"
@@ -513,6 +1521,18 @@ label = "intended"
 note = "Commit says cropElement no longer mutates the crop in place, so the identity check after a crop can't hold; only the approximate value comparison remains."
 
 [[finding]]
+unit = "4c37956ba5f0"
+pr = 12033
+rule = "outcome-changed"
+path = "packages/excalidraw/tests/data/restore.test.ts"
+test = "restoreElements > should fall back to the font line height when it can't be detected"
+before = ["expect(Number.isFinite(restoredText.lineHeight)).toBe(true)"]
+after = ["expect(restoredText.lineHeight).toBe(getLineHeight(textElement.fontFamily))"]
+message = "toBe(true) → toBe(getLineHeight(textElement.fontFamily))"
+label = "wrong"
+note = "Stricter: the PR's restoreLineHeight falls back to getLineHeight(fontFamily), and the test now checks that exact value instead of just a finite number."
+
+[[finding]]
 unit = "e1b7aacb356a"
 pr = 12347
 rule = "test-disabled"
@@ -571,6 +1591,66 @@ after = []
 message = "deleted: exportToCanvas > ignores getDimensions when widthOrHeight is set"
 label = "intended"
 note = "getDimensions was removed in favor of a scale function; nothing replaces the \"ignored when widthOrHeight is set\" check."
+
+[[finding]]
+unit = "d3a9c2a19518"
+pr = 11997
+rule = "outcome-changed"
+path = "packages/element/tests/linearElementEditor.test.tsx"
+test = "Test Linear Elements > Test bound text element > should wrap the bound text when arrow bound container moves"
+before = ["expect(handleBindTextResizeSpy).toHaveBeenCalledWith(h.elements[0], h.app.scene, 'nw', false, false, false)"]
+after = ["expect(handleBindTextResizeSpy).toHaveBeenCalledWith(h.elements[0], h.app.scene, 'nw', false, false, false, h.app.renderEnvironment)"]
+message = "toHaveBeenCalledWith(h.elements[0], h.app.scene, 'nw', fals… → toHaveBeenCalledWith(h.elements[0], h.app.scene, 'nw', fals…"
+label = "wrong"
+note = "Commit d27f018 added a renderEnvironment parameter to handleBindTextResize; the spy check now also asserts it, so it is stricter."
+
+[[finding]]
+unit = "d3a9c2a19518"
+pr = 11997
+rule = "outcome-changed"
+path = "packages/excalidraw/tests/elementCanvasScale.test.ts"
+test = "elementWithCanvasCache deviceScale > regenerates the cached canvas when the environment changes"
+before = ["expect(envCanvases[0]).toHaveLength(1)"]
+after = ["expect(envCanvases[0]).toHaveLength(2)"]
+message = "toHaveLength(1) → toHaveLength(2)"
+label = "wrong"
+note = "Commit 4b16a1c (Remove caches) made the element canvas cache hold one entry per element, so going back to env A regenerates; the test comment explains it."
+
+[[finding]]
+unit = "d3a9c2a19518"
+pr = 11997
+rule = "outcome-changed"
+path = "packages/excalidraw/tests/renderCaches.test.ts"
+test = "link icon cache > bakes a separate icon per backing-store scale"
+before = ["expect(secondBake!.width).toBe(firstBake!.width * 2)"]
+after = ["expect(secondBake.width).toBe(firstBake.width * 2)"]
+message = "toBe(firstBake!.width * 2) → toBe(firstBake.width * 2)"
+label = "wrong"
+note = "Same check moved into the consolidated renderCaches.test.ts with the non-null assertions dropped; nothing changed."
+
+[[finding]]
+unit = "d3a9c2a19518"
+pr = 11997
+rule = "outcome-changed"
+path = "packages/excalidraw/tests/renderCaches.test.ts"
+test = "link icon cache > bakes a separate icon per backing-store scale"
+before = ["expect(secondBake!.height).toBe(firstBake!.height * 2)"]
+after = ["expect(secondBake.height).toBe(firstBake.height * 2)"]
+message = "toBe(firstBake!.height * 2) → toBe(firstBake.height * 2)"
+label = "wrong"
+note = "Same check moved into the consolidated renderCaches.test.ts with the non-null assertions dropped; nothing changed."
+
+[[finding]]
+unit = "d3a9c2a19518"
+pr = 11997
+rule = "outcome-changed"
+path = "packages/excalidraw/tests/renderCaches.test.ts"
+test = "link icon cache > bakes an icon only for the environment whose image decoded"
+before = ["expect(getDrawImageSources(aBlits[0])).toContain(envA.images[0])"]
+after = ["expect(getDrawImageSources(aBlits[0])).toContain(a.images[0])"]
+message = "toContain(envA.images[0]) → toContain(a.images[0])"
+label = "wrong"
+note = "Same check moved into renderCaches.test.ts, where the env variable was renamed from envA to a; nothing changed."
 
 [[finding]]
 unit = "d3a9c2a19518"
@@ -871,6 +1951,78 @@ after = []
 message = "file deleted: its 6 tests no longer run"
 label = "unexplained"
 note = "\"chore: Remove test\" deleted all isQuotaExceededError tests while the fix stays; no reason given."
+
+[[finding]]
+unit = "808d068e1826"
+pr = 12425
+rule = "outcome-changed"
+path = "packages/element/src/__tests__/transform.test.ts"
+test = "Test Transform > Test arrow bindings > should bind arrows to shapes when start / end provided without ids"
+before = ["expect(arrow).toMatchObject({ boundElements: [{ id: text.id, type: 'text' }], endBinding: { elementId: ellipse.id }, startBinding: { elementId: rectangle.id }, type: 'arrow', x: 255.5, y: 239 })"]
+after = ["expect(arrow).toMatchObject({ boundElements: [{ id: text.id, type: 'text' }], endBinding: { elementId: ellipse.id }, startBinding: { elementId: rectangle.id }, type: 'arrow', x: 261 })"]
+message = "toMatchObject({ boundElements: [{ id: text.id, type: 'text'… → toMatchObject({ boundElements: [{ id: text.id, type: 'text'…"
+label = "wrong"
+note = "Commit cce49a6 added a pass in transform.ts that places bound skeleton arrows where binding puts them (x 255.5 to 261); y is still checked, separately, with toBeCloseTo(239, 1)."
+
+[[finding]]
+unit = "808d068e1826"
+pr = 12425
+rule = "outcome-changed"
+path = "packages/element/src/__tests__/transform.test.ts"
+test = "Test Transform > Test arrow bindings > should bind arrows to text when start / end provided without ids"
+before = ["expect(arrow).toMatchObject({ boundElements: [{ id: text1.id, type: 'text' }], endBinding: { elementId: text3.id }, startBinding: { elementId: text2.id }, type: 'arrow', x: 255.5, y: 239 })"]
+after = ["expect(arrow).toMatchObject({ boundElements: [{ id: text1.id, type: 'text' }], endBinding: { elementId: text3.id }, startBinding: { elementId: text2.id }, type: 'arrow', x: 261 })"]
+message = "toMatchObject({ boundElements: [{ id: text1.id, type: 'text… → toMatchObject({ boundElements: [{ id: text1.id, type: 'text…"
+label = "wrong"
+note = "Commit cce49a6 added a pass in transform.ts that places bound skeleton arrows where binding puts them (x 255.5 to 261); y is still checked, separately, with toBeCloseTo(239, 1)."
+
+[[finding]]
+unit = "808d068e1826"
+pr = 12425
+rule = "outcome-changed"
+path = "packages/element/src/__tests__/transform.test.ts"
+test = "Test Transform > Test arrow bindings > should bind arrows to existing elements if ids are correct"
+before = ["expect(arrow).toMatchObject({ boundElements: [{ id: text.id, type: 'text' }], endBinding: null, startBinding: null, type: 'arrow', x: 255.5, y: 239 })"]
+after = ["expect(arrow).toMatchObject({ boundElements: [{ id: text.id, type: 'text' }], endBinding: null, startBinding: null, type: 'arrow', x: 255, y: 239 })"]
+message = "toMatchObject({ boundElements: [{ id: text.id, type: 'text'… → toMatchObject({ boundElements: [{ id: text.id, type: 'text'…"
+label = "wrong"
+note = "Commit eb7e4b0 removed the 0.5px nudge of skeleton arrow ends in transform.ts, and its message names this assertion now expecting x 255 as given."
+
+[[finding]]
+unit = "808d068e1826"
+pr = 12425
+rule = "outcome-changed"
+path = "packages/element/src/__tests__/transform.test.ts"
+test = "Test Transform > Test arrow bindings > should bind when ids referenced before the element data"
+before = ["expect((arrow as ExcalidrawArrowElement).endBinding).toStrictEqual({ elementId: 'rect-1', fixedPoint: [-2.05, 0.5001], mode: 'orbit' })"]
+after = ["expect((arrow as ExcalidrawArrowElement).endBinding).toStrictEqual({ elementId: 'rect-1', fixedPoint: [0, 0.5001], mode: 'orbit' })"]
+message = "toStrictEqual({ elementId: 'rect-1', fixedPoint: [-2.05, 0.… → toStrictEqual({ elementId: 'rect-1', fixedPoint: [0, 0.5001…"
+label = "wrong"
+note = "Commit 61255ad rebinds ends once elements are sized and unbinds unreachable ones; the test arrow was moved to reach rect-1, so fixedPoint is now [0, 0.5001]."
+
+[[finding]]
+unit = "808d068e1826"
+pr = 12425
+rule = "outcome-changed"
+path = "packages/element/tests/linearElementEditor.test.tsx"
+test = "Test Linear Elements > Test bound text element > should resize and position the bound text correctly when 2 pointer linear element resized"
+before = ["expect(({ width: container.width, height: container.height })).toMatchInlineSnapshot('\\n          {\\n            \"height\": 130,\\n            \"width\": 340,\\n          }\\n        ')"]
+after = ["expect(({ width: container.width, height: container.height })).toMatchInlineSnapshot('\\n          {\\n            \"height\": 0,\\n            \"width\": 340,\\n          }\\n        ')"]
+message = "toMatchInlineSnapshot('\\n          {\\n            \"height\":… → toMatchInlineSnapshot('\\n          {\\n            \"height\":…"
+label = "wrong"
+note = "Commit fb4f616 stopped handleBindTextResize growing arrow containers to fit labels; the message says the bogus height 130 snapshot is now 0."
+
+[[finding]]
+unit = "c711e80ec55b"
+pr = 12458
+rule = "outcome-changed"
+path = "packages/element/tests/elbowArrow.test.tsx"
+test = "elbow arrow ui > can follow bound rotated shapes"
+before = ["expect(arrow.points.map((point) => point.map(Math.round))).toEqual([[0, 0], [36, 0], [36, 90], [28, 90], [28, 164], [101, 164]])"]
+after = ["expect(arrow.points.map((point) => point.map(Math.round))).toEqual([[0, 0], [51, 0], [51, 164], [101, 164]])"]
+message = "toEqual([[0, 0], [36, 0], [36, 90], [28, 90], [28, 164], [1… → toEqual([[0, 0], [51, 0], [51, 164], [101, 164]])"
+label = "wrong"
+note = "PR #12458 routes elbow arrows with two corners where they fit instead of a jog (elbowArrow.ts), so the expected points follow the simpler route."
 
 [[finding]]
 unit = "2610ebae0cbd"

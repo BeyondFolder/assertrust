@@ -37,5 +37,16 @@ Options:
   -v, --verbose
           Show the test name, before/after snippets, the full commit message, and changed outcomes
 
+      --judge
+          Ask the AI judge whether each finding still leaves the test checking what it promises (sends the code to the model's provider, with your API key)
+
+      --judge-model <MODEL>
+          The judge's model, as provider/model, e.g. anthropic/claude-haiku-5-5 (turns the judge on)
+
+      --judge-effort <LEVEL>
+          How hard the judge's model thinks (default: the model's own; turns the judge on)
+          
+          [possible values: low, medium, high]
+
   -h, --help
           Print help (see a summary with '-h')

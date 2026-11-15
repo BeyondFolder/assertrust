@@ -10,6 +10,8 @@
 #   backtest/run.sh hono zod           only these
 #   backtest/run.sh --update-labels    flags go to `assertrust backtest`
 #   backtest/run.sh --format json zod  so does a flag's value
+#   backtest/run.sh --judge-model anthropic/claude-haiku-5-5 zod
+#                                      the AI judge too (costs money: needs the provider's key)
 #
 # Env: ASSERTRUST_PRIVATE_LABELS, a directory of labels files for private repos, kept out of
 # this repo; ASSERTRUST_BACKTEST_CLONES, where the clones go; ASSERTRUST_BIN, the binary to
@@ -36,7 +38,7 @@ names=()
 while [ $# -gt 0 ]; do
   case $1 in
     # The flags of `assertrust backtest` that take a value.
-    --format | --range | --last) flags+=("$1" "${2:?$1 needs a value}") && shift ;;
+    --format | --range | --last | --judge-model) flags+=("$1" "${2:?$1 needs a value}") && shift ;;
     -*) flags+=("$1") ;;
     *) names+=("$1") ;;
   esac

@@ -18,12 +18,15 @@ const BINARY: &str = env!("CARGO_BIN_EXE_assertrust");
 const TESTS: &str =
     "it('refunds', () => {\n  expect(res.status).toBe(200)\n  expect(res.body.ok).toBe(true)\n})\n";
 
-/// A `gh` that logs each call, prints `comments` for the listing of a PR's comments, and
-/// fails writes when asked to (a fork's read-only token).
+/// A `gh` that logs each call, prints `$FAKE_GH_COMMENTS` (pages of comments) for the
+/// listing of a PR's comments, and fails what it's asked to: the listing, or writes (a
+/// fork's read-only token).
 const FAKE_GH: &str = r#"#!/bin/sh
 printf '%s\n' "$*" >> "$FAKE_GH_LOG"
 case "$*" in
-  *--paginate*) printf '%s' "${FAKE_GH_COMMENTS:-}" ;;
+  *--paginate*)
+    [ -z "${FAKE_GH_LIST_FAILS:-}" ] || exit 1
+    printf '%s' "${FAKE_GH_COMMENTS:-[[]]}" ;;
   *--method*) [ -z "${FAKE_GH_READ_ONLY:-}" ] || exit 1 ;;
 esac
 "#;
@@ -43,6 +46,7 @@ impl Runner {
         fs::write(dir.path().join("event.json"), event).unwrap();
         fs::write(dir.path().join("gh.log"), "").unwrap();
         fs::write(dir.path().join("summary.md"), "").unwrap();
+        fs::write(dir.path().join("outputs"), "").unwrap();
         Self { dir }
     }
 
@@ -52,11 +56,13 @@ impl Runner {
         let path = |file: &str| self.dir.path().join(file).display().to_string();
         let search = format!("{}:{}", path("bin"), std::env::var("PATH").unwrap());
         let (event, summary, log) = (path("event.json"), path("summary.md"), path("gh.log"));
+        let outputs = path("outputs");
         let mut vars: Vec<(&str, &str)> = vec![
             ("PATH", &search),
             ("GITHUB_EVENT_NAME", event_name),
             ("GITHUB_EVENT_PATH", &event),
             ("GITHUB_STEP_SUMMARY", &summary),
+            ("GITHUB_OUTPUT", &outputs),
             ("GITHUB_REPOSITORY", "acme/shop"),
             ("GITHUB_ACTION_PATH", ACTION),
             ("GITHUB_RUN_ID", "42"),
@@ -70,6 +76,10 @@ impl Runner {
 
     fn summary(&self) -> String {
         fs::read_to_string(self.dir.path().join("summary.md")).unwrap()
+    }
+
+    fn outputs(&self) -> String {
+        fs::read_to_string(self.dir.path().join("outputs")).unwrap()
     }
 
     /// The fake `gh`'s calls, the first line of each.
@@ -123,9 +133,10 @@ fn a_pull_request_gets_annotations_a_summary_and_one_comment() {
             .summary()
             .starts_with("<!-- assertrust -->\n### assertrust: 1 finding\n")
     );
+    assert_eq!(runner.outputs(), "findings=1\n");
     let calls = runner.gh_calls();
     assert_eq!(calls.len(), 2, "{calls:?}");
-    assert!(calls[0].starts_with("api --paginate repos/acme/shop/issues/7/comments"));
+    assert!(calls[0].starts_with("api --paginate --slurp repos/acme/shop/issues/7/comments"));
     assert!(
         calls[1].starts_with(
             "api --method POST repos/acme/shop/issues/7/comments -f body=<!-- assertrust -->"
@@ -153,13 +164,13 @@ fn a_clean_pull_request_gets_a_comment_only_to_update_one() {
     );
     // No comment yet: none is posted.
     assert_eq!(runner.gh_calls().len(), 1);
-    // One from an earlier push: it now says there's nothing.
+    // One from an earlier push: it now says there's nothing. A person's comment quoting
+    // it isn't the one.
+    let comments = r#"[[{ "id": 1111, "user": { "type": "User" }, "body": "<!-- assertrust -->\nquoted" },
+        { "id": 1234, "user": { "type": "Bot" }, "body": "<!-- assertrust -->\n### assertrust: 1 finding" }],
+        [{ "id": 5678, "user": { "type": "Bot" }, "body": "<!-- assertrust -->\nanother" }]]"#;
     let runner = Runner::new(&pull_request(&base, &head));
-    runner.run(
-        &repo,
-        "pull_request",
-        &[("FAKE_GH_COMMENTS", "1234\n5678\n")],
-    );
+    runner.run(&repo, "pull_request", &[("FAKE_GH_COMMENTS", comments)]);
     let calls = runner.gh_calls();
     assert!(
         calls[1].starts_with(
@@ -167,6 +178,46 @@ fn a_clean_pull_request_gets_a_comment_only_to_update_one() {
         ),
         "{calls:?}"
     );
+}
+
+#[test]
+fn allowed_findings_alone_get_no_comment() {
+    let mut repo = TestRepo::new();
+    repo.write("test/a.test.ts", TESTS);
+    let base = repo.commit("Add tests");
+    repo.write(
+        "test/a.test.ts",
+        &TESTS.replace(
+            "  expect(res.body.ok).toBe(true)\n",
+            "  // assertrust-allow: check-removed the body is checked in the API tests\n",
+        ),
+    );
+    let head = repo.commit("Trim refunds");
+    let runner = Runner::new(&pull_request(&base, &head));
+    let run = runner.run(&repo, "pull_request", &[]);
+    assert_eq!(run.code, 0, "{}", run.stderr);
+    assert!(
+        runner.summary().contains("**1 allowed**"),
+        "{}",
+        runner.summary()
+    );
+    assert_eq!(runner.outputs(), "findings=0\n");
+    assert_eq!(runner.gh_calls().len(), 1);
+}
+
+#[test]
+fn comments_that_can_not_be_listed_are_left_alone() {
+    // Posting could add a second one.
+    let (repo, base, head) = weakened();
+    let runner = Runner::new(&pull_request(&base, &head));
+    let run = runner.run(&repo, "pull_request", &[("FAKE_GH_LIST_FAILS", "1")]);
+    assert_eq!(run.code, 0, "{}", run.stderr);
+    assert!(
+        run.stdout.contains("couldn't read the PR's comments"),
+        "{}",
+        run.stdout
+    );
+    assert_eq!(runner.gh_calls().len(), 1);
 }
 
 #[test]
@@ -196,6 +247,18 @@ fn fail_on_fails_the_job() {
     assert_eq!(run.code, 1, "{}", run.stderr);
     assert!(
         run.stdout.contains("::error file=test/a.test.ts"),
+        "{}",
+        run.stdout
+    );
+    // A --fail-on in args wins over the input.
+    let env = [("INPUT_FAIL_ON", "high"), ("INPUT_ARGS", "--fail-on=never")];
+    let run = runner.run(&repo, "pull_request", &env);
+    assert_eq!(run.code, 0, "{}{}", run.stdout, run.stderr);
+    // The format is the action's.
+    let run = runner.run(&repo, "pull_request", &[("INPUT_ARGS", "--format json")]);
+    assert_eq!(run.code, 2);
+    assert!(
+        run.stdout.contains("leave --format out of args"),
         "{}",
         run.stdout
     );
@@ -247,10 +310,20 @@ fn other_events_need_a_range() {
         "{}",
         run.stdout
     );
-    let range = format!("--range {base}...{head}");
-    let run = runner.run(&repo, "workflow_dispatch", &[("INPUT_ARGS", &range)]);
+    // Written over several lines (`args: |`), every line counts.
+    let args = format!("--show-transient\n--range {base}...{head}\n");
+    let run = runner.run(&repo, "workflow_dispatch", &[("INPUT_ARGS", &args)]);
     assert_eq!(run.code, 0, "{}", run.stderr);
     assert!(run.stdout.contains("check-removed"), "{}", run.stdout);
+    // A pull_request_target checkout doesn't have a fork's commits.
+    let runner = Runner::new(&pull_request(&base, &head));
+    let run = runner.run(&repo, "pull_request_target", &[]);
+    assert_eq!(run.code, 2);
+    assert!(
+        run.stdout.contains("run it on pull_request or push events"),
+        "{}",
+        run.stdout
+    );
 }
 
 /// A `curl` that serves `$FAKE_RELEASES/<tag>/<file>` for a release download URL, and logs

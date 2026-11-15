@@ -1,6 +1,5 @@
 ---
 source: crates/assertrust/tests/cli.rs
-assertion_line: 18
 expression: run.stdout
 ---
 Check a change for weakened tests

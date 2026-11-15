@@ -7,9 +7,10 @@
 #   push           each commit pushed: BEFORE..AFTER, or for a new branch (or rewritten
 #                  history) what it adds since it split off from the default branch
 #
-# Reads the action's inputs as INPUT_* variables and the event from $GITHUB_EVENT_PATH.
-# Exits with assertrust's code: 0 clean or warn-only, 1 a finding reached `fail-on`, 2 it
-# couldn't run. Written for bash 3.2 too (macOS's /bin/bash).
+# Reads the action's inputs as INPUT_* variables and the event from $GITHUB_EVENT_PATH, and
+# passes assertrust's `findings` output on. Exits with assertrust's code: 0 clean or
+# warn-only, 1 a finding reached `fail-on`, 2 it couldn't run. Written for bash 3.2 too
+# (macOS's /bin/bash).
 set -euo pipefail
 
 readonly releases=https://github.com/BeyondFolder/assertrust/releases/download
@@ -58,7 +59,7 @@ find_binary() {
   mkdir -p "$dir"
   local url="$releases/v$version/$archive"
   curl -fsSL --retry 3 -o "$dir/$archive" "$url" \
-    || error "couldn't download assertrust $version for $target from $url"
+    || error "couldn't download assertrust $version for $target from $url: use a released tag of the action (@v0), or set version"
   curl -fsSL --retry 3 -o "$dir/$archive.sha256" "$url.sha256" \
     || error "couldn't download the checksum of assertrust $version from $url.sha256"
   local expected actual
@@ -71,7 +72,7 @@ find_binary() {
 # Sets `range`: the commits to check, from the event.
 find_range() {
   case "${GITHUB_EVENT_NAME:-}" in
-    pull_request | pull_request_target)
+    pull_request)
       range="$(event .pull_request.base.sha)...$(event .pull_request.head.sha)"
       ;;
     push)
@@ -107,19 +108,23 @@ find_range() {
   esac
 }
 
-# Posts the summary as the PR's comment, or edits the one already there. A pull request
-# without findings gets none, until a comment exists to say so.
+# Posts the summary as the PR's comment, or edits the one already there: the oldest a bot
+# (the workflow's token) wrote, starting with the marker. A pull request without findings
+# gets none, until a comment exists to say so.
 comment() {
-  local summary=$1 number repo existing listed body
+  local summary=$1 findings=$2 number repo comments existing body
   number=$(event .pull_request.number)
   repo=${GITHUB_REPOSITORY:-}
   [[ -n "$number" && -n "$repo" ]] || return 0
-  existing=$(gh api --paginate "repos/$repo/issues/$number/comments" \
-    --jq ".[] | select(.body | startswith(\"$marker\")) | .id" 2>/dev/null) || existing=""
-  existing=${existing%%$'\n'*}
-  # More than the marker and the heading: something is listed.
-  listed=$(grep -c . "$summary" || true)
-  if [[ -z "$existing" && "$listed" -le 2 ]]; then
+  if ! comments=$(gh api --paginate --slurp "repos/$repo/issues/$number/comments" 2>/dev/null); then
+    # Not knowing whether there's one, posting could add a second.
+    notice "couldn't read the PR's comments, so the comment wasn't updated; the findings are in the job summary"
+    return 0
+  fi
+  existing=$(jq -r --arg marker "$marker" \
+    '[.[][] | select(.user.type == "Bot" and (.body | startswith($marker)))][0].id // empty' \
+    <<<"$comments")
+  if [[ -z "$existing" && "${findings:-0}" == 0 ]]; then
     return 0
   fi
   body=$(cat "$summary")
@@ -135,38 +140,57 @@ comment() {
   fi
 }
 
+# Whether the arguments in `args` hold one of the flags given after it, as `--flag value`
+# or `--flag=value`.
+has_flag() {
+  local args=" $1 " flag
+  shift
+  for flag in "$@"; do
+    case "$args" in
+      *" $flag "* | *" $flag="*) return 0 ;;
+    esac
+  done
+  return 1
+}
+
 main() {
-  local extra=() mode=() fail_on=()
-  read -r -a extra <<<"${INPUT_ARGS:-}"
+  local args extra=() mode=() fail_on=()
+  # `args: |` may put them on several lines.
+  args=$(printf '%s' "${INPUT_ARGS:-}" | tr '\n' ' ')
+  read -r -a extra <<<"$args"
   if [[ "$(git rev-parse --is-shallow-repository 2>/dev/null)" == true ]]; then
     error "the checkout has only the last commits: use actions/checkout with fetch-depth: 0"
   fi
-  case " ${INPUT_ARGS:-} " in
-    *" --range "* | *" --range="* | *" --staged "* | *" --worktree "*) ;;
-    *)
-      find_range
-      mode=(--range "$range")
-      ;;
-  esac
-  if [[ -n "${INPUT_FAIL_ON:-}" ]]; then
+  if has_flag "$args" --format; then
+    error "the action needs assertrust's github format: leave --format out of args"
+  fi
+  if ! has_flag "$args" --range --staged --worktree; then
+    find_range
+    mode=(--range "$range")
+  fi
+  # A --fail-on in args wins over the input.
+  if [[ -n "${INPUT_FAIL_ON:-}" ]] && ! has_flag "$args" --fail-on; then
     fail_on=(--fail-on "$INPUT_FAIL_ON")
   fi
   find_binary
 
-  # Its own summary file first, to post as the comment too.
-  local summary code=0
+  # Its own summary and outputs files first, to post the summary as the comment too.
+  local summary outputs findings code=0
   summary=$(mktemp)
-  GITHUB_STEP_SUMMARY=$summary "$binary" check --format github \
+  outputs=$(mktemp)
+  GITHUB_STEP_SUMMARY=$summary GITHUB_OUTPUT=$outputs "$binary" check --format github \
     ${mode[@]+"${mode[@]}"} ${fail_on[@]+"${fail_on[@]}"} ${extra[@]+"${extra[@]}"} || code=$?
   if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
     cat "$summary" >>"$GITHUB_STEP_SUMMARY"
   fi
-  if [[ "$code" -le 1 && "${INPUT_COMMENT:-true}" == true ]]; then
-    case "${GITHUB_EVENT_NAME:-}" in
-      pull_request | pull_request_target) comment "$summary" ;;
-    esac
+  if [[ -n "${GITHUB_OUTPUT:-}" ]]; then
+    cat "$outputs" >>"$GITHUB_OUTPUT"
   fi
-  rm -f "$summary"
+  findings=$(sed -n 's/^findings=//p' "$outputs")
+  if [[ "$code" -le 1 && "${INPUT_COMMENT:-true}" == true && "${GITHUB_EVENT_NAME:-}" == pull_request ]]; then
+    comment "$summary" "$findings"
+  fi
+  rm -f "$summary" "$outputs"
   exit "$code"
 }
 

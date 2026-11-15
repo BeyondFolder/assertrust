@@ -93,7 +93,7 @@ A few things make the findings worth reading:
 
 - **A pull request** is checked as a whole (what it adds since it split off from its base), with each finding named after the commit that made it. Findings show up as annotations on the diff and as a table in the job summary.
 - **A push** checks each commit pushed. A new branch is checked from where it split off from the default branch.
-- **The PR comment:** once a PR has findings, the table is also posted as one comment, edited in place on every push, also to say "no findings" once they're fixed. A PR with no findings gets no comment. A PR from a fork gets a read-only token, so its findings stay in the job summary.
+- **The PR comment:** once a PR has findings, the table is also posted as one comment, edited in place on every push, also to say "no findings" once they're fixed. A PR with no findings (or only allowed ones) gets no comment. A PR from a fork gets a read-only token, so its findings stay in the job summary.
 
 It needs `fetch-depth: 0`, since it reads each commit, and runs on Linux and macOS runners.
 
@@ -101,12 +101,14 @@ It needs `fetch-depth: 0`, since it reads each commit, and runs on Linux and mac
 |---|---|---|
 | `fail-on` | `never`, or `fail-on` from `assertrust.toml` | fail the job on findings this sure or surer: `high`, `medium` or `low` |
 | `comment` | `true` | post the summary as a PR comment once there are findings |
-| `args` | | more arguments for `assertrust check`, like `--show-pr-added`. A `--range` here replaces the one from the event, which also makes it work on other events |
+| `args` | | more arguments for `assertrust check`, like `--show-pr-added`, on one line or several. A `--range` here replaces the one from the event, which also makes it work on other events; a `--fail-on` here wins over the input |
 | `version` | the release this tag points to | the assertrust version to run, like `0.1.0` |
 | `path` | | run this binary instead of downloading one |
-| `github-token` | `github.token` | the token that posts the comment |
+| `github-token` | `github.token` | the token that posts the comment. A bot's token (this one, or a GitHub App's), since the comment is found again by its author |
 
-**To block merges**, set `fail-on: high` and make the job a required check. `@v0` always runs the newest 0.x release; pin `@v0.1.0` to stay on one.
+The step's `findings` output is how many findings it listed, for later steps (`steps.<id>.outputs.findings`).
+
+**To block merges**, set `fail-on: high` and make the job a required check. `@v0` always runs the newest 0.x release; pin `@v0.1.0` to stay on one. A branch or commit that isn't a release (`@main`) needs `version`, since it downloads the release its `Cargo.toml` names.
 
 ## Commands
 

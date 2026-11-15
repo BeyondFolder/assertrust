@@ -379,6 +379,7 @@ fn github_format_annotates_and_writes_the_job_summary() {
     let (repo, base) = high_and_low();
     let range = format!("{base}..HEAD");
     let summary = tempfile::NamedTempFile::new().expect("temp file");
+    let outputs = tempfile::NamedTempFile::new().expect("temp file");
     let run = repo.assertrust_with_env(
         &[
             "check",
@@ -389,9 +390,16 @@ fn github_format_annotates_and_writes_the_job_summary() {
             "--fail-on",
             "high",
         ],
-        &[("GITHUB_STEP_SUMMARY", summary.path())],
+        &[
+            ("GITHUB_STEP_SUMMARY", summary.path()),
+            ("GITHUB_OUTPUT", outputs.path()),
+        ],
     );
     assert_eq!(run.code, 1, "{}", run.stderr);
+    assert_eq!(
+        std::fs::read_to_string(outputs.path()).expect("read outputs"),
+        "findings=2\n"
+    );
     let lines: Vec<&str> = run.stdout.lines().collect();
     assert!(
         lines[0].starts_with(
@@ -882,11 +890,19 @@ fn github_format_counts_findings_as_the_terminal_does() {
     );
     repo.commit("Make the total test pass");
     let summary = tempfile::NamedTempFile::new().expect("temp file");
+    let outputs = tempfile::NamedTempFile::new().expect("temp file");
     let run = repo.assertrust_with_env(
         &["check", "--range", "main...HEAD", "--format", "github"],
-        &[("GITHUB_STEP_SUMMARY", summary.path())],
+        &[
+            ("GITHUB_STEP_SUMMARY", summary.path()),
+            ("GITHUB_OUTPUT", outputs.path()),
+        ],
     );
     assert_eq!(run.code, 0, "{}", run.stderr);
+    assert_eq!(
+        std::fs::read_to_string(outputs.path()).expect("read outputs"),
+        "findings=0\n"
+    );
     // Weakening of a test the PR added is counted, but not annotated.
     assert_eq!(
         run.stdout,

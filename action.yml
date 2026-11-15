@@ -16,19 +16,25 @@ inputs:
     description: Post the summary as one comment on the pull request once there are findings, and keep it updated on every push.
     default: "true"
   args:
-    description: More arguments for `assertrust check`, split on spaces. A `--range` here replaces the one worked out from the event.
+    description: More arguments for `assertrust check`, split on spaces and lines. A `--range` here replaces the one worked out from the event, and a `--fail-on` the input.
     default: ""
   path:
     description: Run this assertrust binary instead of downloading a release.
     default: ""
   github-token:
-    description: The token that posts the pull request comment.
+    description: The token that posts the pull request comment. The comment is found again on the next push only when a bot posted it, like the workflow's own token or a GitHub App's.
     default: ${{ github.token }}
+
+outputs:
+  findings:
+    description: How many findings the check listed (not counting allowed or hidden ones).
+    value: ${{ steps.run.outputs.findings }}
 
 runs:
   using: composite
   steps:
     - name: Run assertrust
+      id: run
       shell: bash
       run: '"$GITHUB_ACTION_PATH/action/run.sh"'
       env:

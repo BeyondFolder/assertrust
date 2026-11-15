@@ -205,8 +205,9 @@ impl TestRepo {
         for var in LEAKY_GIT_VARS {
             cmd.env_remove(var);
         }
-        // On GitHub Actions, a test must not write to the real job summary.
+        // On GitHub Actions, a test must not write to the real job summary or step outputs.
         cmd.env_remove("GITHUB_STEP_SUMMARY");
+        cmd.env_remove("GITHUB_OUTPUT");
         cmd.current_dir(self.path())
             .env("HOME", &home)
             .env("GIT_CONFIG_GLOBAL", home.join(".gitconfig"))

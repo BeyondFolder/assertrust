@@ -448,3 +448,35 @@ fn a_method_that_turns_static_loses_its_calls() {
         )
     );
 }
+
+#[test]
+fn a_fixtures_file_that_builds_another_class_loads_its_tests() {
+    let page = |checks: &str| format!("export class Page {{\n  expectOpen() {{ {checks} }}\n}}\n");
+    let fixtures =
+        |from: &str| format!("import {{ Page }} from '{from}'\nexport const page = new Page()\n");
+    let mut repo = TestRepo::new();
+    repo.write(
+        "test/open.test.ts",
+        "import { page } from './fixtures'\n\nit('opens', () => { page.expectOpen() })\n",
+    );
+    repo.write("test/fixtures.ts", &fixtures("./page"));
+    repo.write(
+        "test/page.ts",
+        &page("expect(this.dialog).toBeVisible(); expect(this.title).toBe('Open')"),
+    );
+    repo.write(
+        "test/page-v2.ts",
+        &page("expect(this.dialog).toBeVisible()"),
+    );
+    let base = repo.commit("Add tests");
+    // Only the import of the class it builds changes: its methods are another class's now.
+    repo.write("test/fixtures.ts", &fixtures("./page-v2"));
+    let head = repo.commit("Use the new page");
+    assert_eq!(
+        check(&repo, &["--range", &format!("{base}..HEAD")]),
+        format!(
+            "test/page-v2.ts:2  HIGH  check-removed\n  removed expect(this.title).toBe('Open') from expectOpen · {}\n\n1 finding · warn-only (exit 0)\n",
+            &head[..7]
+        )
+    );
+}

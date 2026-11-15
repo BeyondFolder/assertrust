@@ -43,13 +43,20 @@ pub fn split_list(olds: &[&Assertion], news: &[&Assertion]) -> Option<SplitList>
     let parts: Vec<Option<(Part, Says)>> = news.iter().map(|new| read(new)).collect();
     let mut split = analyse(items, exact, &parts)?;
     split.list.counted = counted;
+    // A count of the whole list next to the parts: `toHaveLength(2)`.
+    for (new, used) in news.iter().zip(&mut split.used) {
+        if !*used && part(&new.subject).is_none() && length(new) == Some(items.len()) {
+            *used = true;
+            split.list.count_kept = true;
+        }
+    }
     split.used.iter().all(|&used| used).then_some(split.list)
 }
 
-/// Step 4 of pairing checks: pairs each list check with the checks on parts of one list
-/// that state its items again. The list should be the same one, `response` and
-/// `response.at(-1)`. A list under another name (a test that now stores the response
-/// first) is accepted when some item is distinctive enough to recognize it by.
+/// Step 3 of pairing checks: pairs each list check with the checks on parts of one list
+/// that state its items again, and a count of that whole list. The list should be the same
+/// one, `response` and `response.at(-1)`. A list under another name (a test that now stores
+/// the response first) is accepted when some item is distinctive enough to recognize it by.
 pub(crate) fn pair(old: &mut Side, new: &mut Side, pairs: &mut Vec<CheckPair>) {
     for o in old.left.clone() {
         let check = old.assertion(o);
@@ -69,9 +76,9 @@ pub(crate) fn pair(old: &mut Side, new: &mut Side, pairs: &mut Vec<CheckPair>) {
             }
         }
         let names = same_list_names(check);
-        let covered: Vec<(bool, Vec<usize>)> = lists
+        let covered: Vec<(bool, &ListKey, Vec<usize>)> = lists
             .iter()
-            .filter_map(|((base, _), checks)| {
+            .filter_map(|(key, checks)| {
                 let parts: Vec<Option<(Part, Says)>> =
                     checks.iter().map(|&n| read(new.assertion(n))).collect();
                 let split = analyse(items, exact, &parts)?;
@@ -81,16 +88,21 @@ pub(crate) fn pair(old: &mut Side, new: &mut Side, pairs: &mut Vec<CheckPair>) {
                     .filter(|(_, used)| **used)
                     .map(|(&n, _)| n)
                     .collect();
-                Some((names.iter().any(|name| name == base), used))
+                Some((names.iter().any(|name| name == key.0), key, used))
             })
             .collect();
-        let chosen = match covered.iter().find(|(same, _)| *same) {
-            Some((_, used)) => used.clone(),
+        let (key, mut chosen) = match covered.iter().find(|(same, ..)| *same) {
+            Some((_, key, used)) => (*key, used.clone()),
             None => match covered.as_slice() {
-                [(_, used)] if items.iter().any(recognizable) => used.clone(),
+                [(_, key, used)] if items.iter().any(recognizable) => (*key, used.clone()),
                 _ => continue,
             },
         };
+        let whole = new.left.iter().copied().find(|&n| {
+            let count = new.assertion(n);
+            count.subject == key.0 && new.calls(n) == key.1 && length(count) == Some(items.len())
+        });
+        chosen.extend(whole);
         // A count of the same list goes with it: `toHaveLength(3)` next to
         // `expect.arrayContaining([a, b, done])`.
         let mut before = vec![o];
@@ -249,9 +261,11 @@ struct Analysis {
 /// fix. An item is matched once. When the old list was exact, a part must state the items
 /// at its place: `at(i)` the one at `i`, a slice the ones in its range.
 ///
-/// The number of items is still fixed only by one slice whose count is known (an exact list,
-/// or a `toHaveLength` on the same slice) with single items around it that cover the rest:
-/// `slice(0, -1)` and `at(-1)`, or `[0]` and `slice(1)`. Single items alone never fix it.
+/// The number of items is still fixed by a slice from a fixed start to the end, or to a
+/// fixed distance from it, whose count is known (an exact list, or a `toHaveLength` on the
+/// same slice): `slice(0, -1)` with 2 items is a list of 3. An empty one needs single items
+/// past it. Single items alone never fix it, nor does a slice up to a fixed index
+/// (`slice(0, 1)`).
 fn analyse(items: &[Value], exact: bool, parts: &[Option<(Part, Says)>]) -> Option<Analysis> {
     let count = items.len();
     let len = i64::try_from(count).ok()?;
@@ -329,18 +343,22 @@ fn analyse(items: &[Value], exact: bool, parts: &[Option<(Part, Says)>]) -> Opti
             known.get_or_insert(*n);
         }
     }
-    let count_kept = match slices.as_slice() {
-        [(Part::Slice(start, end), Some(sliced))]
-            if *start >= 0 && end.is_none_or(|end| end < 0) =>
-        {
-            let mut around: Vec<i64> = (0..*start).chain(end.unwrap_or(0)..0).collect();
-            let mut written = singles.clone();
-            around.sort_unstable();
-            written.sort_unstable();
-            around == written && sliced + singles.len() == count
+    // The list's length is then the slice's count and what it leaves out at each end. An
+    // empty slice only says the list is at most what it leaves out; single items past it
+    // say it's at least that: `at(-1)` next to an empty `slice(0, -1)`.
+    let least = singles
+        .iter()
+        .map(|&at| if at >= 0 { at + 1 } else { -at })
+        .max()
+        .unwrap_or(0);
+    let count_kept = slices.iter().any(|(part, sliced)| match (part, sliced) {
+        (Part::Slice(start, end), Some(sliced)) if *start >= 0 && end.is_none_or(|end| end < 0) => {
+            let left_out = start - end.unwrap_or(0);
+            (*sliced > 0 || least >= left_out)
+                && usize::try_from(left_out).is_ok_and(|left| left + sliced == count)
         }
         _ => false,
-    };
+    });
     Some(Analysis {
         list: SplitList {
             ordered: exact,

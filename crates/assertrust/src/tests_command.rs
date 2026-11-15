@@ -133,10 +133,7 @@ fn render(label: &str, ir: &FileIr) -> String {
         .chain(ir.helpers.iter().map(|helper| &helper.body))
         .flat_map(|body| &body.items)
         .filter_map(|item| match &item.kind {
-            ItemKind::Call(call) => Some(match &call.receiver {
-                None => call.name.as_str(),
-                Some(receiver) => receiver.split('.').next().unwrap_or_default(),
-            }),
+            ItemKind::Call(call) => Some(call.root()),
             _ => None,
         })
         .chain(ir.constructed.iter().map(String::as_str))

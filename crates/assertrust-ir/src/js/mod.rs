@@ -8,10 +8,12 @@ mod calls;
 mod config;
 mod consts;
 mod facts;
+mod free;
 mod values;
 
 pub(crate) use self::config::config;
 pub(crate) use self::facts::subject_target;
+pub(crate) use self::free::free_names;
 
 use std::collections::{HashMap, HashSet};
 

@@ -140,9 +140,11 @@ pub fn helper_checks(path: &str, file: &FileIr, modules: &dyn Modules) -> Vec<Op
                     .items
                     .iter()
                     .filter(|item| match &item.kind {
-                        ItemKind::Call(call) => {
-                            !matches!(linker.resolve(place, call), Found::Nothing)
-                        }
+                        // A method that checks nothing doesn't change what's checked.
+                        ItemKind::Call(call) => !matches!(
+                            linker.resolve(place, call),
+                            Found::Nothing | Found::Silent(..)
+                        ),
                         _ => true,
                     })
                     .cloned()
@@ -222,8 +224,11 @@ enum Found<'m> {
     /// A method call that matches several methods that check something: it can't be
     /// followed.
     Ambiguous,
+    /// For a method call, the one method by its name, which checks nothing. The call
+    /// stays, so the rules can tell a method that stopped checking from a call that's gone.
+    Silent(Place<'m>, &'m Helper),
     /// Nothing that can be followed: a package, a file that isn't read, or for a method
-    /// call, no method that checks something.
+    /// call, no method by its name, or several that check nothing.
     Nothing,
 }
 
@@ -249,6 +254,8 @@ struct Expanding<'e> {
     /// The helper's parameters, with the values the call passed, then the constants it
     /// reads from them, and `this` for a method: what the call was made on.
     args: HashMap<String, Value>,
+    /// The same without the constants, for expected values: [`fill`].
+    params: HashMap<String, Value>,
     /// The call is awaited, so the test waits for what the helper returns.
     awaited: bool,
 }
@@ -259,6 +266,7 @@ impl<'e> Expanding<'e> {
             via,
             context: Context::default(),
             args: HashMap::new(),
+            params: HashMap::new(),
             awaited: true,
         }
     }
@@ -293,7 +301,7 @@ impl<'m> Linker<'m> {
                 let mut item = item.clone();
                 item.context = from.context.with(item.context);
                 item.via = from.via.to_vec();
-                fill_item(&mut item, &from.args, from.awaited);
+                fill_item(&mut item, from, from.awaited);
                 out.push(item);
                 continue;
             };
@@ -307,12 +315,13 @@ impl<'m> Linker<'m> {
                 .as_deref()
                 .map(|receiver| fill_source(receiver, &from.args));
             let text = Call::text_of(receiver.as_deref(), &call.name, &args);
-            let found = match self.resolve(place, call) {
-                Found::Helper(target, helper) => Some((target, helper)),
-                Found::Ambiguous => None,
-                // A method call that isn't a helper's is like any other line of code.
+            let (found, follow) = match self.resolve(place, call) {
+                Found::Helper(target, helper) => (Some((target, helper)), true),
+                Found::Silent(target, helper) => (Some((target, helper)), false),
+                Found::Ambiguous => (None, false),
+                // A method call that isn't a method's is like any other line of code.
                 Found::Nothing if call.receiver.is_some() => continue,
-                Found::Nothing => None,
+                Found::Nothing => (None, false),
             };
             // The call stays, so the rules can tell a call removed from a helper that changed,
             // and a call they can't see into (no `defined`) from one that's gone.
@@ -329,7 +338,7 @@ impl<'m> Linker<'m> {
                 });
             }
             out.push(kept);
-            let Some((target, helper)) = found else {
+            let Some((target, helper)) = found.filter(|_| follow) else {
                 continue;
             };
             // Two classes in a file may each have a method by one name.
@@ -365,6 +374,7 @@ impl<'m> Linker<'m> {
             if let Some(receiver) = receiver {
                 bindings.insert("this".to_owned(), Value::Opaque(receiver));
             }
+            let params = bindings.clone();
             for (name, source) in &helper.locals {
                 let value = Value::Opaque(fill_source(source, &bindings));
                 bindings.insert(name.clone(), value);
@@ -373,6 +383,7 @@ impl<'m> Linker<'m> {
                 via: &via,
                 context,
                 args: bindings,
+                params,
                 awaited,
             };
             stack.push(key);
@@ -410,7 +421,7 @@ impl<'m> Linker<'m> {
                     unsure |= cycle;
                     checks
                 }
-                Found::Ambiguous | Found::Nothing => false,
+                Found::Silent(..) | Found::Ambiguous | Found::Nothing => false,
             },
             _ => false,
         });
@@ -457,7 +468,7 @@ impl<'m> Linker<'m> {
                 return if self.runs_checks_in(target, helper).0 {
                     Found::Helper(target, helper)
                 } else {
-                    Found::Nothing
+                    Found::Silent(target, helper)
                 };
             }
         }
@@ -482,8 +493,9 @@ impl<'m> Linker<'m> {
     /// The one method called `name` that checks something, in the file `place` is in and
     /// the files it imports, called on something whose name ends in `named`. An instance
     /// method counts only when its class is built (`new Page()`) or extended in one of those
-    /// files: an object of a class nobody builds can't be what the call is made on. Also
-    /// says whether the answer leaned on a helper still being worked out.
+    /// files: an object of a class nobody builds can't be what the call is made on. With
+    /// none that checks, the one that doesn't, if there's one. Also says whether the answer
+    /// leaned on a helper still being worked out.
     fn method_by_name(&self, place: Place<'m>, named: &str, name: &str) -> (Found<'m>, bool) {
         let files = self.search(place);
         let built: HashSet<&str> = files
@@ -491,6 +503,7 @@ impl<'m> Linker<'m> {
             .flat_map(|(_, file, _)| file.constructed.iter().map(String::as_str))
             .collect();
         let mut found: Vec<(Place<'m>, &'m Helper)> = Vec::new();
+        let mut silent: Vec<(Place<'m>, &'m Helper)> = Vec::new();
         let mut unsure = false;
         for &(path, file, other) in files.iter() {
             for helper in &file.helpers {
@@ -516,12 +529,15 @@ impl<'m> Linker<'m> {
                 unsure |= cycle;
                 if checks {
                     found.push((target, helper));
+                } else {
+                    silent.push((target, helper));
                 }
             }
         }
-        let found = match found.as_slice() {
-            [] => Found::Nothing,
-            [(target, helper)] => Found::Helper(*target, helper),
+        let found = match (found.as_slice(), silent.as_slice()) {
+            ([], [(target, helper)]) => Found::Silent(*target, helper),
+            ([], _) => Found::Nothing,
+            ([(target, helper)], _) => Found::Helper(*target, helper),
             _ => Found::Ambiguous,
         };
         (found, unsure)
@@ -650,11 +666,30 @@ impl<'m> Linker<'m> {
 /// An argument a helper passes on, with its own parameters (and `this`) filled in wherever
 /// they appear: `await this.syncStream(auth, types)` is
 /// `await ctx.syncStream(auth, [SyncRequestType.UsersV1])`. It becomes the next helper's
-/// parameter, which may be a check's subject.
+/// parameter, which may be a check's subject. Each name is filled in once: what it's
+/// filled with is in the caller's names, so `check(b, a)` in a helper called with `(a, b)`
+/// passes on `(a, b)`.
 fn fill_argument(value: &Value, args: &HashMap<String, Value>) -> Value {
-    match fill(value, args) {
-        Value::Opaque(source) => Value::Opaque(fill_source(&source, args)),
-        filled => filled,
+    match value {
+        Value::Opaque(source) => match fill(value, args) {
+            // A whole parameter, or the length of an array that was passed.
+            filled if filled != *value => filled,
+            _ => Value::Opaque(fill_source(source, args)),
+        },
+        Value::Array(items) => {
+            Value::Array(items.iter().map(|item| fill_argument(item, args)).collect())
+        }
+        Value::Object(fields) => Value::Object(
+            fields
+                .iter()
+                .map(|(key, value)| (key.clone(), fill_argument(value, args)))
+                .collect(),
+        ),
+        Value::Matcher { name, args: inner } => Value::Matcher {
+            name: name.clone(),
+            args: inner.iter().map(|arg| fill_argument(arg, args)).collect(),
+        },
+        other => other.clone(),
     }
 }
 
@@ -663,7 +698,8 @@ fn fill_argument(value: &Value, args: &HashMap<String, Value>) -> Value {
 /// (`schema.safeParse(input).data`) stays as written: a call that passes the same thing
 /// under another name (`proto` for `JSON.parse(…)`) mustn't make the outcome look changed.
 /// The length of an array that was passed is its number of items: `records.length` is `2`
-/// for a call with `[a, b]`.
+/// for a call with `[a, b]`. The constants a helper reads from its arguments aren't filled
+/// in here, for the same reason: `toEqual(expected)` for `const expected = input.trim()`.
 fn fill(value: &Value, args: &HashMap<String, Value>) -> Value {
     match value {
         Value::Opaque(source) => {
@@ -697,7 +733,8 @@ fn fill(value: &Value, args: &HashMap<String, Value>) -> Value {
 
 /// Fills a helper's item in for one call: its subject and expected values get the call's
 /// arguments, and a check the helper returns is awaited only if the call is.
-fn fill_item(item: &mut Item, args: &HashMap<String, Value>, awaited: bool) {
+fn fill_item(item: &mut Item, from: &Expanding, awaited: bool) {
+    let (args, params) = (&from.args, &from.params);
     match &mut item.kind {
         ItemKind::Assertion(assertion) => {
             assertion.awaited &= awaited;
@@ -708,23 +745,23 @@ fn fill_item(item: &mut Item, args: &HashMap<String, Value>, awaited: bool) {
             }
             if let Some(matcher) = &mut assertion.matcher {
                 for arg in &mut matcher.args {
-                    *arg = fill(arg, args);
+                    *arg = fill(arg, params);
                 }
             }
             for fact in &mut assertion.facts {
                 fill_base(fact, args);
                 match &mut fact.test {
-                    FactTest::Equals(value) => *value = fill(value, args),
+                    FactTest::Equals(value) => *value = fill(value, params),
                     FactTest::Other { args: values, .. } => {
                         for value in values {
-                            *value = fill(value, args);
+                            *value = fill(value, params);
                         }
                     }
                     FactTest::Defined | FactTest::Truthy | FactTest::Falsy => {}
                 }
             }
         }
-        ItemKind::AssertionCount(Some(count)) => *count = fill(count, args),
+        ItemKind::AssertionCount(Some(count)) => *count = fill(count, params),
         _ => {}
     }
 }
@@ -757,11 +794,26 @@ fn fill_base(fact: &mut Fact, args: &HashMap<String, Value>) {
 /// is `refund().status` for a call `expectOk(refund())`. Properties (`x.res`), object keys
 /// (`{ res: 1 }`) and strings are left alone, a shorthand property keeps its key
 /// (`{ res: refund() }`), and a value that isn't a single term is put in parentheses where
-/// it's read from: `(await refund()).status`.
+/// it's read from: `(await refund()).status`. Source that may bind names or hold a regex
+/// is parsed first, so a name a function in it binds (`res` in `rows.find((res) => res.ok)`)
+/// stays.
 pub(crate) fn fill_source(source: &str, args: &HashMap<String, Value>) -> String {
     if args.is_empty() {
         return source.to_owned();
     }
+    let free = (source.contains("=>") || source.contains("function") || source.contains('/'))
+        .then(|| crate::js::free_names(source))
+        .flatten()
+        .map(|starts| {
+            let bytes: Vec<usize> = source.char_indices().map(|(at, _)| at).collect();
+            (starts, bytes)
+        });
+    // Whether the word at this character is a name read from outside the source.
+    let is_free = |at: usize| {
+        free.as_ref().is_none_or(|(starts, bytes)| {
+            u32::try_from(bytes[at]).is_ok_and(|at| starts.contains(&at))
+        })
+    };
     let chars: Vec<char> = source.chars().collect();
     let mut out = String::with_capacity(source.len());
     // The brackets open where the walk is, to tell an object's shorthand property.
@@ -822,7 +874,7 @@ pub(crate) fn fill_source(source: &str, args: &HashMap<String, Value>) -> String
         let shorthand = open.last() == Some(&'{')
             && matches!(before, Some('{' | ','))
             && matches!(after, Some('}' | ','));
-        match args.get(&word) {
+        match args.get(&word).filter(|_| is_free(start)) {
             Some(value) if shorthand => {
                 out.push_str(&word);
                 out.push_str(": ");
@@ -833,7 +885,14 @@ pub(crate) fn fill_source(source: &str, args: &HashMap<String, Value>) -> String
                 // On its own (the whole subject, an item, an argument) it needs none.
                 let alone = matches!(before, None | Some('(' | '[' | ','))
                     && matches!(after, None | Some(')' | ']' | ','));
-                if !alone && !single_term(&text) {
+                // `-0.5.toFixed(1)` would read `-(0.5.toFixed(1))`.
+                let rest: String = chars[i..].iter().collect();
+                let rest = rest.trim_start();
+                let negated_and_read = text.starts_with('-')
+                    && [".", "[", "(", "?.", "**"]
+                        .iter()
+                        .any(|read| rest.starts_with(read));
+                if !alone && (!single_term(&text) || negated_and_read) {
                     out.push('(');
                     out.push_str(&text);
                     out.push(')');
@@ -1134,7 +1193,7 @@ it('works', async () => {
   schema.validate(input);
 });
 ";
-        // `url` checks nothing, so calling it is like any other line. Two methods called
+        // `url` checks nothing: the call stays, but isn't followed. Two methods called
         // `check` check something: which one `thing` has isn't known. A static method, or
         // an object's, is only called on its owner: `db.reset()` isn't `B.reset()`. Nothing
         // builds a `Form`, so `schema` can't be one.
@@ -1145,6 +1204,7 @@ it('works', async () => {
                 "works: 4 call page.expectOpen() via page.expectSaved(7)",
                 "works: 3 expect(this.dialog.visible).toBe(true) via page.expectSaved(7) > page.expectOpen()",
                 "works: 4 expect(await db.get(id)).toBeDefined() via page.expectSaved(7)",
+                "works: 15 call page.url()",
                 "works: 16 call page.expectClosed()",
                 "works: 6 expect(this.dialog.visible).toBe(false) via page.expectClosed()",
                 "works: 17 call api.expectOk(res)",
@@ -1210,6 +1270,39 @@ it('reads', async () => {
     }
 
     #[test]
+    fn arguments_passed_on_are_filled_in_once() {
+        // `check(b, a)` passes what was passed for `b` first: the names in what's filled
+        // in are the caller's, not the helper's.
+        let source = "
+function expectEq(x, y) { expect(x).toBe(y) }
+function check(a, b) { expectEq(b, a) }
+function expectBody(res, body) { expectEq(res.body, body) }
+it('swaps', () => { check(a, b); expectBody(r, res.body) });
+";
+        assert_eq!(
+            checked(source),
+            ["b | b == a", "r.body | r.body == res.body"]
+        );
+    }
+
+    #[test]
+    fn constants_read_from_arguments_stay_in_expected_values() {
+        // A test that renames what it passes doesn't change the outcome the check expects.
+        let source = "
+function expectTrimmed(input) {
+  const expected = input.trim();
+  expect(out).toEqual(expected);
+  expect(expected).toBe('ok');
+}
+it('trims', () => { expectTrimmed(raw) });
+";
+        assert_eq!(
+            checked(source),
+            ["out | out == expected", "raw.trim() | raw.trim() == 'ok'"]
+        );
+    }
+
+    #[test]
     fn filling_in_leaves_properties_keys_and_strings_alone() {
         let args: HashMap<String, Value> = [
             ("res".to_owned(), Value::Opaque("await refund()".to_owned())),
@@ -1228,6 +1321,33 @@ it('reads', async () => {
         assert_eq!(fill("get('res', `id ${id}`)"), "get('res', `id ${id}`)");
         assert_eq!(fill("[...res, id2]"), "[...(await refund()), id2]");
         assert_eq!(fill("res?.body"), "(await refund())?.body");
+        // A name a function in the source binds is its own, and a regex has no names.
+        assert_eq!(
+            fill("items.filter((res) => res.ok)"),
+            "items.filter((res) => res.ok)"
+        );
+        assert_eq!(
+            fill("rows.find((row) => row.id === res.id)"),
+            "rows.find((row) => row.id === (await refund()).id)"
+        );
+        assert_eq!(fill("/id/.test(res)"), "/id/.test(await refund())");
+        // A negative number read from needs parentheses.
+        let args: HashMap<String, Value> = [
+            ("n".to_owned(), Value::Number("-0.5".to_owned())),
+            ("this".to_owned(), Value::Opaque("page".to_owned())),
+        ]
+        .into();
+        let fill = |source| fill_source(source, &args);
+        assert_eq!(fill("n.toFixed(1)"), "(-0.5).toFixed(1)");
+        assert_eq!(fill("total - n"), "total - -0.5");
+        assert_eq!(
+            fill("rows.map((row) => this.cell(row))"),
+            "rows.map((row) => page.cell(row))"
+        );
+        assert_eq!(
+            fill("rows.map(function () { return this.cell })"),
+            "rows.map(function () { return this.cell })"
+        );
         assert!(single_term("data?.body"));
         assert!(single_term("data!.body"));
         assert!(!single_term("a !== b"));

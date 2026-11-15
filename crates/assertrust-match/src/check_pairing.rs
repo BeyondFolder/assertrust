@@ -66,6 +66,9 @@ pub(crate) fn pair_checks(before: &Test, after: &Test) -> CheckMatching {
         any,
         |a| Some(format!("{}\u{0}{:?}", a.subject, kind(a))),
     );
+    // Before checks on the same subject: a list split into parts may keep a count of the
+    // whole list, `toHaveLength(2)`, which isn't what the list check became.
+    crate::parts::pair(&mut old, &mut new, &mut pairs);
     by_key(
         &mut old,
         &mut new,
@@ -74,7 +77,6 @@ pub(crate) fn pair_checks(before: &Test, after: &Test) -> CheckMatching {
         any,
         |a| Some(a.subject.clone()),
     );
-    crate::parts::pair(&mut old, &mut new, &mut pairs);
     same_fact(&mut old, &mut new, &mut pairs);
     same_expected(&mut old, &mut new, &mut pairs);
     // The same matcher and arguments on a refactored subject, in order:
@@ -215,7 +217,7 @@ fn closest(assertion: &Assertion, candidates: &[usize], side: &Side) -> Option<u
     }
 }
 
-/// Step 4: checks written differently that state a fact in common. A check can share facts
+/// Step 5: checks written differently that state a fact in common. A check can share facts
 /// with several on the other side, so this pairs groups: everything connected by a shared
 /// fact.
 fn same_fact(old: &mut Side, new: &mut Side, pairs: &mut Vec<CheckPair>) {
@@ -269,7 +271,7 @@ fn same_fact(old: &mut Side, new: &mut Side, pairs: &mut Vec<CheckPair>) {
     }
 }
 
-/// Step 5: the subject was refactored, but a distinctive expected value is still there:
+/// Step 6: the subject was refactored, but a distinctive expected value is still there:
 /// `expect(fields.text).toBe('Hi there')` → `expect(textOf(html)).toBe('Hi there')`, or
 /// `expect(parse(x)).toEqual({ text: 'Hi there', preview: … })` → `expect(textOf(x)).toBe('Hi there')`.
 /// Pairs one to one. A check that could pair with several goes to the one with the closest
@@ -321,7 +323,7 @@ fn same_expected(old: &mut Side, new: &mut Side, pairs: &mut Vec<CheckPair>) {
     }
 }
 
-/// Step 7: a refactored subject with the same matcher kind, scored by how alike the
+/// Step 8: a refactored subject with the same matcher kind, scored by how alike the
 /// subjects are plus how alike the expected values are (0 to 2). A pair needs subjects that
 /// share a word, and either a mostly matching expected value or a mostly matching subject:
 /// `expect(rows.map(toId)).toEqual({ a: 1, b: 0 })` → `expect(tracked('a')).toEqual({ a: 1, b: 0, c: 0 })`.

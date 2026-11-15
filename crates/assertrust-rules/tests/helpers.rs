@@ -619,6 +619,16 @@ fn a_check_removed_from_a_method_is_one_finding_for_every_test() {
             "check-removed high test/api.ts:2: removed expect(res.body.ok).toBe(true) from expectOk (in 2 tests)"
         ]
     );
+    // Its last check removed: the method checks nothing now, but the tests still call it.
+    let checks_nothing = weaker.replace("    expect(res.status).toBe(200);\n", "");
+    let after = Files::default().with("./api", "test/api.ts", &checks_nothing);
+    assert_eq!(
+        findings_with(tests, tests, (&before, &after)),
+        [
+            "check-removed high test/api.ts:2: removed expect(res.status).toBe(200) from expectOk (in 2 tests)",
+            "check-removed high test/api.ts:2: removed expect(res.body.ok).toBe(true) from expectOk (in 2 tests)"
+        ]
+    );
 }
 
 #[test]
@@ -648,6 +658,26 @@ fn single_items_or_a_partial_slice_do_not_fix_the_count() {
         findings(
             "it('a', () => {\n  expect(res).toEqual(['head', { id: 1 }])\n})",
             "it('a', () => {\n  expect(res[0]).toBe('head');\n  expect(res.slice(1)).toEqual([{ id: 1 }])\n})",
+        ),
+        Vec::<String>::new()
+    );
+}
+
+#[test]
+fn a_slice_with_a_known_count_fixes_the_length() {
+    // `slice(0, -1)` with 2 items is a list of 3, whichever way the last one is read.
+    assert_eq!(
+        findings(
+            "it('a', () => {\n  expect(res).toEqual([{ id: 1 }, { id: 2 }, 'done'])\n})",
+            "it('a', () => {\n  expect(res.slice(0, -1)).toEqual([{ id: 1 }, { id: 2 }]);\n  expect(res[2]).toBe('done')\n})",
+        ),
+        Vec::<String>::new()
+    );
+    // A count of the whole list goes with its parts, rather than standing in for the list.
+    assert_eq!(
+        findings(
+            "it('a', () => {\n  expect(res).toEqual([{ id: 1 }, 'done'])\n})",
+            "it('a', () => {\n  expect(res).toHaveLength(2);\n  expect(res.at(-1)).toBe('done');\n  expect(res.slice(0, -1)).toEqual(expect.arrayContaining([{ id: 1 }]))\n})",
         ),
         Vec::<String>::new()
     );

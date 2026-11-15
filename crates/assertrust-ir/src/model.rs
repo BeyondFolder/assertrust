@@ -246,6 +246,15 @@ impl Call {
             None => format!("{name}({})", args.join(", ")),
         }
     }
+
+    /// The name a call starts from, which an import may bring in: `expectOk` for
+    /// `expectOk(res)`, `api` for `api.users.expectOk(res)`.
+    pub fn root(&self) -> &str {
+        match &self.receiver {
+            Some(receiver) => receiver.split('.').next().unwrap_or_default(),
+            None => &self.name,
+        }
+    }
 }
 
 /// Where a helper (or hook) is defined.

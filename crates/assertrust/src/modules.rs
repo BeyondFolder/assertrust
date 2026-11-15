@@ -605,11 +605,7 @@ fn followed(file: &FileIr) -> impl Iterator<Item = &Import> {
     for body in bodies {
         for item in &body.items {
             if let ItemKind::Call(call) = &item.kind {
-                match &call.receiver {
-                    None => used.insert(call.name.as_str()),
-                    // `api.expectOk(…)`, `app.album.expectOpen(…)`: the name it starts from.
-                    Some(receiver) => used.insert(receiver.split('.').next().unwrap_or_default()),
-                };
+                used.insert(call.root());
             }
         }
     }

@@ -9,7 +9,7 @@
 //! → test/refund.test.ts is loaded on both sides, each linked to its side's helpers
 //! ```
 
-use std::collections::HashSet;
+use std::collections::{BTreeSet, HashSet};
 
 use assertrust_git::{Classifier, Comparison, FileChange, FileKind, Repo, Rev};
 use assertrust_ir::{FileIr, Gate, Helper, Import, Item, ItemKind, ParseError, Via};
@@ -377,6 +377,11 @@ fn checks_changed(
     if !before.tests.is_empty() || !after.tests.is_empty() {
         return Ok(false);
     }
+    // Only lines moved: nothing that decides a check changed in this file. A file it
+    // follows that changed is checked on its own.
+    if same_helper_file(before, after) {
+        return Ok(false);
+    }
     // Each side's helpers, with what decides their checks for the ones that check
     // something, and whether the file checks anything (maybe only through the files it
     // follows, so its imports count).
@@ -392,15 +397,18 @@ fn checks_changed(
     let (news, checks_after) = checking(after_path, after, &mut modules.1)?;
     let (olds, news) = (checking_ones(before, &olds), checking_ones(after, &news));
     // The imports that may lead to checks: the ones those helpers call (or call methods
-    // on), and the ones passed on.
-    let mut used: HashSet<&str> = HashSet::new();
+    // on), the classes the file builds objects from (`export const page = new Page()`:
+    // their methods are looked for), and the ones passed on.
+    let mut used: HashSet<&str> = before
+        .constructed
+        .iter()
+        .chain(&after.constructed)
+        .map(String::as_str)
+        .collect();
     for (_, items) in olds.iter().chain(&news) {
         for item in *items {
             if let ItemKind::Call(call) = &item.kind {
-                used.insert(match &call.receiver {
-                    Some(receiver) => receiver.split('.').next().unwrap_or_default(),
-                    None => call.name.as_str(),
-                });
+                used.insert(call.root());
             }
         }
     }
@@ -411,7 +419,9 @@ fn checks_changed(
             .cloned()
             .collect()
     };
-    if (checks_before || checks_after) && imports(before) != imports(after) {
+    if (checks_before || checks_after)
+        && (imports(before) != imports(after) || built(before) != built(after))
+    {
         return Ok(true);
     }
     Ok(olds.len() != news.len()
@@ -426,6 +436,40 @@ fn checks_changed(
                 || a.default_export != b.default_export
                 || !same_items(a_items, b_items)
         }))
+}
+
+/// Whether two versions of a helper file have the same helpers, imports and objects built,
+/// ignoring lines.
+fn same_helper_file(before: &FileIr, after: &FileIr) -> bool {
+    before.imports == after.imports
+        && before.constructed == after.constructed
+        && before.helpers.len() == after.helpers.len()
+        && before.helpers.iter().zip(&after.helpers).all(|(a, b)| {
+            (
+                &a.name,
+                &a.owner,
+                a.on_owner,
+                &a.suites,
+                &a.params,
+                &a.locals,
+                a.is_async,
+                a.default_export,
+            ) == (
+                &b.name,
+                &b.owner,
+                b.on_owner,
+                &b.suites,
+                &b.params,
+                &b.locals,
+                b.is_async,
+                b.default_export,
+            ) && same_items(&a.body.items, &b.body.items)
+        })
+}
+
+/// The classes a file builds objects from or extends.
+fn built(ir: &FileIr) -> BTreeSet<&str> {
+    ir.constructed.iter().map(String::as_str).collect()
 }
 
 /// A helper file's side, read: its path (none for a side where it doesn't exist) and IR.

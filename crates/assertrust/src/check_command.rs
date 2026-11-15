@@ -61,12 +61,13 @@ pub fn run(args: &CheckArgs) -> Result<ExitCode, String> {
         let pull_request = judge::pull_request(&analysis);
         let prompts = judge::prompts(&repo, &report, &picked, pull_request.as_ref());
         if args.judge_dry_run {
-            let text = judge::dry_run(repo.root(), judge, &report, &picked, &prompts)?;
+            let text =
+                judge::dry_run(&judge::cache_dir(&repo)?, judge, &report, &picked, &prompts)?;
             crate::print_stdout(&text)?;
             return Ok(ExitCode::SUCCESS);
         }
         if !picked.is_empty() {
-            let asked = judge::ask(repo.root(), judge, &prompts);
+            let asked = judge::ask(&judge::cache_dir(&repo)?, judge, &prompts);
             judge::apply(&mut report, &picked, asked.judgments, analysis.net.as_ref());
             report.notes.extend(asked.notes);
             judged = Some(Summary {
@@ -112,7 +113,7 @@ fn render(
         .findings
         .iter()
         .filter(|reported| visible(reported, config, verbose))
-        .partition(|reported| reported.judged_fine());
+        .partition(|reported| reported.folded(config));
     for (i, reported) in visible.iter().enumerate() {
         // With `-v` each finding takes several lines, so they're kept apart.
         if verbose && i > 0 {
@@ -166,13 +167,27 @@ fn summary(report: &Report, config: &Config, verbose: bool) -> String {
         .iter()
         .filter(|reported| reported.status == Status::Hidden)
         .collect();
-    let fine = report
+    // Those the judge calls fine are counted apart: shown ones, and hidden ones `-v` lists.
+    let fine_shown = report
         .findings
         .iter()
-        .filter(|reported| reported.status == Status::Shown && reported.judged_fine())
+        .filter(|reported| reported.status == Status::Shown && reported.folded(config))
         .count();
-    let shown = report.with_status(|status| *status == Status::Shown) - fine
-        + if verbose { hidden.len() } else { 0 };
+    let fine_hidden = if verbose {
+        hidden
+            .iter()
+            .filter(|reported| reported.folded(config))
+            .count()
+    } else {
+        0
+    };
+    let fine = fine_shown + fine_hidden;
+    let shown = report.with_status(|status| *status == Status::Shown) - fine_shown
+        + if verbose {
+            hidden.len() - fine_hidden
+        } else {
+            0
+        };
     let mut parts = vec![if shown == 0 {
         "no findings".to_owned()
     } else {

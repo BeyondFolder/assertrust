@@ -32,9 +32,38 @@ const MAX_BODY: usize = 4000;
 #[derive(Default)]
 pub struct Files {
     texts: HashMap<(String, String), Option<String>>,
+    /// Unified diffs, by the two sides and the file's path.
+    diffs: HashMap<(String, String, String), String>,
 }
 
 impl Files {
+    /// The unified diff of `file` in `comparison`, made once per change.
+    fn diff(&mut self, repo: &Repo, comparison: &Comparison, file: &FileChange) -> &str {
+        let key = (
+            format!("{:?}", comparison.before),
+            format!("{:?}", comparison.after),
+            file.path().to_owned(),
+        );
+        if !self.diffs.contains_key(&key) {
+            let side = |files: &mut Self, rev: &Rev, path: &Option<String>| {
+                path.as_deref()
+                    .and_then(|path| files.text(repo, rev, path))
+                    .unwrap_or_default()
+                    .to_owned()
+            };
+            let before = side(self, &comparison.before, &file.path_before);
+            let after = side(self, &comparison.after, &file.path_after);
+            let diff = unified(
+                &before,
+                &after,
+                file.path_before.as_deref().unwrap_or("/dev/null"),
+                file.path_after.as_deref().unwrap_or("/dev/null"),
+            );
+            self.diffs.insert(key.clone(), diff);
+        }
+        &self.diffs[&key]
+    }
+
     /// The file at `path` on side `rev`, if it's there and is text.
     fn text(&mut self, repo: &Repo, rev: &Rev, path: &str) -> Option<&str> {
         let key = (format!("{rev:?}"), path.to_owned());
@@ -129,8 +158,12 @@ fn meaning(rule: RuleId) -> &'static str {
 /// Where a finding's test is: a finding in a helper names it with its file in front
 /// (`test/a.test.ts: refunds`).
 fn test_place<'a>(finding_path: &'a str, id: &'a str) -> (&'a str, &'a str) {
+    const SOURCE: [&str; 8] = [".ts", ".tsx", ".js", ".jsx", ".mts", ".cts", ".mjs", ".cjs"];
     match id.split_once(": ") {
-        Some((path, rest)) if path.contains('.') && !path.contains(char::is_whitespace) => {
+        Some((path, rest))
+            if !path.contains(char::is_whitespace)
+                && SOURCE.iter().any(|extension| path.ends_with(extension)) =>
+        {
             (path, rest)
         }
         _ => (finding_path, id),
@@ -226,7 +259,7 @@ fn diffs(
         if path == finding_path || test_files.contains(&path) {
             0
         } else if names.contains(&name(stem(path)))
-            || mentioned.iter().any(|text| text.contains(stem(path)))
+            || mentioned.iter().any(|text| imports(text, stem(path)))
         {
             1
         } else if matches!(file.kind, FileKind::Test | FileKind::TestSupport) {
@@ -249,23 +282,7 @@ fn diffs(
             skipped.push(file.path().to_owned());
             continue;
         }
-        let before = file
-            .path_before
-            .as_deref()
-            .and_then(|path| files.text(repo, &comparison.before, path))
-            .map(str::to_owned);
-        let after = file
-            .path_after
-            .as_deref()
-            .and_then(|path| files.text(repo, &comparison.after, path))
-            .map(str::to_owned);
-        let diff = unified(
-            before.as_deref().unwrap_or_default(),
-            after.as_deref().unwrap_or_default(),
-            file.path_before.as_deref().unwrap_or("/dev/null"),
-            file.path_after.as_deref().unwrap_or("/dev/null"),
-        );
-        let lines: Vec<&str> = diff.lines().collect();
+        let lines: Vec<&str> = files.diff(repo, comparison, file).lines().collect();
         if lines.is_empty() {
             continue;
         }
@@ -332,6 +349,29 @@ fn unified(before: &str, after: &str, path_before: &str, path_after: &str) -> St
         .to_string()
 }
 
+/// Whether `text` imports a module named `stem`: `from '../src/api'`, `require("./api.js")`,
+/// `import('./api')`. A URL (`fetch('/api/users')`) or a word inside another isn't one.
+fn imports(text: &str, stem: &str) -> bool {
+    if stem.is_empty() {
+        return false;
+    }
+    ["from", "require(", "import("].iter().any(|keyword| {
+        text.match_indices(keyword).any(|(at, _)| {
+            let rest = text[at + keyword.len()..].trim_start();
+            let Some(quote) = rest
+                .chars()
+                .next()
+                .filter(|c| matches!(c, '\'' | '"' | '`'))
+            else {
+                return false;
+            };
+            let specifier = rest[1..].split(quote).next().unwrap_or_default();
+            let last = specifier.rsplit('/').next().unwrap_or(specifier);
+            self::stem(last) == stem
+        })
+    })
+}
+
 /// `src/forwarding.ts` → `forwarding`: what an import of it says.
 fn stem(path: &str) -> &str {
     let name = path.rsplit('/').next().unwrap_or(path);
@@ -386,6 +426,23 @@ mod tests {
             test_place("test/a.test.ts", "refunds > note: partial"),
             ("test/a.test.ts", "refunds > note: partial")
         );
+        // A describe block named like a version isn't a file.
+        assert_eq!(
+            test_place("test/a.test.ts", "v2.0: migration > keeps ids"),
+            ("test/a.test.ts", "v2.0: migration > keeps ids")
+        );
+    }
+
+    #[test]
+    fn imports_are_paths_not_words() {
+        let test =
+            "import { refund } from '../src/api'\nimport x from \"./util.js\"\nfetch('/api/users')";
+        assert!(imports(test, "api"));
+        assert!(imports(test, "util"));
+        assert!(!imports(test, "users"));
+        assert!(!imports(test, "ref"));
+        // A dotfile has no stem: it's never one.
+        assert!(!imports(test, ""));
     }
 
     #[test]

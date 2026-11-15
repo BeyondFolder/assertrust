@@ -75,7 +75,8 @@ pub fn run(args: &BacktestArgs) -> Result<ExitCode, String> {
     let judged = args
         .judge
         .on()
-        .then(|| judge_all(&repo, &mut units, &judge_config(args)));
+        .then(|| judge_all(&repo, &mut units, &judge_config(args)))
+        .transpose()?;
     let scored = labels.as_ref().map(|labels| Scored::new(labels, &units));
     let output = match args.format {
         BacktestFormat::Terminal => render(&units, scored.as_ref(), judged.as_ref(), args, started),
@@ -115,13 +116,13 @@ struct Judged {
 
 /// Asks the judge about every finding that has a prompt, all at once, and puts the verdicts
 /// on them: a changed outcome it doesn't call fine is then shown, as a check would.
-fn judge_all(repo: &Repo, units: &mut [Unit], config: &JudgeConfig) -> Judged {
+fn judge_all(repo: &Repo, units: &mut [Unit], config: &JudgeConfig) -> Result<Judged, String> {
     let prompts: Vec<Prompt> = units
         .iter()
         .flat_map(|unit| &unit.findings)
         .filter_map(|owned| owned.prompt.clone())
         .collect();
-    let asked = judge::ask(repo.root(), config, &prompts);
+    let asked = judge::ask(&judge::cache_dir(repo)?, config, &prompts);
     let mut judgments = asked.judgments.into_iter();
     for owned in units
         .iter_mut()
@@ -133,20 +134,22 @@ fn judge_all(repo: &Repo, units: &mut [Unit], config: &JudgeConfig) -> Judged {
             && owned.status == Status::Hidden
             && judgment.verdict != Verdict::Fine
         {
-            // As a check would show it: on code the PR added, it's hidden by default.
+            // As a check would show it: on code the PR added, only with --show-pr-added.
             if owned.added {
                 owned.status = Status::PrAdded;
+                owned.quiet = owned.show_pr_added;
+                owned.verbose = owned.show_pr_added;
             } else {
                 owned.status = Status::Shown;
                 owned.quiet = true;
             }
         }
     }
-    Judged {
+    Ok(Judged {
         summary: asked.summary,
         notes: asked.notes,
         fail_on: config.fail_on.clone(),
-    }
+    })
 }
 
 /// The commits to replay, oldest first, and their range with full SHAs (`BASE..HEAD`).
@@ -334,6 +337,8 @@ struct Owned {
     verbose: bool,
     /// About code its PR added (`judge::pr_added`).
     added: bool,
+    /// Whether its check shows findings on code a PR added.
+    show_pr_added: bool,
     /// What the judge is sent about it, with `--judge`.
     prompt: Option<Prompt>,
     /// What the judge said.
@@ -489,6 +494,7 @@ fn run_check(
             quiet: check_command::visible(reported, &config, false),
             verbose: check_command::visible(reported, &config, true),
             added: judge::pr_added(reported, analysis.net.as_ref()),
+            show_pr_added: config.show_pr_added,
             prompt: None,
             judgment: None,
         })

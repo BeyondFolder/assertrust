@@ -160,7 +160,7 @@ Commit the updated labels with the change, and say in the PR how precision moved
 
 Mailyond's labels quote its code, so they live outside this repo. Set `ASSERTRUST_PRIVATE_LABELS` to the directory holding them (`mailyond.toml`), and the script replays those too, cloning over SSH with your GitHub access.
 
-**Measuring the judge.** `backtest/run.sh --judge-model anthropic/claude-haiku-5-5` sends every labelled finding (719 of them) to that model and prints how its verdicts fall on each label. That costs real money (about $1 on Haiku 5.5, $15 on Sonnet 5.5, $31 on Opus 5.5, as measured when the judge was added) and needs the provider's key in the environment. Verdicts are cached in each clone's `.assertrust/cache/judge/`, so a second run with the same prompt is free; a change to the prompt or the evidence asks again. Tests never reach a real model: the harness removes the providers' keys, and `FakeModel` in `tests/common` stands in for Anthropic's API.
+**Measuring the judge.** `backtest/run.sh --judge-model anthropic/claude-haiku-5-5` sends every labelled finding (719 of them) to that model and prints how its verdicts fall on each label. That costs real money (about $1 on Haiku 5.5, $15 on Sonnet 5.5, $31 on Opus 5.5, as measured when the judge was added) and needs the provider's key in the environment. Verdicts are cached in each clone's `.git/assertrust/judge/`, so a second run with the same prompt is free; a change to the prompt or the evidence asks again. Tests never reach a real model: the harness removes the providers' keys, and `FakeModel` in `tests/common` stands in for Anthropic's API.
 
 ## Exit codes
 

@@ -128,22 +128,22 @@ fn annotated<'r, 'a>(report: &'r Report<'a>, config: &Config) -> Vec<&'r Reporte
             Status::PrAdded => config.show_pr_added,
             _ => false,
         })
-        .filter(|reported| !reported.judged_fine())
+        .filter(|reported| !reported.folded(config))
         .collect()
 }
 
-/// Shown findings the judge calls fine: listed apart, folded.
-fn judged_fine<'r, 'a>(report: &'r Report<'a>) -> Vec<&'r Reported<'a>> {
+/// Shown findings the judge calls fine that don't fail the check: listed apart, folded.
+fn judged_fine<'r, 'a>(report: &'r Report<'a>, config: &Config) -> Vec<&'r Reported<'a>> {
     report
         .findings
         .iter()
-        .filter(|reported| reported.status == Status::Shown && reported.judged_fine())
+        .filter(|reported| reported.status == Status::Shown && reported.folded(config))
         .collect()
 }
 
 /// `2 findings`, or `no findings · 1 judged fine · 1 on code this PR added hidden`.
 fn headline(report: &Report, config: &Config) -> String {
-    let fine = judged_fine(report).len();
+    let fine = judged_fine(report, config).len();
     let shown = report.with_status(|status| *status == Status::Shown) - fine;
     let mut text = if shown == 0 {
         "no findings".to_owned()
@@ -201,7 +201,7 @@ pub fn summary(report: &Report, config: &Config, judge_run: Option<&Summary>) ->
             );
         }
     }
-    let fine = judged_fine(report);
+    let fine = judged_fine(report, config);
     if !fine.is_empty() {
         line(&mut out, "");
         line(

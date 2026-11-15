@@ -43,11 +43,14 @@ runs:
   using: composite
   steps:
     # The judge's verdicts, so a change judged before keeps its verdict and costs nothing.
+    # They live in the git directory, where no commit can put verdicts of its own.
     - name: Restore the judge's verdicts
-      if: inputs.judge == 'true' || hashFiles('assertrust.toml') != ''
+      if: >-
+        inputs.judge == 'true' || inputs.judge-model != '' || inputs.judge-effort != ''
+        || contains(inputs.args, '--judge') || hashFiles('assertrust.toml') != ''
       uses: actions/cache/restore@v6
       with:
-        path: .assertrust/cache/judge
+        path: .git/assertrust/judge
         key: assertrust-judge-${{ github.run_id }}-${{ github.run_attempt }}
         restore-keys: assertrust-judge-
     - name: Run assertrust
@@ -65,8 +68,8 @@ runs:
         INPUT_PATH: ${{ inputs.path }}
         GH_TOKEN: ${{ inputs.github-token }}
     - name: Keep the judge's verdicts
-      if: always() && hashFiles('.assertrust/cache/judge/*.json') != ''
+      if: always() && steps.run.outputs.judge-cache == 'true'
       uses: actions/cache/save@v6
       with:
-        path: .assertrust/cache/judge
+        path: .git/assertrust/judge
         key: assertrust-judge-${{ github.run_id }}-${{ github.run_attempt }}

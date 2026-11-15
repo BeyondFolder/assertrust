@@ -2,11 +2,12 @@
 //! flips: models don't answer the same way twice, and the current Claude models reject the
 //! sampling settings that would make them.
 //!
-//! One JSON file per verdict, named by its prompt's key ([`Prompt::key`]):
+//! One JSON file per verdict, named by its prompt's key ([`Prompt::key`]), in a directory
+//! the caller picks (the command line keeps it in the repo's git directory, where no commit
+//! can put a verdict of its own):
 //!
 //! ```text
-//! .assertrust/cache/judge/3f9a…e1.json   {"reason": "…", "verdict": "fine"}
-//! .assertrust/cache/judge/.gitignore     *
+//! .git/assertrust/judge/3f9a…e1.json   {"reason": "…", "verdict": "fine"}
 //! ```
 //!
 //! [`Prompt::key`]: crate::Prompt::key
@@ -38,14 +39,9 @@ impl Cache {
         })
     }
 
-    /// Keeps `judgment` under `key`. The directory gets a `.gitignore`, so git never shows
-    /// it.
+    /// Keeps `judgment` under `key`.
     pub fn put(&self, key: &str, judgment: &Judgment) -> io::Result<()> {
         fs::create_dir_all(&self.dir)?;
-        let ignore = self.dir.join(".gitignore");
-        if !ignore.exists() {
-            fs::write(ignore, "*\n")?;
-        }
         // Written aside and renamed, so a reader never sees half a file.
         let path = self.path(key);
         let partial = path.with_extension("partial");
@@ -73,10 +69,6 @@ mod tests {
         };
         cache.put("abc", &judgment).unwrap();
         assert_eq!(cache.get("abc"), Some(judgment));
-        assert_eq!(
-            fs::read_to_string(dir.path().join("judge/.gitignore")).unwrap(),
-            "*\n"
-        );
         // A broken file is as good as none.
         fs::write(dir.path().join("judge/def.json"), "{").unwrap();
         assert_eq!(cache.get("def"), None);

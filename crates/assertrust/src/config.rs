@@ -318,6 +318,19 @@ impl Config {
                 Vec::new(),
             ),
             (Some(old), Some(new)) => {
+                if new.max_findings < old.max_findings {
+                    push(
+                        key_line(text, Some("judge"), "max-findings"),
+                        // Fewer verdicts, so fewer that can fail the check.
+                        Confidence::Medium,
+                        format!(
+                            "lowered the judge's max-findings from {} to {}: fewer findings get a verdict",
+                            old.max_findings, new.max_findings
+                        ),
+                        vec![format!("max-findings = {}", old.max_findings)],
+                        vec![format!("max-findings = {}", new.max_findings)],
+                    );
+                }
                 let dropped: Vec<&str> = old
                     .fail_on
                     .iter()
@@ -714,6 +727,21 @@ outcome-changed = "on"
                 Some(2),
                 Confidence::High,
                 "the judge's coverage-lost verdicts no longer fail the check".to_owned()
+            )]
+        );
+        let text = "[judge]\nmax-findings = 5\n";
+        let fewer = Config::parse(text).unwrap();
+        let found: Vec<(Option<u32>, Confidence, String)> = Config::loosened(&on, &fewer, text)
+            .into_iter()
+            .map(|finding| (finding.line, finding.confidence, finding.message))
+            .collect();
+        assert_eq!(
+            found,
+            [(
+                Some(2),
+                Confidence::Medium,
+                "lowered the judge's max-findings from 20 to 5: fewer findings get a verdict"
+                    .to_owned()
             )]
         );
         let off = Config::loosened(&on, &Config::default(), "");

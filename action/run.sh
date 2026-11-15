@@ -202,6 +202,10 @@ main() {
     cat "$outputs" >>"$GITHUB_OUTPUT"
   fi
   findings=$(sed -n 's/^findings=//p' "$outputs")
+  # The judge's verdicts, for action.yml to keep for the next run.
+  if [[ -n "${GITHUB_OUTPUT:-}" ]] && compgen -G ".git/assertrust/judge/*.json" >/dev/null; then
+    echo "judge-cache=true" >>"$GITHUB_OUTPUT"
+  fi
   if [[ "$code" -le 1 && "${INPUT_COMMENT:-true}" == true && "${GITHUB_EVENT_NAME:-}" == pull_request ]]; then
     comment "$summary" "$findings"
   fi

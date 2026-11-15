@@ -472,6 +472,12 @@ fn judge_asks_the_ai_judge_and_its_verdict_fails_the_job() {
     );
     assert!(model.requests()[0].contains("claude-haiku-5-5"));
     assert!(model.requests()[0].contains("\"effort\":\"high\""));
+    // action.yml keeps the verdicts for the next run.
+    assert!(
+        runner.outputs().contains("judge-cache=true\n"),
+        "{}",
+        runner.outputs()
+    );
     let run = runner.run(&repo, "pull_request", &[("INPUT_JUDGE", "yes")]);
     assert_eq!(run.code, 2);
     assert!(

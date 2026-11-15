@@ -290,7 +290,7 @@ That's hono moving a build check into its Vite config and deleting the check's t
 
 | Verdict | Means | Fails the check |
 |---|---|---|
-| `fine` | nothing the tests promised is checked less: a false alarm, or the behaviour changed on purpose and the test follows it | no, and it's listed apart, folded away |
+| `fine` | nothing the tests promised is checked less: a false alarm, or the behaviour changed on purpose and the test follows it | no, and it's listed apart, folded away (unless `fail-on` fails it anyway) |
 | `coverage-lost` | behaviour that still exists isn't checked any more, even if the change says why | yes |
 | `suspicious` | a check changed to make a test pass, and nothing explains why | yes |
 | `unsure` | not enough to tell | no |
@@ -320,7 +320,7 @@ Each one gets the answer's schema in its own API's structured-output format, and
 - **What it's asked about:** the shown findings, most sure first, up to `max-findings` (20), and changed outcomes, which stay hidden unless it says they aren't fine. Findings that can't fail the check (allowed, undone later, on code the PR added) aren't sent.
 - **What it's sent:** the finding; each test it's about, before and after; diffs of the files the change touched, cut to size; the commit messages; in GitHub Actions, the PR's title and description. `--judge-dry-run` prints exactly that.
 - **Cost:** about 2 cents a finding with the default (a tenth of a cent on Haiku 5.5, 4 cents on Opus 5.5), and a run sends at most `max-findings` (20). The judge's line after the summary says what a run cost.
-- **Same change, same verdict:** verdicts are cached in `.assertrust/cache/judge/`, which git ignores, so a change is judged once, CI never flips, and a cached verdict needs no key.
+- **Same change, same verdict:** verdicts are cached in the repo's git directory (`.git/assertrust/judge/`), where no commit can add one of its own, so a change is judged once, CI never flips, and a cached verdict needs no key.
 - **It never gets in the way:** with no key, no network or a bad answer, findings show without verdicts, plus a note. A judge that didn't answer never fails the check.
 
 **Coming next:** a Claude Code plugin that runs assertrust after the agent edits a test and hands the findings straight back to it.

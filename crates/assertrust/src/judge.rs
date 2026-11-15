@@ -17,7 +17,7 @@
 
 use std::env;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use assertrust_git::{Analysis, Comparison, Rev};
 use assertrust_judge::{Cache, Judge, Judgment, Prompt, PullRequest, Usage, Verdict};
@@ -28,8 +28,14 @@ use crate::evidence::{self, Files};
 use crate::output::count;
 use crate::report::{Report, Reported, Status};
 
-/// Where verdicts are kept, from the repo root.
-pub const CACHE_DIR: &str = ".assertrust/cache/judge";
+/// Where verdicts are kept, in the repo's git directory: never in the working tree, where a
+/// change could commit its own verdicts and judge itself fine.
+pub fn cache_dir(repo: &assertrust_git::Repo) -> Result<PathBuf, String> {
+    Ok(repo
+        .git_dir()
+        .map_err(|err| err.to_string())?
+        .join("assertrust/judge"))
+}
 
 /// Which findings go to the judge.
 pub struct Scope {
@@ -182,10 +188,10 @@ pub fn judge_name(judge: &JudgeConfig) -> String {
     }
 }
 
-/// The verdict on each prompt: from the cache under `root`, else from the model, which is
+/// The verdict on each prompt: from the cache in `cache_dir`, else from the model, which is
 /// only reached when something isn't cached.
-pub fn ask(root: &Path, judge: &JudgeConfig, prompts: &[Prompt]) -> Asked {
-    let cache = Cache::new(root.join(CACHE_DIR));
+pub fn ask(cache_dir: &Path, judge: &JudgeConfig, prompts: &[Prompt]) -> Asked {
+    let cache = Cache::new(cache_dir.to_path_buf());
     let name = judge_name(judge);
     let keys: Vec<String> = prompts.iter().map(|prompt| prompt.key(&name)).collect();
     let mut judgments: Vec<Option<Judgment>> = keys.iter().map(|key| cache.get(key)).collect();
@@ -266,17 +272,17 @@ pub fn apply(
     }
 }
 
-/// What the judge would be sent about each finding not in the cache under `root`, for
+/// What the judge would be sent about each finding not in the cache in `cache_dir`, for
 /// `--judge-dry-run`.
 pub fn dry_run(
-    root: &Path,
+    cache_dir: &Path,
     judge: &JudgeConfig,
     report: &Report,
     picked: &[usize],
     prompts: &[Prompt],
 ) -> Result<String, String> {
     let model = judge_name(judge);
-    let cache = Cache::new(root.join(CACHE_DIR));
+    let cache = Cache::new(cache_dir.to_path_buf());
     let mut out = String::new();
     let mut cached = 0;
     let preview = previewer(judge)?;

@@ -82,11 +82,14 @@ impl Reported<'_> {
         }
     }
 
-    /// Whether the judge found nothing weaker, so it's listed apart, folded away.
-    pub fn judged_fine(&self) -> bool {
+    /// Whether it's listed apart, folded away: the judge found nothing weaker, and it
+    /// doesn't fail the check anyway. One that's sure enough for `fail-on` still fails it,
+    /// so it stays with the other findings, where it can be seen.
+    pub fn folded(&self, config: &Config) -> bool {
         self.judgment
             .as_ref()
             .is_some_and(|judgment| judgment.verdict == assertrust_judge::Verdict::Fine)
+            && !self.fails(config)
     }
 }
 

@@ -125,6 +125,12 @@ impl Repo {
         })
     }
 
+    /// The repo's git directory, shared by its worktrees (`.git`): a place no commit can
+    /// write to, for what a change must not decide, like the judge's verdicts.
+    pub fn git_dir(&self) -> Result<std::path::PathBuf, Error> {
+        self.git.common_dir()
+    }
+
     /// The repo's top-level directory (where `assertrust.toml` lives).
     pub fn root(&self) -> &Path {
         self.git.root()

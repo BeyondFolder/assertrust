@@ -1,5 +1,5 @@
 name: assertrust
-description: Flags changes that weaken a test suite, like a removed check, a looser matcher, a skipped test or CI that lets failures through.
+description: "Flags changes that weaken a test suite: removed checks, looser matchers, skipped tests, CI that lets failures through."
 author: BeyondFolder
 branding:
   icon: shield

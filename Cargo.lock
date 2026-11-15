@@ -88,6 +88,7 @@ dependencies = [
  "similar 3.2.1",
  "tempfile",
  "toml",
+ "yaml-rust2",
 ]
 
 [[package]]

@@ -485,3 +485,33 @@ fn judge_asks_the_ai_judge_and_its_verdict_fails_the_job() {
             .contains("judge is `yes`; it can be true or false")
     );
 }
+
+/// GitHub reads action.yml before anything runs, so a YAML slip (an unquoted `: ` in a
+/// description) breaks the Action for everyone while every test of run.sh passes.
+#[test]
+fn action_yml_is_valid_and_passes_every_input_run_sh_reads() {
+    let text = fs::read_to_string(format!("{ACTION}/action.yml")).unwrap();
+    let docs = yaml_rust2::YamlLoader::load_from_str(&text).expect("action.yml is valid YAML");
+    let action = &docs[0];
+    let inputs = action["inputs"].as_hash().expect("inputs");
+    let script = fs::read_to_string(SCRIPT).unwrap();
+    let steps = action["runs"]["steps"].as_vec().expect("steps");
+    let run_env = steps
+        .iter()
+        .find(|step| step["id"].as_str() == Some("run"))
+        .and_then(|step| step["env"].as_hash())
+        .expect("the run step's env");
+    for (name, input) in inputs {
+        let name = name.as_str().unwrap();
+        assert!(input["description"].as_str().is_some(), "{name} has a description");
+        let var = format!("INPUT_{}", name.to_uppercase().replace('-', "_"));
+        if name == "github-token" {
+            continue;
+        }
+        assert!(script.contains(&var), "run.sh reads {var}");
+        assert!(
+            run_env.keys().any(|key| key.as_str() == Some(var.as_str())),
+            "action.yml passes {var}"
+        );
+    }
+}

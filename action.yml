@@ -16,7 +16,7 @@ inputs:
     description: Post the summary as one comment on the pull request once there are findings, and keep it updated on every push.
     default: "true"
   judge:
-    description: Ask the AI judge about each finding, `true` to turn it on (or `[judge]` in assertrust.toml). It sends the code to the model's provider with your key, set on this step as an environment variable, like `ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}`. Its verdicts are cached between runs.
+    description: Ask the AI judge about each finding, `true` to turn it on (or `[judge]` in assertrust.toml). It sends the code to the model's provider with your key, set on this step as an environment variable from a secret, like `ANTHROPIC_API_KEY` (see the README). Its verdicts are cached between runs.
     default: "false"
   judge-model:
     description: The judge's model, as provider/model, like `anthropic/claude-haiku-5-5`. By default, assertrust.toml's or the built-in one.

@@ -127,10 +127,6 @@ pub struct Mode {
     #[arg(long, value_name = "RANGE")]
     pub range: Option<String>,
 
-    /// Check a GitHub pull request (merge-base to head)
-    #[arg(long, value_name = "NUMBER")]
-    pub pr: Option<u64>,
-
     /// Check staged changes (HEAD to the git index), for pre-commit hooks
     #[arg(long)]
     pub staged: bool,
@@ -141,14 +137,8 @@ pub struct Mode {
 }
 
 impl Mode {
-    /// The input layer's mode. `--pr` isn't supported until the GitHub Action exists.
+    /// The input layer's mode.
     pub fn to_input(&self) -> Result<assertrust_git::Mode, String> {
-        if self.pr.is_some() {
-            return Err(
-                "--pr isn't supported yet (it comes with the GitHub Action); use --range BASE...HEAD"
-                    .to_owned(),
-            );
-        }
         Ok(if let Some(range) = &self.range {
             assertrust_git::Mode::Range(range.clone())
         } else if self.staged {

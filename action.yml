@@ -1,0 +1,40 @@
+name: assertrust
+description: Flags changes that weaken a test suite, like a removed check, a looser matcher, a skipped test or CI that lets failures through.
+author: BeyondFolder
+branding:
+  icon: shield
+  color: orange
+
+inputs:
+  version:
+    description: The assertrust release to run, like `0.1.0`. By default, the one this action's tag was released with.
+    default: ""
+  fail-on:
+    description: Fail the job on findings this sure or surer, `high`, `medium` or `low`. By default it only warns, unless `fail-on` is set in assertrust.toml.
+    default: ""
+  comment:
+    description: Post the summary as one comment on the pull request once there are findings, and keep it updated on every push.
+    default: "true"
+  args:
+    description: More arguments for `assertrust check`, split on spaces. A `--range` here replaces the one worked out from the event.
+    default: ""
+  path:
+    description: Run this assertrust binary instead of downloading a release.
+    default: ""
+  github-token:
+    description: The token that posts the pull request comment.
+    default: ${{ github.token }}
+
+runs:
+  using: composite
+  steps:
+    - name: Run assertrust
+      shell: bash
+      run: '"$GITHUB_ACTION_PATH/action/run.sh"'
+      env:
+        INPUT_VERSION: ${{ inputs.version }}
+        INPUT_FAIL_ON: ${{ inputs.fail-on }}
+        INPUT_COMMENT: ${{ inputs.comment }}
+        INPUT_ARGS: ${{ inputs.args }}
+        INPUT_PATH: ${{ inputs.path }}
+        GH_TOKEN: ${{ inputs.github-token }}

@@ -340,15 +340,3 @@ fn outside_a_repo_is_a_tool_error() {
     assert_eq!(run.code, 2);
     assert_eq!(run.stderr, "assertrust: not inside a git repository\n");
 }
-
-#[test]
-fn pr_mode_is_not_supported_yet() {
-    let repo = repo_with_feature_branch();
-    let run = repo.assertrust(&["changes", "--pr", "12"]);
-    assert_eq!(run.code, 2);
-    assert!(
-        run.stderr.contains("--pr isn't supported yet"),
-        "{}",
-        run.stderr
-    );
-}

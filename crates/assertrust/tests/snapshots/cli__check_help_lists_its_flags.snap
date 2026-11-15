@@ -1,5 +1,6 @@
 ---
 source: crates/assertrust/tests/cli.rs
+assertion_line: 18
 expression: run.stdout
 ---
 Check a change for weakened tests
@@ -9,9 +10,6 @@ Usage: assertrust check [OPTIONS]
 Options:
       --range <RANGE>
           BASE..HEAD checks each commit; BASE...HEAD checks it like a PR (what HEAD adds since it split off from BASE)
-
-      --pr <NUMBER>
-          Check a GitHub pull request (merge-base to head)
 
       --staged
           Check staged changes (HEAD to the git index), for pre-commit hooks

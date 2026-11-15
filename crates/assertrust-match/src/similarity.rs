@@ -50,7 +50,7 @@ pub(crate) fn test_score(before: &TestFeatures, after: &TestFeatures) -> f64 {
 fn check_keys(test: &Test) -> BTreeSet<String> {
     let mut keys = BTreeSet::new();
     for assertion in test.body.assertions() {
-        keys.insert(assertion.to_string());
+        keys.insert(assertion.checked_text());
         keys.extend(crate::check_pairing::expected_values(assertion));
     }
     keys

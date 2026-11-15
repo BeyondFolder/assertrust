@@ -18,8 +18,11 @@
 //! ```
 
 mod check_pairing;
+mod parts;
 mod similarity;
 mod test_pairing;
+
+pub use crate::parts::{SplitList, split_list};
 
 use assertrust_ir::{FileIr, ItemKind, Test};
 
@@ -113,6 +116,10 @@ pub enum CheckMatch {
     /// expected value: `expect(hasEnforcement(result)).toBe(false)` →
     /// `expect(result.enforced).toBe(false)`.
     Refactored,
+    /// A list check split into checks on parts of the list that state every item again:
+    /// `expect(res).toEqual([a, done])` → `expect(res.at(-1)).toEqual(done)` and
+    /// `expect(res.slice(0, -1)).toEqual(expect.arrayContaining([a]))`. See [`split_list`].
+    Parts,
 }
 
 /// A check before with no partner after. It may have moved to another test in the same

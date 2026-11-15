@@ -12,9 +12,9 @@ use crate::{
 };
 
 /// The checks of one side of a test pair, and which are still unpaired.
-struct Side<'a> {
+pub(crate) struct Side<'a> {
     test: &'a Test,
-    left: Vec<usize>,
+    pub(crate) left: Vec<usize>,
 }
 
 impl<'a> Side<'a> {
@@ -25,7 +25,17 @@ impl<'a> Side<'a> {
         }
     }
 
-    fn assertion(&self, item: usize) -> &'a Assertion {
+    /// The calls an item runs through, by their lines: checks from two calls to one helper
+    /// are told apart by it.
+    pub(crate) fn calls(&self, item: usize) -> Vec<u32> {
+        self.test.body.items[item]
+            .via
+            .iter()
+            .map(|via| via.line)
+            .collect()
+    }
+
+    pub(crate) fn assertion(&self, item: usize) -> &'a Assertion {
         match &self.test.body.items[item].kind {
             ItemKind::Assertion(assertion) => assertion,
             _ => unreachable!("only assertion items are tracked"),
@@ -36,7 +46,7 @@ impl<'a> Side<'a> {
         self.test.body.items[item].context
     }
 
-    fn take(&mut self, items: &[usize]) {
+    pub(crate) fn take(&mut self, items: &[usize]) {
         self.left.retain(|item| !items.contains(item));
     }
 }
@@ -56,6 +66,9 @@ pub(crate) fn pair_checks(before: &Test, after: &Test) -> CheckMatching {
         any,
         |a| Some(format!("{}\u{0}{:?}", a.subject, kind(a))),
     );
+    // Before checks on the same subject: a list split into parts may keep a count of the
+    // whole list, `toHaveLength(2)`, which isn't what the list check became.
+    crate::parts::pair(&mut old, &mut new, &mut pairs);
     by_key(
         &mut old,
         &mut new,
@@ -204,7 +217,7 @@ fn closest(assertion: &Assertion, candidates: &[usize], side: &Side) -> Option<u
     }
 }
 
-/// Step 4: checks written differently that state a fact in common. A check can share facts
+/// Step 5: checks written differently that state a fact in common. A check can share facts
 /// with several on the other side, so this pairs groups: everything connected by a shared
 /// fact.
 fn same_fact(old: &mut Side, new: &mut Side, pairs: &mut Vec<CheckPair>) {
@@ -258,7 +271,7 @@ fn same_fact(old: &mut Side, new: &mut Side, pairs: &mut Vec<CheckPair>) {
     }
 }
 
-/// Step 5: the subject was refactored, but a distinctive expected value is still there:
+/// Step 6: the subject was refactored, but a distinctive expected value is still there:
 /// `expect(fields.text).toBe('Hi there')` → `expect(textOf(html)).toBe('Hi there')`, or
 /// `expect(parse(x)).toEqual({ text: 'Hi there', preview: … })` → `expect(textOf(x)).toBe('Hi there')`.
 /// Pairs one to one. A check that could pair with several goes to the one with the closest
@@ -310,7 +323,7 @@ fn same_expected(old: &mut Side, new: &mut Side, pairs: &mut Vec<CheckPair>) {
     }
 }
 
-/// Step 7: a refactored subject with the same matcher kind, scored by how alike the
+/// Step 8: a refactored subject with the same matcher kind, scored by how alike the
 /// subjects are plus how alike the expected values are (0 to 2). A pair needs subjects that
 /// share a word, and either a mostly matching expected value or a mostly matching subject:
 /// `expect(rows.map(toId)).toEqual({ a: 1, b: 0 })` → `expect(tracked('a')).toEqual({ a: 1, b: 0, c: 0 })`.
@@ -413,7 +426,7 @@ pub(crate) fn expected_values(assertion: &Assertion) -> Vec<String> {
 
 /// `'Hi there'`, `/err(or)?/`, `1234`, `user.email`: likely to mean the same thing wherever
 /// it appears. `200`, `true`, `null` or `'ok'` could be anything.
-fn distinctive(value: &Value) -> bool {
+pub(crate) fn distinctive(value: &Value) -> bool {
     match value {
         Value::String(text) | Value::Template(text) => text.trim().chars().count() >= 4,
         Value::Regex { .. } => true,
@@ -433,7 +446,11 @@ pub(crate) fn find_moves(files: &[FilePair], matching: &mut Matching) {
     let key = |test: &Test, item: usize| {
         let item = &test.body.items[item];
         match &item.kind {
-            ItemKind::Assertion(assertion) => Some(format!("{assertion}\u{0}{:?}", item.context)),
+            ItemKind::Assertion(assertion) => Some(format!(
+                "{}\u{0}{:?}",
+                assertion.checked_text(),
+                item.context
+            )),
             _ => None,
         }
     };

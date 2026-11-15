@@ -592,9 +592,10 @@ impl Aliases {
     }
 }
 
-/// The imports of `file` worth following: the ones it calls, and the ones it passes on.
+/// The imports of `file` worth following: the ones it calls, calls methods on, builds objects
+/// from or extends (their methods may be helpers), and the ones it passes on.
 fn followed(file: &FileIr) -> impl Iterator<Item = &Import> {
-    let mut called = HashSet::new();
+    let mut used: HashSet<&str> = file.constructed.iter().map(String::as_str).collect();
     let bodies = file
         .tests
         .iter()
@@ -604,13 +605,13 @@ fn followed(file: &FileIr) -> impl Iterator<Item = &Import> {
     for body in bodies {
         for item in &body.items {
             if let ItemKind::Call(call) = &item.kind {
-                called.insert(call.name.as_str());
+                used.insert(call.root());
             }
         }
     }
     file.imports
         .iter()
-        .filter(move |import| import.reexport || called.contains(import.local.as_str()))
+        .filter(move |import| import.reexport || used.contains(import.local.as_str()))
 }
 
 fn in_test_folder(classifier: &Classifier, path: &str) -> bool {

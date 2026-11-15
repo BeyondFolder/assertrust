@@ -320,6 +320,7 @@ fn render_pair(out: &mut String, view: &View, pair: &TestPair, indent: &str) {
             CheckMatch::SameFact => "rewritten",
             CheckMatch::SameExpected => "same value",
             CheckMatch::Refactored => "refactored",
+            CheckMatch::Parts => "parts",
         };
         for (i, &item) in check.before.iter().enumerate() {
             let label = if i == 0 { label } else { "" };

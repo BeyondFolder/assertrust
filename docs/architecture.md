@@ -1,6 +1,6 @@
 # assertrust architecture
 
-> Status: **pre-alpha.** This is the design being built in small public PRs. `assertrust check` runs every rule (step 5); output formats, config, the GitHub Action and the judge are being built. When the code changes the design, the same PR updates this doc.
+> Status: **v0.1.** This is the design, built in small public PRs. `assertrust check` runs every rule (step 5), with its output formats and config (step 6), and ships as release binaries and a GitHub Action (step 8). The LLM judge (step 7) comes next. When the code changes the design, the same PR updates this doc.
 
 assertrust checks that a change didn't quietly make the test suite weaker. Examples: an assertion removed, a matcher loosened, a test skipped, a CI gate relaxed. It reports what got weaker, where, and which commit did it.
 
@@ -62,7 +62,6 @@ On the command line, these map to:
 | `--range BASE...HEAD` | PR-style: merge-base → `HEAD`, plus every commit (the same meaning as `git diff A...B`) |
 | no flag | PR-style, from the default branch (what `origin/HEAD` points to, else `main` or `master`) to `HEAD` |
 | `--staged`, `--worktree` | staged, worktree (worktree compares with the files on disk, including untracked files; a file moved without `git add` still counts as a rename) |
-| `--pr N` | becomes `base...head`; built with the GitHub Action (step 8) |
 
 `assertrust changes` (same flags) prints what a check would look at: the commits, plus each changed file with its kind. It checks nothing, and it's for debugging the input layer.
 
@@ -690,7 +689,7 @@ There's at least one fixture that must be flagged and one that must not, per rul
 
 **In one sentence:** show each finding where the person or agent will see it, in the terminal, on the PR, or as JSON for tools, and never block anything unless the repo opts in.
 
-**Built so far:** all of it except SARIF and the PR comment, which the GitHub Action posts. The terminal, JSON and GitHub formats; each finding named after the commits that made it, also in a PR-style check; weakening undone later in the PR hidden, and so is weakening of code the PR itself added; allow comments and trailers; `fail-on` and its exit codes; `assertrust.toml`, which a PR can't loosen for its own check; and `assertrust backtest`, which replays a branch's history PR by PR and, with labels, measures how often findings are right. Changed outcomes are hidden without `-v`, and the summary line says how many: `no findings · 2 changed outcomes hidden (-v shows them)`. Files that couldn't be checked are listed as notes before the summary, e.g. `note: test/a.test.ts (1a2b3c4): skipped, doesn't parse (…)`, and so are merge commits a per-commit check skipped. In a PR-style check, a file one commit couldn't parse is noted only when the whole PR can't parse it either: a work-in-progress commit that a later one fixed never lands.
+**Built so far:** all of it except SARIF. The terminal, JSON and GitHub formats; each finding named after the commits that made it, also in a PR-style check; weakening undone later in the PR hidden, and so is weakening of code the PR itself added; allow comments and trailers; `fail-on` and its exit codes; `assertrust.toml`, which a PR can't loosen for its own check; and `assertrust backtest`, which replays a branch's history PR by PR and, with labels, measures how often findings are right. Changed outcomes are hidden without `-v`, and the summary line says how many: `no findings · 2 changed outcomes hidden (-v shows them)`. Files that couldn't be checked are listed as notes before the summary, e.g. `note: test/a.test.ts (1a2b3c4): skipped, doesn't parse (…)`, and so are merge commits a per-commit check skipped. In a PR-style check, a file one commit couldn't parse is noted only when the whole PR can't parse it either: a work-in-progress commit that a later one fixed never lands.
 
 ### Which commit, and weakening undone later
 
@@ -729,7 +728,7 @@ test/api/forwarding.test.ts:27  HIGH  expectation-loosened
   ```
 - A finding about something that's gone (a deleted test or file) has no line: `test/a.test.ts  HIGH  test-disabled` / `deleted: billing > refunds`.
 - Findings are sorted most severe first. Allowed findings come last, marked `ALLOWED`, with a line saying why: `allowed: preview is tested in MCP now (comment)`. Transient findings appear only with `--show-transient`, marked `(undone later)`. A finding whose rule is left to the judge (`outcome-changed`) needs `-v` whatever its status, allowed or undone later too, and isn't counted without it.
-- **On the PR**, an inline annotation already sits on the line, so it says only the finding itself: title `assertrust: expectation-loosened (high)`, message `toMatchObject no longer checks domainIds, status (10d8742)`. A finding that reaches `fail-on` is an `error`, the rest are warnings; allowed, hidden, undone-later and added-by-the-PR ones aren't annotated (the last only with `show-pr-added`). The last line and the summary count findings as the terminal does: `assertrust: no findings · 1 on code this PR added hidden · warn-only (exit 0)`. The summary is a short table (file:line, rule, message, then the allowed ones with their reasons), written to the job summary (`$GITHUB_STEP_SUMMARY`) and starting with `<!-- assertrust -->`, so the GitHub Action can post it as one PR comment and edit it in place on every push.
+- **On the PR**, an inline annotation already sits on the line, so it says only the finding itself: title `assertrust: expectation-loosened (high)`, message `toMatchObject no longer checks domainIds, status (10d8742)`. A finding that reaches `fail-on` is an `error`, the rest are warnings; allowed, hidden, undone-later and added-by-the-PR ones aren't annotated (the last only with `show-pr-added`). The last line and the summary count findings as the terminal does: `assertrust: no findings · 1 on code this PR added hidden · warn-only (exit 0)`. The summary is a short table (file:line, rule, message, then the allowed ones with their reasons), written to the job summary (`$GITHUB_STEP_SUMMARY`) and starting with `<!-- assertrust -->`, so the GitHub Action can post it as one PR comment and edit it in place on every push. The number of findings in the table goes to the step outputs (`$GITHUB_OUTPUT`) as `findings`.
 
 Messages are short by design: one line that says what got weaker. Detail goes behind `-v`, never in the default view.
 
@@ -738,7 +737,7 @@ Messages are short by design: one line that says what got weaker. Detail goes be
 | Format | For | v0.1 |
 |---|---|---|
 | `terminal` | people, Claude Code hook output | yes |
-| `json` | the backtest, the benchmark, other tools. Versioned (`"schema": 1`; until v0.1 is released, it can still change). Every finding is there with its `status` (`shown`, `hidden`, `allowed`, `transient`, `pr-added`), its commits, and for an allowed one the reason | yes |
+| `json` | the backtest, the benchmark, other tools. Versioned (`"schema": 1`, stable since v0.1: a field may be added, but none renamed or removed without a new schema number). Every finding is there with its `status` (`shown`, `hidden`, `allowed`, `transient`, `pr-added`), its commits, and for an allowed one the reason | yes |
 | `github` | inline annotations on the PR diff (`::warning file=…,line=…::`) and a summary table in the job summary; the Action posts that as one PR comment, edited in place on every push | yes |
 | `sarif` | GitHub code scanning (the Security tab) | later |
 
@@ -954,6 +953,8 @@ Verdicts: `fine`, `coverage-lost`, `suspicious`, `unsure`, each with a one-line 
 
 **In one sentence:** one Rust binary, delivered wherever the check should run: a terminal, CI, git hooks, and inside a coding agent's loop.
 
+**Built so far:** release binaries and a shell installer (cargo-dist), and the GitHub Action. npm, crates.io and the Claude Code plugin come with the launch.
+
 - **CLI framework:** `clap`, using its derive API.
 - **Repo:** `github.com/BeyondFolder/assertrust`.
 - **License:** Apache-2.0.
@@ -962,14 +963,15 @@ Verdicts: `fine`, `coverage-lost`, `suspicious`, `unsure`, each with a one-line 
 
 | Channel | What it is | When |
 |---|---|---|
-| **CLI binary** | Linux x64/arm64, macOS x64/arm64 and Windows x64 builds on GitHub Releases, plus shell and PowerShell installers, built by **cargo-dist** (v0.34, maintained) | v0.1 |
-| `cargo install assertrust` | for Rust users | v0.1 |
-| **GitHub Action** | `BeyondFolder/assertrust@v0`: downloads the matching release binary and runs it with `--format github` | v0.1 |
+| **CLI binary** | Linux x64/arm64 and macOS x64/arm64 builds on GitHub Releases, plus a shell installer, built by **cargo-dist** (v0.34). Windows waits until the test suite runs there (git paths, line endings) | v0.1 |
+| `cargo install --git` | for Rust users, from a tag | v0.1 |
+| **GitHub Action** | `BeyondFolder/assertrust@v0`: downloads the matching release binary and runs it with `--format github` (below) | v0.1 |
 | **npm** | `npx assertrust` / `npm i -D assertrust`, generated by cargo-dist. Most target projects are JS, so this is the most natural install for them | before the public launch |
+| `cargo install assertrust` | crates.io rejects path-only dependencies, so the workspace's library crates get published with it (or folded into it) | before the public launch, with npm |
 | **Claude Code plugin** | a hook that runs after the agent edits a test file and feeds findings straight back to the agent (below) | before the public launch |
-| **pre-commit** | a documented snippet (`assertrust check --staged`) for husky, lefthook and pre-commit | docs only |
+| **pre-commit** | documented snippets (`assertrust check --staged`) for husky, lefthook and pre-commit | docs only |
 
-### GitHub Action usage
+### GitHub Action
 
 ```yaml
 on:
@@ -986,14 +988,16 @@ jobs:
       - uses: actions/checkout@v7
         with: { fetch-depth: 0 }  # full history, required (step 1)
       - uses: BeyondFolder/assertrust@v0
-        # with: { judge: true }
-        # env:  { ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }} }
 ```
 
-- **PR events** run PR mode: merge-base → head, with commit attribution.
-- **Push events** run per-commit mode over `before..after`. A brand-new branch (`before` is all zeros) falls back to the default branch's merge-base.
-- **PRs from forks** get a read-only token and no secrets. The summary comment then falls back to the job summary (`$GITHUB_STEP_SUMMARY`), and the judge is skipped (soft, step 7).
-- The Action is a small composite action: a shell script, no Node runtime.
+A composite action (`action.yml`) running one shell script (`action/run.sh`), no Node runtime. Written for bash 3.2 too, macOS's `/bin/bash`.
+
+- **The binary:** the release of the version in the action's own `Cargo.toml`, so `@v0` (moved to each release) runs the newest one and `@v0.1.0` that one. Checked against its `.sha256`. Inputs can name another `version`, or a `path` to a binary built in the job (this repo's CI does that).
+- **PR events** run a PR-style check of `base.sha...head.sha` from the event, with commit attribution. Not `pull_request_target`: its checkout is the base branch, without a fork's commits.
+- **Push events** run per-commit over `before..after`. A new branch (`before` is all zeros), or a force push whose `before` isn't an ancestor, falls back to where `after` split off from the default branch. A deleted branch has nothing to check. Other events need `--range` in `args`. `args` may span lines (`args: |`); a `--fail-on` there wins over the input, and `--format` is refused, since the Action needs `github`.
+- **A shallow checkout** is an error that says to set `fetch-depth: 0`, rather than a check that silently sees one commit.
+- **The PR comment:** the job summary (step 6) is also posted as one PR comment, with a link to the run. It's found again as the oldest comment a bot wrote that starts with the `<!-- assertrust -->` marker (a person quoting it isn't it), and edited in place on every push. Whether there are findings comes from assertrust's `findings` step output, not the summary's text: a PR with none, or only allowed ones, gets no comment, unless there's one to update ("no findings" after a fix). When the comments can't be listed, nothing is posted, since that could add a second one. A fork's PR gets a read-only token: the post fails, a notice says so, and the findings stay in the job summary. `comment: false` turns it off.
+- **Exit code and outputs:** assertrust's own exit code (step 6), so `fail-on: high` fails the job, and its `findings` output for later steps.
 
 ### Claude Code plugin
 
@@ -1004,13 +1008,13 @@ jobs:
 
 ### Releases
 
-- semver, staying on `0.x` until the backtests are solid
-- a `CHANGELOG.md`
-- tagging `vX.Y.Z` triggers cargo-dist, and the Action's `v0` tag moves to the newest release
-- assertrust runs on its own PRs (dogfooding)
+- semver, staying on `0.x` until the backtests are solid, and a `CHANGELOG.md`
+- pushing a `vX.Y.Z` tag runs the Release workflow (`.github/workflows/release.yml`, generated by `dist generate` from `dist-workspace.toml`; regenerate it rather than editing it, since the workflow checks it's up to date). It builds each target on its own runner and publishes the GitHub Release with the installer and checksums. On PRs it only plans, which checks the config.
+- the Action's major tag (`v0`) moves to each release, except a prerelease or one older than the newest (a backported `v0.1.5` after `v0.2.0`), in a separate workflow that runs when the Release workflow succeeds (`action-tag.yml`). cargo-dist's own hook for that (`post-announce-jobs`) writes a broken path for local jobs in v0.34 (`uses: $/.github/…`).
+- assertrust runs on its own PRs (dogfooding): CI runs the Action with the binary it just built
 
 ### Tests
 
-- The hook gets sample hook JSON on stdin, and the test checks the output and exit code.
-- The Action runs in this repo's CI against a small fixture repo, for both a PR event and a push event.
-- The release build is checked on each target by running `assertrust --version` on the built binary.
+- The Action's script runs in temp repos with a fake `gh` and `curl` (`crates/assertrust/tests/action.rs`): a PR event with findings posts the comment; a clean one, or one with only allowed findings, posts none but updates the bot's existing one; comments that can't be listed are left alone; a read-only token falls back to the job summary; `fail-on` fails and `args` can override it; a push checks each commit pushed, a new branch from where it split off, and other events need a range; the release for the runner is downloaded and a bad checksum refused.
+- CI runs the test suite on Linux and macOS, and the Action on this repo's own PRs and pushes.
+- The hook gets sample hook JSON on stdin, and the test checks the output and exit code (plugin PR).

@@ -29,6 +29,34 @@ jobs:
         env:
           RUSTDOCFLAGS: -D warnings
 
+  macos:
+    name: test on macOS
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test --locked
+
+  # The GitHub Action (action.yml) on this repo's own changes, with the binary built here.
+  action:
+    name: the Action, on this repo
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write # for the summary comment
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build --locked
+      - uses: ./
+        with:
+          path: target/debug/assertrust
+
   msrv:
     name: minimum Rust version
     runs-on: ubuntu-latest

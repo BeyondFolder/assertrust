@@ -10,9 +10,12 @@
 //! and undone-later findings aren't annotated. The
 //! summary goes to the file GitHub names in `$GITHUB_STEP_SUMMARY`, starting with a marker
 //! (`<!-- assertrust -->`) so the Action can find the PR comment that repeats it and edit it
-//! in place. Both count findings the way the terminal does.
+//! in place. Both count findings the way the terminal does. The number of findings listed
+//! goes to `$GITHUB_OUTPUT` as `findings`: the Action posts its comment by it, and a workflow
+//! can read it.
 
 use std::env;
+use std::ffi::OsStr;
 use std::fs::OpenOptions;
 use std::io::Write as _;
 
@@ -70,15 +73,27 @@ pub fn render(report: &Report, config: &Config) -> Result<String, String> {
         ),
     );
     if let Some(path) = env::var_os("GITHUB_STEP_SUMMARY") {
-        let mut file = OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(&path)
-            .map_err(|err| format!("couldn't open the job summary: {err}"))?;
-        file.write_all(summary(report, config).as_bytes())
-            .map_err(|err| format!("couldn't write the job summary: {err}"))?;
+        append(&path, &summary(report, config), "the job summary")?;
+    }
+    if let Some(path) = env::var_os("GITHUB_OUTPUT") {
+        append(
+            &path,
+            &format!("findings={}\n", shown.len()),
+            "the step outputs",
+        )?;
     }
     Ok(out)
+}
+
+/// Adds `text` to the file GitHub named for `what`.
+fn append(path: &OsStr, text: &str, what: &str) -> Result<(), String> {
+    let mut file = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+        .map_err(|err| format!("couldn't open {what}: {err}"))?;
+    file.write_all(text.as_bytes())
+        .map_err(|err| format!("couldn't write {what}: {err}"))
 }
 
 /// The findings annotated on the diff and listed in the summary's table: those shown, and

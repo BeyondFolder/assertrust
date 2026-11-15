@@ -10,9 +10,6 @@ Options:
       --range <RANGE>
           BASE..HEAD checks each commit; BASE...HEAD checks it like a PR (what HEAD adds since it split off from BASE)
 
-      --pr <NUMBER>
-          Check a GitHub pull request (merge-base to head)
-
       --staged
           Check staged changes (HEAD to the git index), for pre-commit hooks
 

@@ -5,21 +5,29 @@ resolver = "3"
 [workspace.package]
 version = "0.1.0"
 edition = "2024"
-rust-version = "1.97"
+rust-version = "1.97.1"
 license = "Apache-2.0"
 repository = "https://github.com/BeyondFolder/assertrust"
 
 [workspace.dependencies]
 assertrust-git = { path = "crates/assertrust-git" }
 assertrust-ir = { path = "crates/assertrust-ir" }
+assertrust-judge = { path = "crates/assertrust-judge" }
 assertrust-match = { path = "crates/assertrust-match" }
 assertrust-rules = { path = "crates/assertrust-rules" }
 clap = { version = "4.6", features = ["derive"] }
+futures = "0.3.34"
 globset = "0.4.21"
 insta = "1.49"
 oxc = { version = "0.155", features = ["ast_visit", "codegen", "semantic"] }
+# The judge talks to models through rig, which ships a breaking 0.x release every few weeks:
+# pinned, and bumped on purpose.
+rig-core = { version = "=0.46.0", default-features = false, features = ["reqwest", "rustls"] }
 serde_json = "1.0.154"
+sha2 = "0.11.1"
+similar = "3.2.1"
 tempfile = "3.27"
+tokio = { version = "1.54.1", features = ["rt", "time"] }
 toml = { version = "~1.1.8", default-features = false, features = ["std", "serde", "parse"] }
 yaml-rust2 = "0.13.0"
 

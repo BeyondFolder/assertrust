@@ -9,6 +9,54 @@ repo = "https://github.com/nuxt/ui.git"
 range = "f9aa75632e8f1b4e5d6acd1452ab57e9eb1a83af..a11f0327cc374c2e5f8694db6aa0a7ddc6a028f8"
 
 [[finding]]
+unit = "0e487d62d5cc"
+pr = 7204
+rule = "outcome-changed"
+path = "test/components/Table.spec.ts"
+test = "Table > keeps measured heights with their rows when sorting virtualized rows with %s"
+before = ["expect(items.map((item) => item.key)).toEqual(sorted.map((row) => String(row.index)))"]
+after = ["expect(items.map((item) => item.key)).toEqual(sorted.map((row) => customKey ? `key-${row.index}` : String(row.index)))"]
+message = "toEqual(sorted.map((row) => String(row.index))) → toEqual(sorted.map((row) => customKey ? `key-${row.index}` …"
+label = "wrong"
+note = "The PR makes Table wrap a custom virtualizer getItemKey; the test is parameterized over default and custom keys and the default case still expects the same keys."
+
+[[finding]]
+unit = "0e487d62d5cc"
+pr = 7204
+rule = "outcome-changed"
+path = "test/components/Table.spec.ts"
+test = "Table > measures the expanded row along with its virtualized row with %s"
+before = ["expect(sizes()).toEqual([140, 40, 40, 40, 40])"]
+after = ["expect(sizes()).toEqual([100, 0, 0, 0, 0])"]
+message = "toEqual([140, 40, 40, 40, 40]) → toEqual([100, 0, 0, 0, 0])"
+label = "wrong"
+note = "The test is parameterized over default and custom measureElement (newly honoured by Table) and subtracts the row height, so 140/40 becomes 100/0 for the same sizes."
+
+[[finding]]
+unit = "0e487d62d5cc"
+pr = 7204
+rule = "outcome-changed"
+path = "test/components/Table.spec.ts"
+test = "Table > measures the expanded row along with its virtualized row with %s"
+before = ["expect(sizes()).toEqual([40, 40, 140, 40, 40])"]
+after = ["expect(sizes()).toEqual([0, 0, 100, 0, 0])"]
+message = "toEqual([40, 40, 140, 40, 40]) → toEqual([0, 0, 100, 0, 0])"
+label = "wrong"
+note = "Same parameterization for the new custom measureElement support: sizes minus the row height, so [40,40,140,40,40] is the same check as [0,0,100,0,0]."
+
+[[finding]]
+unit = "0e487d62d5cc"
+pr = 7204
+rule = "outcome-changed"
+path = "test/components/Table.spec.ts"
+test = "Table > measures the expanded row along with its virtualized row with %s"
+before = ["expect(sizes()).toEqual([40, 40, 40, 40, 40])"]
+after = ["expect(sizes()).toEqual([0, 0, 0, 0, 0])"]
+message = "toEqual([40, 40, 40, 40, 40]) → toEqual([0, 0, 0, 0, 0])"
+label = "wrong"
+note = "Same parameterization: sizes are now reported minus the row height, so all-40 becomes all-0, the same check for the default case."
+
+[[finding]]
 unit = "f4322e7a3577"
 pr = 7055
 rule = "test-disabled"
@@ -57,6 +105,18 @@ label = "intended"
 note = "Commit says the table row was dropped because Checkbox only ships the list and card variants, so passing table failed typecheck."
 
 [[finding]]
+unit = "e730f31b0b3d"
+pr = 7249
+rule = "outcome-changed"
+path = "test/components/ChatMessages.spec.ts"
+test = "ChatMessages > scrolls the scroll parent in `scrollToMessage`"
+before = ["expect(scrollTo).toHaveBeenCalledWith({ behavior: 'instant', top: expect.any(Number) })"]
+after = ["expect(scrollTo).toHaveBeenCalledWith({ behavior: 'instant', top: 38 })"]
+message = "toHaveBeenCalledWith({ behavior: 'instant', top: expect.any… → toHaveBeenCalledWith({ behavior: 'instant', top: 38 })"
+label = "wrong"
+note = "Stricter: expect.any(Number) became the exact offset 38, in a commit that asserts the scrollToMessage offset."
+
+[[finding]]
 unit = "8f180de34971"
 pr = 7240
 rule = "check-removed"
@@ -95,6 +155,30 @@ note = "Replaced by a stronger it.each that runs the real ipx, ipxStatic, none a
 [[finding]]
 unit = "63737025651f"
 pr = 7225
+rule = "outcome-changed"
+path = "test/components/Tooltip.spec.ts"
+test = "Tooltip > with $name > opens over the label with variant %s"
+before = ["await expect(wrapper.find('[role=\"tooltip\"]').text()).toBe('Checkbox help')"]
+after = ["await expect(wrapper.find('[role=\"tooltip\"]').text()).toBe('Control help')"]
+message = "toBe('Checkbox help') → toBe('Control help')"
+label = "wrong"
+note = "The PR's own new test was generalized to Checkbox and Switch, so the tooltip text it renders and checks was renamed from 'Checkbox help' to 'Control help' together."
+
+[[finding]]
+unit = "63737025651f"
+pr = 7225
+rule = "outcome-changed"
+path = "test/components/Tooltip.spec.ts"
+test = "Tooltip > opens when hovering the %s label"
+before = ["{ component: Checkbox, name: 'Checkbox' }", "{ component: Switch, name: 'Switch' }"]
+after = ["['Checkbox', Checkbox]", "['Switch', Switch]"]
+message = ".each rows changed: { component: Checkbox, name: 'Checkbox' }, { component: Swi…"
+label = "wrong"
+note = "assertrust misread: the same Checkbox and Switch rows, written as tuples instead of objects, in a test the PR itself added."
+
+[[finding]]
+unit = "63737025651f"
+pr = 7225
 rule = "test-disabled"
 path = "test/components/Tooltip.spec.ts"
 tests = ["Tooltip > with $name > opens over the label with variant %s", "Tooltip > with $name > stays open between the box and label and closes when leaving the root", "Tooltip > with $name > cancels the opening delay when leaving the root", "Tooltip > with $name > ignores touch hover and refreshes listeners when disabled changes", "Tooltip > with $name > preserves keyboard focus, accessible description and control state"]
@@ -115,3 +199,27 @@ after = []
 message = "deleted 6 tests, including Popover > with $name > opens when entering the label bounda…"
 label = "intended"
 note = "Tests the PR itself added were cut down to one label-hover test per control in a commit titled 'apply review suggestions'."
+
+[[finding]]
+unit = "e5577af158dc"
+pr = 7330
+rule = "outcome-changed"
+path = "test/utils/locales.spec.ts"
+test = "i18n plugin > lazy loads only the configured locales"
+before = ["expect(contents).toMatchInlineSnapshot('\\n      \"import { computed, unref } from \"vue\";\\n      import { defineNuxtPlugin } from \"#app/nuxt\";\\n      import { localeContextInjectionKey } from \"/runtime/composables/useLocale\";\\n      import en from \"/runtime/locale/en\";\\n      import fr from \"/runtime/locale/fr\";\\n      import pt_br from \"/runtime/locale/pt_br\";\\n      const locales = {\\n        en: en,\\n        fr: fr,\\n        \"pt-BR\": pt_br,\\n        \"en-US\": en\\n      }\\n      export default defineNuxtPlugin((nuxtApp) => {\\n        nuxtApp.vueApp.provide(localeContextInjectionKey, computed(() => locales[unref(nuxtApp.$i18n?.locale)]))\\n      })\"\\n    ')"]
+after = ["expect(contents).toMatchInlineSnapshot('\\n      \"import { computed, shallowReactive, unref, watch } from \"vue\";\\n      import { defineNuxtPlugin } from \"#app/nuxt\";\\n      import { localeContextInjectionKey } from \"/runtime/composables/useLocale\";\\n      import en from \"/runtime/locale/en\";\\n      const locales = {\\n        en: \"en\",\\n        fr: \"fr\",\\n        \"pt-BR\": \"pt_br\",\\n        \"en-US\": \"en\"\\n      }\\n      const loaders = {\\n        fr: () => import(\"/runtime/locale/fr\"),\\n        pt_br: () => import(\"/runtime/locale/pt_br\")\\n      }\\n      export default defineNuxtPlugin(async (nuxtApp) => {\\n        const loaded = shallowReactive({ en })\\n        const load = async (code) => {\\n          const key = locales[code]\\n          if (key && !loaded[key]) {\\n            loaded[key] = await loaders[key]().then(r => r.default).catch(() => undefined)\\n          }\\n        }\\n        // Load the next locale before `@nuxtjs/i18n` switches to it\\n        nuxtApp.hook(\\'i18n:beforeLocaleSwitch\\', ({ newLocale }) => load(newLocale))\\n        // A later `i18n:beforeLocaleSwitch` hook can still redirect to another locale\\n        nuxtApp.hook(\\'i18n:localeSwitched\\', ({ newLocale }) => load(newLocale))\\n        if (import.meta.client) {\\n          // A locale set without the hook, or changed by a later one\\n          nuxtApp.hook(\\'app:created\\', () => watch(() => unref(nuxtApp.$i18n?.locale), load, { immediate: true }))\\n        }\\n        nuxtApp.vueApp.provide(localeContextInjectionKey, computed(() => loaded[locales[unref(nuxtApp.$i18n?.locale)]]))\\n        await load(unref(nuxtApp.$i18n?.locale))\\n      })\"\\n    ')"]
+message = "toMatchInlineSnapshot('\\n      \"import { computed, unref } … → toMatchInlineSnapshot('\\n      \"import { computed, shallowR…"
+label = "wrong"
+note = "The PR changes src/utils/locales.ts to lazy load non-default locales, and the inline snapshot of the generated plugin follows that new output."
+
+[[finding]]
+unit = "848ebef47132"
+pr = 7360
+rule = "outcome-changed"
+path = "test/components/Table.spec.ts"
+test = "Table > shows the loading row instead of the empty one while loading without data"
+before = ["expect(wrapper.find('[data-slot=\"loading\"]').text()).toBe('Loading…')"]
+after = ["expect(wrapper.find('[data-slot=\"loading\"]').text()).toBe('')"]
+message = "toBe('Loading…') → toBe('')"
+label = "wrong"
+note = "The PR deliberately drops the default loading text (the commit says the thead bar already shows loading), so the loading row is now empty."

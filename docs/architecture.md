@@ -1,6 +1,6 @@
 # assertrust architecture
 
-> Status: **v0.1.** This is the design, built in small public PRs. `assertrust check` runs every rule (step 5), with its output formats and config (step 6), and ships as release binaries and a GitHub Action (step 8). The LLM judge (step 7) comes next. When the code changes the design, the same PR updates this doc.
+> Status: **v0.1.** This is the design, built in small public PRs. `assertrust check` runs every rule (step 5), with its output formats and config (step 6), and ships as release binaries and a GitHub Action (step 8). The optional AI judge (step 7) gives findings a verdict. When the code changes the design, the same PR updates this doc.
 
 assertrust checks that a change didn't quietly make the test suite weaker. Examples: an assertion removed, a matcher loosened, a test skipped, a CI gate relaxed. It reports what got weaker, where, and which commit did it.
 
@@ -9,7 +9,7 @@ assertrust checks that a change didn't quietly make the test suite weaker. Examp
 - **Module 1 only:** detecting assertion weakening. The other modules (dead-code detection, port parity, ticket intent, explore mode) come later.
 - **Rust core.** Anything built on Playwright's TypeScript ecosystem later stays in TypeScript and calls the Rust binary.
 - **Open source** (Apache-2.0).
-- **Deterministic first.** An LLM judge is optional and used only for ambiguous cases (step 7).
+- **Deterministic first.** The AI judge is optional, runs only with the user's own key, and never deletes a finding (step 7).
 - **The input layer is generic.** It knows nothing about tests or rules, so other tools can reuse it.
 
 ## Pipeline
@@ -23,7 +23,7 @@ trigger (PR / push / staged / worktree)
 4. matching     → pair each test before and after the change
 5. rules        → deterministic findings with confidence
 6. output       → terminal, JSON, SARIF, GitHub annotations, exit code
-7. judge        → optional LLM check of ambiguous findings against stated intent
+7. judge        → optional AI check of findings against the stated intent
 8. packaging    → CLI, GitHub Action, npm, Claude Code hook
 ```
 
@@ -180,7 +180,7 @@ test/refund.test.ts: it('refunds', async () => { expectOk(await refund()) })
 - **A call that can't be followed** (an alias that can't be resolved, a package, a file outside test folders) stays in the test's view, marked so. The checks it ran before aren't reported as removed: what it checks now can't be seen. Dropping the call still counts.
 - **A test file that didn't change** is loaded too when a helper file it calls changed. A search for the helper file's name in import paths (`git grep`) finds candidates, and resolving their imports confirms them, also through files that pass helpers on. This only happens when a helper that checks something (itself or through helper files it calls) changed, not just its lines, or an import such a helper uses did, or the classes the file builds objects from (`export const page = new Page()` importing another `Page`). A file of factories or mocks doesn't start a search, and neither does a page object whose `click()` changed next to an `expectOpen()` that didn't, or a call in a helper that leads to no helper (`act(() => …)` from a package): changing those doesn't change what a test checks. All the changed helper files of a change are searched for at once, one `git grep` per step away from them, and a test file is kept only when what its tests check changed.
 - **A helper file that doesn't parse** skips the tests that call it, with a note: comparing without its checks would make them look removed.
-- **Helpers that don't assert still shape what a test does:** setup, seeding and request wrappers, like everything in Mailyond's `test/utils.ts`. Changes there go to the LLM judge (step 7), such as a seed helper's default switching from `'connected'` to `'pending'`.
+- **Helpers that don't assert still shape what a test does:** setup, seeding and request wrappers, like everything in Mailyond's `test/utils.ts`. No rule reports a change there, such as a seed helper's default switching from `'connected'` to `'pending'`; the AI judge (step 7) sees one only in the diffs of a change that has a finding.
 - **Not covered yet:** a runtime skip inside a helper, arguments for parameters that aren't plain names (`{ strict }`, `status = 200`), and values read from a page object rather than methods called on it (immich's `app.dialog`, built by a function the tests' fixture calls).
 
 ### Not in v0.1
@@ -418,7 +418,7 @@ A removed check that shows up unchanged, and in the same place (not newly inside
 ### Defaults
 
 - **When unsure, don't pair.** Missing a weakening is better than a false alarm, because a noisy tool gets turned off.
-- **Renames are information, not findings.** They appear in the output, with the words the title dropped. When a title drops words in the same change that a check disappears, that's noted for the reviewer and the LLM judge (step 7).
+- **Renames are information, not findings.** They appear in the output, with the words the title dropped. When a title drops words in the same change that a check disappears, that's noted for the reviewer and the AI judge (step 7).
 - **Thresholds are set on the Mailyond history** (below), not guessed.
 
 ### Checked on Mailyond's history
@@ -487,7 +487,7 @@ after:  expect(source).not.toMatch(/support@|support\.your|inboxes\.net|…/)
 | `test-disabled` | A test no longer runs, or no longer runs everywhere | `.skip`, `.todo`, `.fails`, `.skipIf(…)`, a runtime `test.skip(cond)`; `.only` committed (silences the rest of the file); a test deleted and not moved; a test file deleted, or renamed to a name the runner doesn't pick up | high; medium when it skips only under a condition, or the deleted test's file gained tests that didn't pair |
 | `check-cant-fail` | A check is still there but may no longer run or fail | moved into a `try` with a `catch`, an `if` or an unawaited callback; an early `return` added before it; `await` dropped from `.resolves`/`.rejects`; a bare `expect(x)` with no matcher; `expect.assertions(n)` removed or `n` lowered | high for a bare `expect`, a dropped `await` and an unconditional `return`; low for a loop; else medium |
 | `gate-loosened` | CI or test config lets more failures through | `\|\| true`, `continue-on-error: true`, `if: false` on a test step; the test step removed; `retries` raised; coverage threshold lowered; a pattern added to `exclude`/`testIgnore`; `passWithNoTests` added | high; medium for an `if:` with a condition, a narrowed run, files left out of coverage, and `.only` settings |
-| `outcome-changed` | The expected outcome changed: not looser, just different | `toBe(3)` → `toBe(4)`; `.not` added or removed | low; shown only with `-v` until the LLM judge exists |
+| `outcome-changed` | The expected outcome changed: not looser, just different | `toBe(3)` → `toBe(4)`; `.not` added or removed | low; shown only with `-v`, or when the AI judge says it isn't fine |
 
 ### What the first three check, in detail
 
@@ -587,7 +587,7 @@ It compares the gate facts (step 3) of each CI or test config file before and af
   - a project is removed only if no config in the same folder lists it now: vitest 3 moves `vitest.workspace.ts`'s projects into `vitest.config.ts`'s `test.projects` (or `test.workspace`). A moved project is compared with what it was, so a `retry` raised on the way is flagged. A new project's settings aren't checked, since it only adds tests.
   - `forbidOnly` turned off or `allowOnly: true` (medium: a committed `.only` passes)
 - **package.json:** each test script's command, like a workflow step's, and the `jest` settings. A script that calls another script of the same file is read through it, with its own flags added to that script's: with `"test:unit": "vitest --project unit"`, changing `"test": "nr test:unit"` to `"nr test:unit --project=server"` runs one more project, not only `server`. Only npm, pnpm, yarn, `bun run` and `nr` are followed this way, not tools that run other packages' scripts (`turbo run test`, `pnpm -r test`). A test script that no longer runs a test runner is high when it does nothing (`echo skip`). It's medium when it runs something else, since `node scripts/ci.js` may still run the tests. A test script removed is medium, because CI calling it would now fail loudly.
-- **`assertrust.toml` itself** (step 6, "Config"): a rule turned `off` or left to the `judge`, `fail-on` lowered (high), or a `test` or `gate` file pattern dropped (medium, since it's often rewritten to match the same files).
+- **`assertrust.toml` itself** (step 6, "Config"): a rule turned `off` or left to the `judge`, `fail-on` lowered, or a verdict dropped from `[judge] fail-on` (high); a `test` or `gate` file pattern dropped (medium, since it's often rewritten to match the same files), `[judge]` removed (medium, since CI may turn it on with `--judge`), or its `max-findings` lowered (medium).
 
 A deleted workflow or config counts as all of it removed. So does one renamed or moved where it no longer runs (`ci.yml` → `ci.yml.disabled`). Raising a threshold, removing a skip, or adding a step is stricter and never flagged. Not covered yet: triggers (`on:`), matrix entries, a step's own `shell:`, and which script a workflow step's `npm run …` runs (only scripts calling scripts in the same `package.json` are followed).
 
@@ -634,7 +634,7 @@ A deleted workflow or config counts as all of it removed. So does one renamed or
 ### Defaults
 
 - **Sideways matcher swaps are flagged too,** at low confidence. Changes that behave identically are not.
-- **`outcome-changed` is hidden unless the judge is on.** Legitimate behaviour changes do this constantly, so on its own it would be mostly noise (43 of them on Mailyond's history, below). Until the judge exists, `-v` shows them, and the summary line says how many were hidden. It's still recorded in the backtest report for tuning.
+- **`outcome-changed` is hidden unless the judge is on.** Legitimate behaviour changes do this constantly, so on its own it would be mostly noise (43 of them on Mailyond's history, below). With the judge on (step 7), each goes to the judge, and one it doesn't call fine is shown. Without it, `-v` shows them, and the summary line says how many were hidden. The backtest labels them too, to measure the judge on them.
 - **Confidence levels are a first guess** and get adjusted using the Mailyond backtest. They already were once: a deleted test is medium when its file gained tests, after `49a44d2` (below).
 
 ### Checked on Mailyond's history
@@ -727,7 +727,7 @@ test/api/forwarding.test.ts:27  HIGH  expectation-loosened
       commit  Trim the refund test
   ```
 - A finding about something that's gone (a deleted test or file) has no line: `test/a.test.ts  HIGH  test-disabled` / `deleted: billing > refunds`.
-- Findings are sorted most severe first. Allowed findings come last, marked `ALLOWED`, with a line saying why: `allowed: preview is tested in MCP now (comment)`. Transient findings appear only with `--show-transient`, marked `(undone later)`. A finding whose rule is left to the judge (`outcome-changed`) needs `-v` whatever its status, allowed or undone later too, and isn't counted without it.
+- Findings are sorted most severe first. Allowed findings come last, marked `ALLOWED`, with a line saying why: `allowed: preview is tested in MCP now (comment)`. Transient findings appear only with `--show-transient`, marked `(undone later)`. A finding whose rule is left to the judge (`outcome-changed`) needs `-v` whatever its status, allowed or undone later too, and isn't counted without it, unless the judge gave it a verdict (step 7). With the judge on, a finding gets a third line, `judge: coverage lost: …`, and those it calls fine are listed apart at the end, one line each.
 - **On the PR**, an inline annotation already sits on the line, so it says only the finding itself: title `assertrust: expectation-loosened (high)`, message `toMatchObject no longer checks domainIds, status (10d8742)`. A finding that reaches `fail-on` is an `error`, the rest are warnings; allowed, hidden, undone-later and added-by-the-PR ones aren't annotated (the last only with `show-pr-added`). The last line and the summary count findings as the terminal does: `assertrust: no findings · 1 on code this PR added hidden · warn-only (exit 0)`. The summary is a short table (file:line, rule, message, then the allowed ones with their reasons), written to the job summary (`$GITHUB_STEP_SUMMARY`) and starting with `<!-- assertrust -->`, so the GitHub Action can post it as one PR comment and edit it in place on every push. The number of findings in the table goes to the step outputs (`$GITHUB_OUTPUT`) as `findings`.
 
 Messages are short by design: one line that says what got weaker. Detail goes behind `-v`, never in the default view.
@@ -744,7 +744,7 @@ Messages are short by design: one line that says what got weaker. Detail goes be
 ### Exit codes
 
 - `0`: no findings, or findings below `fail-on`. The default is `fail-on = "never"` (warn-only). `--fail-on high` (or `medium`, `low`) sets it for one run.
-- `1`: at least one finding at or above `fail-on`, or, with the judge on, a verdict listed in `[judge] fail-on` (step 7). Hidden, allowed, undone-later and added-by-the-PR findings never count. The summary line says it: `2 findings · 1 finding at high or above (exit 1)`.
+- `1`: at least one finding at or above `fail-on`, or, with the judge on, a verdict listed in `[judge] fail-on` (step 7). Hidden, allowed, undone-later and added-by-the-PR findings never count. The summary line says it: `2 findings · 1 finding at high or above (exit 1)`, or `1 judged coverage lost or suspicious (exit 1)`.
 - `2`: assertrust itself failed (no git, bad config, bad range). This is never confused with "found something".
 
 **Blocking.** Deterministic findings warn by default. Set `fail-on` to block. This default may change once the backtests prove precision: they don't yet (42% right, 61% at high; see "Backtest" below).
@@ -775,6 +775,12 @@ gate         = [".github/workflows/*.yml", "{vitest,jest,playwright}.config.*", 
 [rules]                      # every rule is on by default except outcome-changed
 outcome-changed = "judge"    # off | on | judge
 matcher-swapped = "on"
+
+[judge]                      # the AI judge (step 7): on when this table is here
+model = "anthropic/claude-sonnet-5-5"
+effort = "medium"            # low | medium | high; the model's own default when left out
+fail-on = ["coverage-lost", "suspicious"]    # or "never"
+max-findings = 20
 ```
 
 assertrust works with no config file. It lives at the repo root. CLI flags override the file.
@@ -793,7 +799,7 @@ assertrust.toml:4  HIGH  gate-loosened
   turned check-removed off: its findings are no longer reported · 1a2b3c4
 ```
 
-Like a loosened CI config, a deliberate change says why with `# assertrust-allow: gate-loosened <reason>` above the setting. When the file on disk differs from the one at the base, a note says the check uses the base's. Staged and worktree checks read the file on disk, and so does `assertrust tests`; `changes` and `pairs` read it the way `check` does. An unknown key, rule or value is an error (exit 2), so a typo (`fail_on`) doesn't silently do nothing. `off` drops a rule's findings; `judge` leaves them to the judge (step 7), which for now means they're shown only with `-v`, as `outcome-changed` is by default.
+Like a loosened CI config, a deliberate change says why with `# assertrust-allow: gate-loosened <reason>` above the setting. When the file on disk differs from the one at the base, a note says the check uses the base's. Staged and worktree checks read the file on disk, and so does `assertrust tests`; `changes` and `pairs` read it the way `check` does. An unknown key, rule or value is an error (exit 2), so a typo (`fail_on`) doesn't silently do nothing. `off` drops a rule's findings; `judge` leaves them to the judge (step 7): shown when it's on and doesn't call them fine, else only with `-v`, as `outcome-changed` is by default.
 
 ### Backtest: what it would have flagged, and how often it's right
 
@@ -823,7 +829,7 @@ The repo's first commit isn't checked: there's nothing before it. A commit that 
 - `intended`: weaker on purpose: the change also removed or rewrote the code the test covered (and the test now checks less of what's left), or a commit message or the PR's title says why.
 - `unexplained`: weaker, and nothing in the change says why. These are the findings a reviewer should look at.
 
-**Precision** is the share labelled `intended` or `unexplained`: the findings that are right. A run prints it overall, per confidence level and per rule. Telling `intended` from `unexplained` is what the judge (step 7) will be scored on, from the same labels.
+**Precision** is the share labelled `intended` or `unexplained`: the findings that are right. A run prints it overall, per confidence level and per rule. With `--judge`, a run also prints how the judge's verdicts fall on each label (step 7): it shouldn't fail a check on a `wrong` finding, and should on an `unexplained` one.
 
 With labels, a run exits with 1 when a finding isn't labelled yet, a finding labelled right is no longer found, or a commit couldn't be checked. So after a change to the rules, it says exactly which findings appeared or went. `--update-labels` adds new findings to the file, unlabelled, and drops false alarms no longer found. A finding is the same one when its commit, rule, file, test and code are the same; the message isn't part of it, so rewording one keeps its label. If its code is printed differently, it keeps the label of the one left-over entry about the same commit, rule, file and test, marked `carried over`.
 
@@ -879,7 +885,7 @@ Then methods became helpers. immich had moved its sync checks into `ctx.assertSy
 - shown by default: 194, **50% right** (70% at high confidence, 68 of 97);
 - added by their PR, hidden: 184, 46% right.
 
-Following methods costs time where tests call many of them: Excalidraw's 100 PRs take 5.6s instead of 4.5s, immich's 2.9s instead of 1.9s (most of it in the sync refactor and a 139-file rewrite of its web tests), the whole backtest 10–20% more. What's left of the wrong findings is mostly tests rewritten for a behaviour change (renamed, new expected values on the same inputs) and tests moved into other files as different tests. To matching, those look exactly like a behaviour removed on purpose with its tests, so they're for the LLM judge (step 7).
+Following methods costs time where tests call many of them: Excalidraw's 100 PRs take 5.6s instead of 4.5s, immich's 2.9s instead of 1.9s (most of it in the sync refactor and a 139-file rewrite of its web tests), the whole backtest 10–20% more. What's left of the wrong findings is mostly tests rewritten for a behaviour change (renamed, new expected values on the same inputs) and tests moved into other files as different tests. To matching, those look exactly like a behaviour removed on purpose with its tests, so they're for the AI judge (step 7).
 
 ### Tests
 
@@ -894,60 +900,92 @@ In `crates/assertrust/tests/output.rs`, on temporary repos:
 
 In `crates/assertrust/tests/backtest.rs`: a history with a PR merged with a merge commit, a squash-merged PR with its commits fetched and one without, and a push, each checked the way CI would have; a range and the labels file picking the commits; each commit checked with the `assertrust.toml` it had; a PR that can't be checked; labels giving precision, carried over to a finding printed differently, and what's new or gone, then rewritten by `--update-labels`; and the JSON output. `labels.rs` has unit tests for reading back what it writes, typos, and pairing.
 
-## 7. LLM judge (planned after v0.1)
+## 7. AI judge
 
 **In one sentence:** an optional AI pass that reads a finding together with the stated intent and answers one question: does the test still check what it promises?
 
 The question is about coverage, not intent. `10d8742` was intentional (the API response was trimmed), but it still lost coverage: nothing checked that a new forwarding address starts pending until `f8e4323` added that back.
 
+hono's PR 5448 moved two build checks into its Vite config and deleted their tests:
+
+```
+build/validate-exports.test.ts  HIGH  test-disabled
+  file deleted: its test no longer runs · fcd351b
+  judge: coverage lost: The validateExports logic was moved verbatim into a vite.config.ts build plugin that still runs in the build and throws on mismatch; the old unit test was deleted with its module and not replaced, though the behavior stays.
+```
+
+The code is in `crates/assertrust-judge` (the prompt, the cache, the model client) and `crates/assertrust/src/judge.rs` with `evidence.rs` (which findings, what it sees, what the verdicts change).
+
 ### Example verdicts
 
-| Finding | Verdict | Reason (one line) |
+Real verdicts of the default model:
+
+| Finding | Verdict | Reason |
 |---|---|---|
-| `10d8742`: dropped `status`, `domainIds` | **coverage lost** | The title still promises "only forwards once confirmed", but nothing checks that a new address starts pending. |
-| `038cf0b`: `preview` check removed | **fine** | The commit moves HTML-to-text out of storage, and the title was updated to match. |
-| hypothetical: `toBe(3)` → `toBe(4)`, commit "fix failing test", no related source change | **suspicious** | The expected value was changed to match new output, and nothing in the change says the behaviour should change. |
+| hono `ee0622e`: `build/validate-exports.test.ts` deleted | **coverage lost** | The validateExports logic was moved verbatim into a vite.config.ts build plugin that still runs in the build and throws on mismatch; the old unit test was deleted with its module and not replaced. |
+| VueUse: `toHaveBeenCalledTimes(numbers.length + numpadNumbers.length)` → `… - 1`, next to `// todo: why -1?` | **suspicious** | The test now expects one fewer callback with an unexplained 'todo: why -1?', so one numeric key goes unchecked and the cause could be a real bug masked by the migration. |
+| Mailyond `10d8742`: dropped `status`, `domainIds` | **fine** | The POST endpoint now deliberately returns only `{ id, email }`, so status and domainIds no longer exist in the response; the later list check still verifies status 'active'. |
+
+The last one is arguable. The response did lose those fields on purpose, but that a new address starts pending went unchecked until `f8e4323`. The judge reads coverage through what the test can still reach.
 
 Verdicts: `fine`, `coverage-lost`, `suspicious`, `unsure`, each with a one-line reason.
 
 ### When it runs
 
-- **Opt-in only:** `--judge` or `[judge]` in config, with the user's own API key. Off by default because it sends code to a model provider.
-- **On which findings:** `outcome-changed` (hidden unless the judge is on), low- and medium-confidence findings, and anything with a rename note. High-confidence findings are judged too when the judge is on, but the verdict is only added as a note.
+- **Opt-in only:** `--judge`, `--judge-model MODEL`, `--judge-effort LEVEL`, or `[judge]` in `assertrust.toml` (the Action's `judge: true`), with the user's own key. Off by default, because it sends code to a model provider. `--judge-dry-run` prints exactly what would be sent, and sends nothing.
+- **On which findings:** the shown ones, and changed outcomes (`outcome-changed`, left to the judge), shown ones first, each most sure first, up to `max-findings` (20 by default; the rest keep no verdict, and the judge's line says how many). Not allowed findings, findings undone later, or findings on code the PR added: none of them can fail the check. That includes a changed outcome found in one of the PR's commits and kept because the head is still weaker: it's about code the PR added too.
 - **What the judge can change:**
   - It adds a verdict and a reason to findings.
-  - It decides whether an `outcome-changed` finding is shown. `fine` stays hidden, anything else is shown.
-  - It never deletes a deterministic finding.
-- **Judge verdicts block by default.** When the judge is on, a finding it marks `suspicious` or `coverage-lost` fails the run (exit 1). This is configurable: `[judge] fail-on = ["suspicious", "coverage-lost"]` by default, or `"never"`. So deterministic findings warn, and judge-confirmed findings block. Allowed findings (`assertrust-allow`) never block.
-- **Failure is soft.** No key, a network error or rate limits mean findings are shown without verdicts, plus one note. A judge that didn't run never blocks and never exits 2.
+  - A changed outcome it doesn't call `fine` is shown. One it calls `fine` stays hidden (`-v` shows it, with its verdict).
+  - A shown finding it calls `fine` is listed apart, folded away: a line each at the end of the terminal output, `<details>` in the job summary and the PR comment, no annotation. It's never dropped. One that `fail-on` fails anyway (say, `fail-on = "high"` and a high-confidence finding) stays with the other findings, with its verdict and its error annotation, so the run never fails over something it hid.
+- **Judge verdicts block by default.** A finding it marks `suspicious` or `coverage-lost` fails the run (exit 1): `[judge] fail-on = ["coverage-lost", "suspicious"]` by default, or `"never"`. So deterministic findings warn, and judge-confirmed findings block. Allowed findings (`assertrust-allow`) never block.
+- **Failure is soft.** No key, a network error, rate limits or an answer that isn't the JSON asked for mean findings are shown without verdicts, plus one note. A judge that didn't run never blocks and never exits 2.
+- **Turning it down is a finding**, like any loosened config (step 6): removing `[judge]` (medium, since CI may pass `--judge` instead), dropping a verdict from its `fail-on` (high), or lowering `max-findings` (medium) is `gate-loosened` on `assertrust.toml`.
 
 ### What it sees
 
-- the test before and after, plus the helpers involved
-- the commit message(s) that caused the finding (from step 1's attribution)
-- the PR title and body, in PR mode
-- the diff of product code the test imports, with a size cap; anything cut is marked as cut, never silently dropped
-- the test's title, which acts as its promise
+One markdown message per finding, the finding first, then:
 
-`--judge-dry-run` prints exactly what would be sent, without calling anything.
+- **The finding:** its rule and what the rule looks for, confidence, place, tests, message, and the code before and after.
+- **Each test it names** (up to 3), before and after the change, cut from the parsed file by the test's lines (150 lines each). A test the change didn't touch (the change was in a helper) is shown once.
+- **Diffs of the files the change touched**, as many as fit: the finding's own file and its tests' files first, then files a test file mentions (by import name), then other test files, then the rest. Lock files and files that aren't code are left out. 600 lines in all, 200 per file.
+- **The commit messages** that made the finding (up to 8, 3000 characters each).
+- **The pull request:** in GitHub Actions, its title and description from the event, when its head is the commit being checked; in a backtest, the title from the merge commit.
+
+Anything cut is listed under "Left out for size", never silently dropped. The system prompt defines the verdicts and how to decide: the title is the promise, a test that follows a code change is fine, be skeptical when only the test changed, weigh messages against the code. It's versioned, and the version is part of every cache key.
 
 ### Model and library
 
-- **rig-core** behind our own `Judge` trait, as an optional cargo feature (`llm`), so the deterministic core has no LLM dependencies. Any provider works: Anthropic, OpenAI, Gemini, or Ollama for local and free.
-- **Default model chosen by measurement, not guessed.** Run the Mailyond backtest findings through Claude Haiku 5.5, Sonnet 5.5 and Opus 5.5, compare against hand labels, and pick the cheapest model that matches the labels well. Rough cost per judged finding (~5K tokens in, short answer, some thinking), at Anthropic list prices cached 2026-10-06:
-  - Haiku 5.5 (`claude-haiku-5-5`, $0.10/$0.50 per M tokens): about $0.001
-  - Sonnet 5.5 (`claude-sonnet-5-5`, $2/$10): about $0.02
-  - Opus 5.5 (`claude-opus-5-5`, $4/$20): about $0.04
-  
-  A whole Mailyond backtest costs a few dollars at most, even on Opus.
-- **Structured answer:** the verdict comes back as JSON matching a schema. **Check in the judge PR:** if rig's structured-output helper forces a tool call, the newest Claude models (Opus 5.5, Sonnet 5.5) reject it with a 400. If so, use the API's structured outputs (`output_config.format`) or `tool_choice: auto` plus `strict: true`. As a last resort, a thin HTTP client behind the same `Judge` trait.
-- **Repeatability comes from the cache, not sampling settings.** The current Claude API rejects `temperature` and similar parameters. Verdicts are cached by a hash of model, prompt version and inputs, in `.assertrust/cache/` locally and via `actions/cache` in CI, so the same change always gets the same verdict and CI never flips.
-- **Cost guard:** a cap on judged findings per run (default 20). Token usage is printed at the end.
+- **rig-core 0.46**, pinned to the exact version (it ships a breaking 0.x release every few weeks), behind assertrust's own `Judge` trait, all in the optional `llm` cargo feature. The feature is on by default and in the release builds; without it, the judge only says it isn't built in. Models are named `provider/model`: `anthropic`, `openai`, `gemini` or `ollama` (local and free). The key comes from the provider's usual variable (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`), and so does another address (`ANTHROPIC_BASE_URL`, `OLLAMA_API_BASE_URL`).
+- **Structured answer:** the verdict comes back as JSON matching a schema, sent as structured output. The newest Claude models (Opus 5.5, Sonnet 5.5) reject the forced tool call many libraries use for that; rig 0.46 sends `output_config.format` instead, which settled the check this PR had open. An answer wrapped in a code fence (a model without structured outputs) still parses.
+- **Thinking:** the model's own adaptive default, or `[judge] effort` / `--judge-effort` (`low`, `medium`, `high`). The effort is part of the cache key, so another effort asks again. At most 16,000 tokens, 180 seconds and 4 requests at once.
+- **Repeatability comes from the cache, not sampling settings.** The current Claude API rejects `temperature` and similar parameters. Verdicts are cached by a hash of the prompt version, the model and the whole prompt, in the repo's git directory (`.git/assertrust/judge/`, shared by its worktrees), so the same change always gets the same verdict and CI never flips. Not in the working tree: there, a change could commit "fine" verdicts under the keys its own findings hash to, and judge itself. The Action restores the cache before the run whenever a judge input or `assertrust.toml` could turn the judge on, and saves it after (`actions/cache`). A cached verdict needs no key, and costs nothing.
+- **Cost guard:** `max-findings` per run. The judge's line gives the tokens and the dollars (from rig's price list).
+
+### Default model: measured, not guessed
+
+The labelled backtests (step 6) went through Claude Haiku 5.5, Sonnet 5.5 and Opus 5.5 with `backtest --labels --judge --judge-model …`: 378 findings a check reports (shown, or on code a PR added) and the 341 changed outcomes it hides, labelled for this (338 `wrong`, 1 `intended`, 2 `unexplained`), 719 in all. A judge should never fail a check on a `wrong` finding and should on an `unexplained` one. `intended` mixes "the code under test went too" (fine) and "an explained trim of behaviour that's still there" (coverage lost), so it's only reported.
+
+On the 194 findings a PR check shows (97 `wrong`, 35 `unexplained`, 62 `intended`):
+
+| Model, effort | `wrong` it fails | `unexplained` it fails | Of its failures, right | `wrong` it calls fine | Cost per finding |
+|---|---|---|---|---|---|
+| Haiku 5.5, medium | 3 | 10 | 21 of 24 | 72 | $0.0011 |
+| Haiku 5.5, high | 2 | 11 | 33 of 35 | 75 | $0.0013 |
+| Sonnet 5.5, high | 5 | 13 | 22 of 27 | 83 | $0.021 |
+| Sonnet 5.5, medium | 9 | 26 | 39 of 48 | 80 | $0.021 |
+| Opus 5.5, medium | 0 | 17 | 25 of 25 | 83 | $0.043 |
+| **Sonnet 5.5, medium, final evidence** | **5** | **23** | **36 of 41** | **80** | $0.021 |
+
+On the 341 changed outcomes, every model brought up and failed 2 to 6 of the 338 legitimate ones, and caught the real ones (Sonnet at high and at medium caught one of the two; the final run both). The first five rows used this PR's first evidence. The last row is the code as it ships: when not every diff fits, it lists every file the change touched, and ranks files of the same name first, after most of the `unexplained` that no model caught turned out to be test files deleted in one 139-file test migration (immich PR 32983), where the judge couldn't see whether they'd moved. Verdicts whose prompt didn't change came from the cache. A prompt rule against `unsure` was tried and dropped: on Haiku it caught 20 of immich's 30 instead of 7, but failed 9 of its 25 false alarms.
+
+**The default is Sonnet 5.5 at `medium` effort** (Rares's pick): it catches the most, about two in three, for 2 cents a finding, and fails the check on about one false alarm in twenty. Opus never failed one, for twice the price and fewer catches. Haiku is nearly free and almost as careful, but catches less than a third. `medium` is the default effort only for the default model; another model thinks at its own default unless `effort` says otherwise. The whole measurement cost about $73.
 
 ### Tests
 
-- The `Judge` trait has a fake implementation that returns scripted verdicts. All pipeline tests use it, with no network.
-- The real-model eval (hand-labelled Mailyond findings) runs manually, not in CI, and records agreement and cost per model.
+- Unit tests cover reading answers, cache keys and the cache, how evidence is written, and the dry-run preview (built offline, with no key).
+- Integration tests run the binary against a fake Messages API on localhost (`tests/common`), which answers by matching the request's text and keeps every request to look at: verdicts and exit codes, folding, the cache, no key, a failing model, the dry run, the config's cap and `fail-on`, JSON and GitHub output, the PR from the event, a changed outcome on code the PR added, backtest scoring and the Action's input. The harness removes every provider's key, so a test can never reach a real model.
+- The real-model eval runs by hand: `assertrust backtest --labels FILE --judge --judge-model MODEL` in each backtest clone, which prints how the verdicts fall on each label.
 
 ## 8. Packaging
 

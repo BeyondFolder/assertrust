@@ -57,6 +57,90 @@ label = "wrong"
 note = "Not removed: the fix drops the intermediate 'hydrated, fetching' render, so the final-state check moved from states[4] to states[3] and toHaveLength still pins the whole sequence."
 
 [[finding]]
+unit = "1e1caa5a3284"
+pr = 12230
+rule = "outcome-changed"
+path = "packages/react-query-persist-client/src/__tests__/PersistQueryClientProvider.test.tsx"
+test = "PersistQueryClientProvider > should restore cache from persister"
+before = ["expect(states).toHaveLength(4)"]
+after = ["expect(states).toHaveLength(3)"]
+message = "toHaveLength(4) → toHaveLength(3)"
+label = "wrong"
+note = "The PR moves setOptions before subscribing in useBaseQuery, which drops a duplicate hydrated/fetching render, so the hook now renders 3 states instead of 4."
+
+[[finding]]
+unit = "1e1caa5a3284"
+pr = 12230
+rule = "outcome-changed"
+path = "packages/react-query-persist-client/src/__tests__/PersistQueryClientProvider.test.tsx"
+test = "PersistQueryClientProvider > should restore cache from persister"
+before = ["expect(states[2]).toMatchObject({ data: 'hydrated', fetchStatus: 'fetching', status: 'success' })"]
+after = ["expect(states[2]).toMatchObject({ data: 'fetched', fetchStatus: 'idle', status: 'success' })"]
+message = "toMatchObject({ data: 'hydrated', fetchStatus: 'fetching', … → toMatchObject({ data: 'fetched', fetchStatus: 'idle', statu…"
+label = "wrong"
+note = "The duplicate hydrated/fetching render is gone after the useBaseQuery change; states[2] is now the final fetched/idle state that states[3] used to check, still asserted exactly."
+
+[[finding]]
+unit = "1e1caa5a3284"
+pr = 12230
+rule = "outcome-changed"
+path = "packages/react-query-persist-client/src/__tests__/PersistQueryClientProvider.test.tsx"
+test = "PersistQueryClientProvider > should show initialData while restoring"
+before = ["expect(states).toHaveLength(4)"]
+after = ["expect(states).toHaveLength(3)"]
+message = "toHaveLength(4) → toHaveLength(3)"
+label = "wrong"
+note = "Same useBaseQuery change: setting options before subscribing removes the duplicate hydrated/fetching render, so 3 renders instead of 4."
+
+[[finding]]
+unit = "1e1caa5a3284"
+pr = 12230
+rule = "outcome-changed"
+path = "packages/react-query-persist-client/src/__tests__/PersistQueryClientProvider.test.tsx"
+test = "PersistQueryClientProvider > should show initialData while restoring"
+before = ["expect(states[2]).toMatchObject({ data: 'hydrated', fetchStatus: 'fetching', status: 'success' })"]
+after = ["expect(states[2]).toMatchObject({ data: 'fetched', fetchStatus: 'idle', status: 'success' })"]
+message = "toMatchObject({ data: 'hydrated', fetchStatus: 'fetching', … → toMatchObject({ data: 'fetched', fetchStatus: 'idle', statu…"
+label = "wrong"
+note = "The duplicate hydrated/fetching render no longer happens, so the final fetched/idle state moved from states[3] to states[2]; same check, new index."
+
+[[finding]]
+unit = "1e1caa5a3284"
+pr = 12230
+rule = "outcome-changed"
+path = "packages/react-query-persist-client/src/__tests__/PersistQueryClientProvider.test.tsx"
+test = "PersistQueryClientProvider > should be able to persist into multiple clients"
+before = ["expect(states).toHaveLength(5)"]
+after = ["expect(states).toHaveLength(4)"]
+message = "toHaveLength(5) → toHaveLength(4)"
+label = "wrong"
+note = "The useBaseQuery change removes one duplicate hydrated/fetching render, so this test now sees 4 renders instead of 5."
+
+[[finding]]
+unit = "1e1caa5a3284"
+pr = 12230
+rule = "outcome-changed"
+path = "packages/react-query-persist-client/src/__tests__/PersistQueryClientProvider.test.tsx"
+test = "PersistQueryClientProvider > should be able to persist into multiple clients"
+before = ["expect(states[3]).toMatchObject({ data: 'hydrated', fetchStatus: 'fetching', status: 'success' })"]
+after = ["expect(states[3]).toMatchObject({ data: 'queryFn2', fetchStatus: 'idle', status: 'success' })"]
+message = "toMatchObject({ data: 'hydrated', fetchStatus: 'fetching', … → toMatchObject({ data: 'queryFn2', fetchStatus: 'idle', stat…"
+label = "wrong"
+note = "With the duplicate render gone, the final queryFn2/idle state moved from states[4] to states[3]; the same values are still checked exactly."
+
+[[finding]]
+unit = "2ee2fd935acd"
+pr = 10969
+rule = "outcome-changed"
+path = "packages/query-core/src/__tests__/utils.test.tsx"
+test = "core/utils > addToStart > should respect the max argument"
+before = ["expect(newItems).toStrictEqual([4, 1, 2])"]
+after = ["expect(newItems).toStrictEqual([4, 1])"]
+message = "toStrictEqual([4, 1, 2]) → toStrictEqual([4, 1])"
+label = "wrong"
+note = "The same commit makes addToStart cap the result to max (slice(0, max)) instead of dropping one item, so [4, 1] is the new correct output."
+
+[[finding]]
 unit = "af0e0ef5fc04"
 pr = 12481
 rule = "expectation-loosened"
@@ -115,6 +199,42 @@ after = []
 message = "deleted: streamedQuery > should honor an overridden signal on a copied context"
 label = "intended"
 note = "The same commit removed the copied-context signal fallback in streamedQuery that this test covered."
+
+[[finding]]
+unit = "46d0477df231"
+pr = 12499
+rule = "outcome-changed"
+path = "packages/preact-query-devtools/src/__tests__/PreactQueryDevtoolsPanel.test.tsx"
+test = "PreactQueryDevtoolsPanel > should preserve the default container height when \"style\" omits \"height\""
+before = ["expect(container.querySelector('.tsqd-parent-container')).toHaveStyle({ height: '500px', width: '300px' })"]
+after = ["expect(container.querySelector('.tsqd-parent-container')).toHaveStyle({ display: 'flex', 'flex-direction': 'column', height: '100%', width: '300px' })"]
+message = "toHaveStyle({ height: '500px', width: '300px' }) → toHaveStyle({ display: 'flex', 'flex-direction': 'column', …"
+label = "wrong"
+note = "The PR changes the panel's default inline style from height 500px to height 100% with flex column, and the test checks the new default exactly."
+
+[[finding]]
+unit = "46d0477df231"
+pr = 12499
+rule = "outcome-changed"
+path = "packages/react-query-devtools/src/__tests__/ReactQueryDevtoolsPanel.test.tsx"
+test = "ReactQueryDevtoolsPanel > should preserve the default container height when \"style\" omits \"height\""
+before = ["expect(container.querySelector('.tsqd-parent-container')).toHaveStyle({ height: '500px', width: '300px' })"]
+after = ["expect(container.querySelector('.tsqd-parent-container')).toHaveStyle({ display: 'flex', 'flex-direction': 'column', height: '100%', width: '300px' })"]
+message = "toHaveStyle({ height: '500px', width: '300px' }) → toHaveStyle({ display: 'flex', 'flex-direction': 'column', …"
+label = "wrong"
+note = "ReactQueryDevtoolsPanel's default style changed in the same PR from height 500px to 100% plus display flex/column; the test follows the new default."
+
+[[finding]]
+unit = "46d0477df231"
+pr = 12499
+rule = "outcome-changed"
+path = "packages/solid-query-devtools/src/__tests__/devtoolsPanel.test.tsx"
+test = "SolidQueryDevtoolsPanel > should preserve the default container height when \"style\" omits \"height\""
+before = ["expect(container.querySelector('.tsqd-parent-container')).toHaveStyle({ height: '500px', width: '300px' })"]
+after = ["expect(container.querySelector('.tsqd-parent-container')).toHaveStyle({ display: 'flex', 'flex-direction': 'column', height: '100%', width: '300px' })"]
+message = "toHaveStyle({ height: '500px', width: '300px' }) → toHaveStyle({ display: 'flex', 'flex-direction': 'column', …"
+label = "wrong"
+note = "The Solid devtools panel's default style changed in the same PR to height 100% with flex column; the test checks the new default, plus more keys."
 
 [[finding]]
 unit = "f69b28a1dd2a"
@@ -263,6 +383,30 @@ note = "Rewritten for the CSS Custom Highlight API: the <mark> tagName check bec
 [[finding]]
 unit = "a4d72f75c1c7"
 pr = 12538
+rule = "outcome-changed"
+path = "packages/query-devtools/src/__tests__/Devtools.test.tsx"
+test = "Devtools > Data Explorer search > should initialize the query Data search from the %s scope"
+before = ["expect(search).toHaveValue('Needle')"]
+after = ["expect(search).toHaveValue(initial)"]
+message = "toHaveValue('Needle') → toHaveValue(initial)"
+label = "wrong"
+note = "The review-feedback commit makes the All scope also seed the explorer search (filterScope() !== 'key'); the test is parameterized and still expects Needle for data/all, '' for key."
+
+[[finding]]
+unit = "a4d72f75c1c7"
+pr = 12538
+rule = "outcome-changed"
+path = "packages/query-devtools/src/__tests__/Devtools.test.tsx"
+test = "Devtools > Data Explorer search > should initialize the query Data search from the %s scope"
+before = ["expect(search).toHaveValue('Needle')"]
+after = ["expect(search).toHaveValue(initial)"]
+message = "toHaveValue('Needle') → toHaveValue(initial)"
+label = "wrong"
+note = "Same code change seeding the search for every scope but key; the parameterized test expects '' for key and Needle for data and all, nothing dropped."
+
+[[finding]]
+unit = "a4d72f75c1c7"
+pr = 12538
 rule = "test-disabled"
 path = "packages/query-devtools/src/__tests__/Devtools.test.tsx"
 test = "Devtools > query list > should not show the filter scope toggle in the mutations view"
@@ -307,3 +451,39 @@ after = ["expect(query.state.refetch).toBeTypeOf('function')"]
 message = "removed expect(query.state).not.toHaveProperty('refetch')"
 label = "wrong"
 note = "Not removed: the commit makes state keep functions, and the assertion was flipped in place to expect state.refetch to be a function."
+
+[[finding]]
+unit = "9705a4ca1134"
+pr = 12549
+rule = "outcome-changed"
+path = "packages/query-devtools/src/__tests__/Explorer.test.tsx"
+test = "Explorer > nested search > uses native ranges and replaces them when the search or data changes"
+before = ["expect(highlightedText()).toStrictEqual(['bul', 'bul'])"]
+after = ["expect(highlightedText()).toStrictEqual(['pek', 'pek'])"]
+message = "toStrictEqual(['bul', 'bul']) → toStrictEqual(['pek', 'pek'])"
+label = "wrong"
+note = "Test-only fixture rename ('İstanbul' to 'İpek', search BUL to PEK) to clear cspell warnings; the input changed with the expectation and the check is just as strict."
+
+[[finding]]
+unit = "9705a4ca1134"
+pr = 12549
+rule = "outcome-changed"
+path = "packages/query-devtools/src/__tests__/Explorer.test.tsx"
+test = "Explorer > nested search > highlights original text when Unicode lowercasing changes its length"
+before = ["expect(highlightedText()).toContain('bul')"]
+after = ["expect(highlightedText()).toContain('pek')"]
+message = "toContain('bul') → toContain('pek')"
+label = "wrong"
+note = "Same fixture rename for cspell: the search term and data changed together, still checking the highlight after a length-changing Unicode lowercase."
+
+[[finding]]
+unit = "9705a4ca1134"
+pr = 12549
+rule = "outcome-changed"
+path = "packages/query-devtools/src/__tests__/Explorer.test.tsx"
+test = "Explorer > nested search > highlights original text when Unicode lowercasing changes its length"
+before = ["expect(rendered.getByText('city:').nextElementSibling).toHaveTextContent('\"📍 İstanbul\"')"]
+after = ["expect(rendered.getByText('material:').nextElementSibling).toHaveTextContent('\"📍 İpek\"')"]
+message = "toHaveTextContent('\"📍 İstanbul\"') → toHaveTextContent('\"📍 İpek\"')"
+label = "wrong"
+note = "Same fixture rename for cspell: the key city became material and the value 'İstanbul' became 'İpek', so the rendered text check follows its input."

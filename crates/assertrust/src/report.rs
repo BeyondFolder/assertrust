@@ -19,6 +19,7 @@ use std::collections::{HashMap, HashSet};
 
 use assertrust_git::{Analysis, Commit, Comparison, FileKind, Repo, Rev};
 use assertrust_ir::Test;
+use assertrust_judge::Judgment;
 use assertrust_match::match_files;
 use assertrust_rules::{Finding, RuleId};
 
@@ -40,12 +41,18 @@ pub struct Reported<'a> {
     /// The commits that made it, oldest first: none for staged or unsaved changes.
     pub commits: Vec<&'a Commit>,
     pub status: Status,
+    /// The change it was found in, for the judge to read its code: the whole PR, or one
+    /// commit.
+    pub comparison: Option<&'a Comparison>,
+    /// What the judge said about it, when it ran.
+    pub judgment: Option<Judgment>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Status {
     Shown,
-    /// Its rule is left to the judge (`outcome-changed` by default): shown with `-v`.
+    /// Its rule is left to the judge (`outcome-changed` by default): shown with `-v`, or
+    /// once the judge says it isn't fine (it's then `Shown`).
     Hidden,
     /// Waived by an allow comment or trailer: shown last, with the reason.
     Allowed {
@@ -58,6 +65,32 @@ pub enum Status {
     /// and still weaker at the PR's head: shown with `--show-pr-added`, and it can't fail the
     /// check, since the main branch lost nothing.
     PrAdded,
+}
+
+impl Reported<'_> {
+    /// Whether it fails the check if it's shown: sure enough for `fail-on`, or judged with
+    /// a verdict that fails it.
+    pub fn fails(&self, config: &Config) -> bool {
+        config.fail_on.fails(self.finding.confidence) || self.judge_fails(config)
+    }
+
+    /// Whether the judge's verdict on it fails the check.
+    pub fn judge_fails(&self, config: &Config) -> bool {
+        match (&self.judgment, &config.judge) {
+            (Some(judgment), Some(judge)) => judge.fail_on.contains(&judgment.verdict),
+            _ => false,
+        }
+    }
+
+    /// Whether it's listed apart, folded away: the judge found nothing weaker, and it
+    /// doesn't fail the check anyway. One that's sure enough for `fail-on` still fails it,
+    /// so it stays with the other findings, where it can be seen.
+    pub fn folded(&self, config: &Config) -> bool {
+        self.judgment
+            .as_ref()
+            .is_some_and(|judgment| judgment.verdict == assertrust_judge::Verdict::Fine)
+            && !self.fails(config)
+    }
 }
 
 impl Status {
@@ -73,14 +106,12 @@ impl Status {
 }
 
 impl Report<'_> {
-    /// The findings that make the check fail (exit 1) at this `fail-on` level.
+    /// The findings that make the check fail (exit 1): shown, and at the `fail-on` level or
+    /// given a verdict the judge's `fail-on` names.
     pub fn failing(&self, config: &Config) -> usize {
         self.findings
             .iter()
-            .filter(|reported| {
-                reported.status == Status::Shown
-                    && config.fail_on.fails(reported.finding.confidence)
-            })
+            .filter(|reported| reported.status == Status::Shown && reported.fails(config))
             .count()
     }
 
@@ -528,7 +559,7 @@ fn config_changes(
 /// Whether each finding is shown, hidden or allowed.
 fn decide<'a>(
     repo: &Repo,
-    checked: &Checked,
+    checked: &Checked<'a>,
     commits: Vec<Vec<&'a Commit>>,
     config: &Config,
 ) -> Result<Vec<Reported<'a>>, String> {
@@ -564,6 +595,8 @@ fn decide<'a>(
                 finding,
                 commits,
                 status,
+                comparison: Some(checked.comparison),
+                judgment: None,
             }
         })
         .collect())

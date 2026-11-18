@@ -2,6 +2,7 @@
 //!
 //! The flags follow `docs/architecture.md`: the mode flags pick what to compare (step 1),
 //! `check` runs the rules (step 5), `--format` and `--verbose` control its output (step 6),
+//! `--judge` asks the AI judge about its findings (step 7),
 //! `backtest` replays a branch's history with `check` (step 6), `tests` shows what parsing
 //! finds in one file (steps 2–3), and `pairs` shows what matching pairs up (step 4).
 
@@ -68,6 +69,68 @@ pub struct CheckArgs {
     /// Show the test name, before/after snippets, the full commit message, and changed outcomes
     #[arg(short, long)]
     pub verbose: bool,
+
+    #[command(flatten)]
+    pub judge: JudgeArgs,
+
+    /// Print what the judge would be sent for each finding, without sending anything
+    #[arg(long)]
+    pub judge_dry_run: bool,
+}
+
+/// The AI judge (step 7): off unless `[judge]` in assertrust.toml or one of these turns it on.
+#[derive(Debug, Args)]
+pub struct JudgeArgs {
+    /// Ask the AI judge whether each finding still leaves the test checking what it promises
+    /// (sends the code to the model's provider, with your API key)
+    #[arg(long)]
+    pub judge: bool,
+
+    /// The judge's model, as provider/model, e.g. anthropic/claude-haiku-5-5 (turns the judge
+    /// on)
+    #[arg(long, value_name = "MODEL")]
+    pub judge_model: Option<String>,
+
+    /// How hard the judge's model thinks (default: the model's own; turns the judge on)
+    #[arg(long, value_enum, value_name = "LEVEL")]
+    pub judge_effort: Option<Effort>,
+}
+
+impl JudgeArgs {
+    /// Whether the flags turn the judge on.
+    pub fn on(&self) -> bool {
+        self.judge || self.judge_model.is_some() || self.judge_effort.is_some()
+    }
+
+    /// The judge's settings: `config`'s (or the defaults), with these flags over them.
+    pub fn apply(&self, config: Option<&crate::config::JudgeConfig>) -> crate::config::JudgeConfig {
+        let mut judge = config.cloned().unwrap_or_default();
+        if let Some(model) = &self.judge_model {
+            judge.model.clone_from(model);
+        }
+        if let Some(effort) = self.judge_effort {
+            judge.effort = Some(effort.as_str().to_owned());
+        }
+        judge
+    }
+}
+
+/// How hard a model thinks.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum Effort {
+    Low,
+    Medium,
+    High,
+}
+
+impl Effort {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Low => "low",
+            Self::Medium => "medium",
+            Self::High => "high",
+        }
+    }
 }
 
 #[derive(Debug, Args)]
@@ -107,6 +170,11 @@ pub struct BacktestArgs {
     /// Show the test name, before/after snippets, the full commit message, and changed outcomes
     #[arg(short, long)]
     pub verbose: bool,
+
+    // With --judge, every finding goes to the judge, including those on code a PR added, with
+    // no cap; with labels, it prints how its verdicts match them.
+    #[command(flatten)]
+    pub judge: JudgeArgs,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]

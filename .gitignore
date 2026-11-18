@@ -4,3 +4,6 @@
 # insta leftovers from failed snapshot runs
 *.pending-snap
 *.snap.new
+
+# Local secrets, like an API key for the judge
+.env

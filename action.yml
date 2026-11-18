@@ -15,6 +15,15 @@ inputs:
   comment:
     description: Post the summary as one comment on the pull request once there are findings, and keep it updated on every push.
     default: "true"
+  judge:
+    description: Ask the AI judge about each finding, `true` to turn it on (or `[judge]` in assertrust.toml). It sends the code to the model's provider with your key, set on this step as an environment variable from a secret, like `ANTHROPIC_API_KEY` (see the README). Its verdicts are cached between runs.
+    default: "false"
+  judge-model:
+    description: The judge's model, as provider/model, like `anthropic/claude-haiku-5-5`. By default, assertrust.toml's or the built-in one.
+    default: ""
+  judge-effort:
+    description: How hard the judge's model thinks, `low`, `medium` or `high`. By default, assertrust.toml's, else `medium` for the built-in model and the model's own default for any other.
+    default: ""
   args:
     description: More arguments for `assertrust check`, split on spaces and lines. A `--range` here replaces the one worked out from the event, and a `--fail-on` the input.
     default: ""
@@ -33,6 +42,17 @@ outputs:
 runs:
   using: composite
   steps:
+    # The judge's verdicts, so a change judged before keeps its verdict and costs nothing.
+    # They live in the git directory, where no commit can put verdicts of its own.
+    - name: Restore the judge's verdicts
+      if: >-
+        inputs.judge == 'true' || inputs.judge-model != '' || inputs.judge-effort != ''
+        || contains(inputs.args, '--judge') || hashFiles('assertrust.toml') != ''
+      uses: actions/cache/restore@v6
+      with:
+        path: .git/assertrust/judge
+        key: assertrust-judge-${{ github.run_id }}-${{ github.run_attempt }}
+        restore-keys: assertrust-judge-
     - name: Run assertrust
       id: run
       shell: bash
@@ -41,6 +61,15 @@ runs:
         INPUT_VERSION: ${{ inputs.version }}
         INPUT_FAIL_ON: ${{ inputs.fail-on }}
         INPUT_COMMENT: ${{ inputs.comment }}
+        INPUT_JUDGE: ${{ inputs.judge }}
+        INPUT_JUDGE_MODEL: ${{ inputs.judge-model }}
+        INPUT_JUDGE_EFFORT: ${{ inputs.judge-effort }}
         INPUT_ARGS: ${{ inputs.args }}
         INPUT_PATH: ${{ inputs.path }}
         GH_TOKEN: ${{ inputs.github-token }}
+    - name: Keep the judge's verdicts
+      if: always() && steps.run.outputs.judge-cache == 'true'
+      uses: actions/cache/save@v6
+      with:
+        path: .git/assertrust/judge
+        key: assertrust-judge-${{ github.run_id }}-${{ github.run_attempt }}

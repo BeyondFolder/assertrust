@@ -1,12 +1,19 @@
 //! `assertrust check`: runs the rules (step 5) on a change and reports what got weaker
-//! (step 6), in the terminal, as JSON, or as GitHub annotations. It exits with 1 when a
-//! finding reaches `fail-on`, which is never by default.
+//! (step 6), in the terminal, as JSON, or as GitHub annotations. With the AI judge on (step
+//! 7), each finding gets its verdict. It exits with 1 when a finding reaches `fail-on`,
+//! which is never by default, or the judge gives it a verdict its `fail-on` names
+//! (`coverage-lost` and `suspicious` by default).
 //!
 //! ```text
 //! test/billing.test.ts:12  HIGH  check-removed
 //!   removed expect(refund.status).toBe('done') · 1a2b3c4
+//!   judge: coverage lost: refunds still get a status, and nothing checks it any more
 //!
-//! 1 finding · warn-only (exit 0)
+//! judged fine (1):
+//!   test/billing.test.ts:30  check-removed: the same check moved into expectRefunded()
+//!
+//! 1 finding · 1 judged fine · 1 judged coverage lost or suspicious (exit 1)
+//! judge: anthropic/claude-sonnet-5-5 (effort medium) · 2 judged · 18.2K tokens in, 140 out · $0.04
 //! ```
 
 use std::fmt::Write as _;
@@ -17,6 +24,7 @@ use assertrust_rules::RuleId;
 
 use crate::cli::{CheckArgs, FailOn, Format};
 use crate::config::{Config, Setting};
+use crate::judge::{self, Scope, Summary};
 use crate::output::{count, line, place};
 use crate::report::{self, Report, Reported, Status};
 use crate::{github, json};
@@ -35,15 +43,44 @@ pub fn run(args: &CheckArgs) -> Result<ExitCode, String> {
     }
     config.show_transient |= args.show_transient;
     config.show_pr_added |= args.show_pr_added;
+    if args.judge.on() || args.judge_dry_run || config.judge.is_some() {
+        config.judge = Some(args.judge.apply(config.judge.as_ref()));
+    }
     let analysis = repo
         .analyze(&mode, &config.classifier)
         .map_err(|err| err.to_string())?;
     let mut report = report::build(&repo, &analysis, &config)?;
     report.notes.splice(0..0, config_notes);
+    let mut judged = None;
+    if let Some(judge) = &config.judge {
+        let scope = Scope {
+            pr_added: false,
+            cap: Some(judge.max_findings),
+        };
+        let (picked, capped) = judge::select(&report, &scope, analysis.net.as_ref());
+        let pull_request = judge::pull_request(&analysis);
+        let prompts = judge::prompts(&repo, &report, &picked, pull_request.as_ref());
+        if args.judge_dry_run {
+            let text =
+                judge::dry_run(&judge::cache_dir(&repo)?, judge, &report, &picked, &prompts)?;
+            crate::print_stdout(&text)?;
+            return Ok(ExitCode::SUCCESS);
+        }
+        if !picked.is_empty() {
+            let asked = judge::ask(&judge::cache_dir(&repo)?, judge, &prompts);
+            judge::apply(&mut report, &picked, asked.judgments, analysis.net.as_ref());
+            report.notes.extend(asked.notes);
+            judged = Some(Summary {
+                capped,
+                ..asked.summary
+            });
+        }
+    }
+    let judged = judged.as_ref();
     let output = match args.format {
-        Format::Terminal => render(&analysis, &report, &config, args.verbose),
-        Format::Json => json::render(&analysis, &report, &config),
-        Format::Github => github::render(&report, &config)?,
+        Format::Terminal => render(&analysis, &report, &config, args.verbose, judged),
+        Format::Json => json::render(&analysis, &report, &config, judged),
+        Format::Github => github::render(&report, &config, judged)?,
     };
     crate::print_stdout(&output)?;
     Ok(if report.failing(&config) > 0 {
@@ -53,7 +90,13 @@ pub fn run(args: &CheckArgs) -> Result<ExitCode, String> {
     })
 }
 
-fn render(analysis: &Analysis, report: &Report, config: &Config, verbose: bool) -> String {
+fn render(
+    analysis: &Analysis,
+    report: &Report,
+    config: &Config,
+    verbose: bool,
+    judged: Option<&Summary>,
+) -> String {
     let mut out = String::new();
     if analysis.is_empty() {
         // A range of merge commits only still says they were skipped.
@@ -65,12 +108,12 @@ fn render(analysis: &Analysis, report: &Report, config: &Config, verbose: bool) 
     }
     // Changed outcomes are usually legitimate behaviour changes: noise until the judge can
     // tell them apart, so only `-v` shows them, allowed or undone later too. Allowed
-    // findings come last.
-    let visible: Vec<&Reported> = report
+    // findings come last. Those the judge calls fine are listed apart, at the end.
+    let (fine, visible): (Vec<&Reported>, Vec<&Reported>) = report
         .findings
         .iter()
         .filter(|reported| visible(reported, config, verbose))
-        .collect();
+        .partition(|reported| reported.folded(config));
     for (i, reported) in visible.iter().enumerate() {
         // With `-v` each finding takes several lines, so they're kept apart.
         if verbose && i > 0 {
@@ -78,13 +121,41 @@ fn render(analysis: &Analysis, report: &Report, config: &Config, verbose: bool) 
         }
         finding(&mut out, reported, verbose, None);
     }
-    if !visible.is_empty() || !report.notes.is_empty() {
+    if !fine.is_empty() {
+        if !visible.is_empty() {
+            line(&mut out, "");
+        }
+        line(&mut out, &format!("judged fine ({}):", fine.len()));
+        for reported in &fine {
+            if verbose {
+                finding(&mut out, reported, true, None);
+            } else {
+                let reason = reported
+                    .judgment
+                    .as_ref()
+                    .map(|judgment| judgment.reason.as_str())
+                    .unwrap_or_default();
+                line(
+                    &mut out,
+                    &format!(
+                        "  {}  {}: {reason}",
+                        place(&reported.finding),
+                        reported.finding.rule
+                    ),
+                );
+            }
+        }
+    }
+    if !visible.is_empty() || !fine.is_empty() || !report.notes.is_empty() {
         line(&mut out, "");
     }
     for note in &report.notes {
         line(&mut out, &format!("note: {note}"));
     }
     line(&mut out, &summary(report, config, verbose));
+    if let Some(judged) = judged {
+        line(&mut out, &judged.line());
+    }
     out
 }
 
@@ -96,13 +167,35 @@ fn summary(report: &Report, config: &Config, verbose: bool) -> String {
         .iter()
         .filter(|reported| reported.status == Status::Hidden)
         .collect();
-    let shown = report.with_status(|status| *status == Status::Shown)
-        + if verbose { hidden.len() } else { 0 };
+    // Those the judge calls fine are counted apart: shown ones, and hidden ones `-v` lists.
+    let fine_shown = report
+        .findings
+        .iter()
+        .filter(|reported| reported.status == Status::Shown && reported.folded(config))
+        .count();
+    let fine_hidden = if verbose {
+        hidden
+            .iter()
+            .filter(|reported| reported.folded(config))
+            .count()
+    } else {
+        0
+    };
+    let fine = fine_shown + fine_hidden;
+    let shown = report.with_status(|status| *status == Status::Shown) - fine_shown
+        + if verbose {
+            hidden.len() - fine_hidden
+        } else {
+            0
+        };
     let mut parts = vec![if shown == 0 {
         "no findings".to_owned()
     } else {
         count(shown, "finding")
     }];
+    if fine > 0 {
+        parts.push(format!("{fine} judged fine"));
+    }
     if !verbose && !hidden.is_empty() {
         let outcomes = hidden
             .iter()
@@ -138,7 +231,7 @@ fn summary(report: &Report, config: &Config, verbose: bool) -> String {
         ));
     }
     // Something was found, so say whether it fails the check.
-    if shown > 0 {
+    if shown + fine > 0 {
         parts.push(verdict(report, config));
     }
     parts.join(" · ")
@@ -168,21 +261,62 @@ pub fn pr_added(count: usize, shown: bool, whose: &str, flag: bool) -> Option<St
     })
 }
 
-/// Whether the finding's rule is left to the judge, so only `-v` shows it.
+/// Whether the finding's rule is left to the judge and it has no verdict, so only `-v`
+/// shows it.
 pub fn judged(reported: &Reported, config: &Config) -> bool {
-    config.setting(reported.finding.rule) == Setting::Judge
+    config.setting(reported.finding.rule) == Setting::Judge && reported.judgment.is_none()
 }
 
-/// `1 finding at high or above (exit 1)`, `none at high or above (exit 0)` or
-/// `warn-only (exit 0)`.
+/// Whether the check fails, and why: `1 finding at high or above (exit 1)`, `1 judged
+/// coverage lost or suspicious (exit 1)`, `none at high or above (exit 0)` or `warn-only
+/// (exit 0)`.
 pub fn verdict(report: &Report, config: &Config) -> String {
-    let failing = report.failing(config);
-    match level(config.fail_on) {
-        Some(level) if failing > 0 => {
-            format!("{} at {level} or above (exit 1)", count(failing, "finding"))
+    let shown = || {
+        report
+            .findings
+            .iter()
+            .filter(|reported| reported.status == Status::Shown)
+    };
+    let by_level = shown()
+        .filter(|reported| config.fail_on.fails(reported.finding.confidence))
+        .count();
+    let by_judge = shown()
+        .filter(|reported| {
+            !config.fail_on.fails(reported.finding.confidence) && reported.judge_fails(config)
+        })
+        .count();
+    let level = level(config.fail_on).map(|level| format!("at {level} or above"));
+    let judged = config
+        .judge
+        .as_ref()
+        .filter(|judge| !judge.fail_on.is_empty())
+        .map(|judge| {
+            let words: Vec<&str> = judge
+                .fail_on
+                .iter()
+                .map(|verdict| verdict.words())
+                .collect();
+            format!("judged {}", words.join(" or "))
+        });
+    if by_level + by_judge > 0 {
+        let mut parts = Vec::new();
+        if let (Some(level), true) = (&level, by_level > 0) {
+            parts.push(format!("{} {level}", count(by_level, "finding")));
         }
-        Some(level) => format!("none at {level} or above (exit 0)"),
-        None => "warn-only (exit 0)".to_owned(),
+        if let (Some(judged), true) = (&judged, by_judge > 0) {
+            if by_level > 0 {
+                parts.push(format!("{by_judge} more {judged}"));
+            } else {
+                parts.push(format!("{by_judge} {judged}"));
+            }
+        }
+        return format!("{} (exit 1)", parts.join(", "));
+    }
+    match (level, judged) {
+        (None, None) => "warn-only (exit 0)".to_owned(),
+        (Some(level), None) => format!("none {level} (exit 0)"),
+        (None, Some(judged)) => format!("none {judged} (exit 0)"),
+        (Some(level), Some(judged)) => format!("none {level} or {judged} (exit 0)"),
     }
 }
 
@@ -237,6 +371,12 @@ pub(crate) fn finding(out: &mut String, reported: &Reported, verbose: bool, tag:
     line(out, &message);
     if let Status::Allowed { reason, by } = &reported.status {
         line(out, &format!("  allowed: {reason} ({by})"));
+    }
+    if let Some(judgment) = &reported.judgment {
+        line(
+            out,
+            &format!("  judge: {}: {}", judgment.verdict.words(), judgment.reason),
+        );
     }
     if !verbose {
         return;

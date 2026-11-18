@@ -71,6 +71,12 @@ impl Git {
         &self.prefix
     }
 
+    /// The git directory every worktree shares (`.git` in a plain clone), absolute.
+    pub(crate) fn common_dir(&self) -> Result<PathBuf, Error> {
+        let dir = self.run(&["rev-parse", "--git-common-dir"])?;
+        Ok(self.dir.join(dir.trim_end_matches('\n')))
+    }
+
     /// A blob's raw contents, e.g. `<sha>:test/a.test.ts` or `:0:test/a.test.ts` (the
     /// index). `None` if there's no such file there.
     pub(crate) fn read_blob(&self, spec: &str) -> Result<Option<Vec<u8>>, Error> {

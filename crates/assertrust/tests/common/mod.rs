@@ -5,14 +5,19 @@
 //!   and aliases on the developer's machine can't change or hang a test;
 //! - git variables inherited from a surrounding git hook (`GIT_DIR`, …) are removed;
 //! - author, committer and dates are fixed, so the same steps give the same commit SHAs
-//!   on every machine and every run, which keeps snapshots stable.
+//!   on every machine and every run, which keeps snapshots stable;
+//! - model providers' keys and addresses are removed, so the judge never reaches a real
+//!   model: tests point it at a [`FakeModel`] instead.
 
 // Each test file uses a different subset of these helpers.
 #![allow(dead_code)]
 
 use std::fs;
+use std::io::{BufRead, BufReader, Read, Write};
+use std::net::TcpListener;
 use std::path::PathBuf;
 use std::process::{Command, Output, Stdio};
+use std::sync::{Arc, Mutex};
 
 use tempfile::TempDir;
 
@@ -30,6 +35,19 @@ const LEAKY_GIT_VARS: &[&str] = &[
     "GIT_OBJECT_DIRECTORY",
     "GIT_ALTERNATE_OBJECT_DIRECTORIES",
     "GIT_COMMON_DIR",
+];
+
+/// Variables that would point the judge at a real model, or at a real pull request.
+const MODEL_VARS: &[&str] = &[
+    "ANTHROPIC_API_KEY",
+    "ANTHROPIC_BASE_URL",
+    "OPENAI_API_KEY",
+    "OPENAI_BASE_URL",
+    "GEMINI_API_KEY",
+    "OLLAMA_API_KEY",
+    "OLLAMA_API_BASE_URL",
+    "GITHUB_EVENT_NAME",
+    "GITHUB_EVENT_PATH",
 ];
 
 /// The result of running a command: exit code and captured output.
@@ -154,6 +172,14 @@ impl TestRepo {
         run(command.envs(env.iter().copied()))
     }
 
+    /// Runs `assertrust` in the repo with extra environment variables, given as text.
+    pub fn assertrust_env(&self, args: &[&str], env: &[(&str, &str)]) -> Run {
+        let mut command = Command::new(BINARY);
+        command.args(args);
+        self.isolated(&mut command);
+        run(command.envs(env.iter().copied()))
+    }
+
     /// Runs any program with the same isolation as git, from `dir`, with extra environment
     /// variables.
     pub fn program_in(
@@ -208,6 +234,9 @@ impl TestRepo {
         // On GitHub Actions, a test must not write to the real job summary or step outputs.
         cmd.env_remove("GITHUB_STEP_SUMMARY");
         cmd.env_remove("GITHUB_OUTPUT");
+        for var in MODEL_VARS {
+            cmd.env_remove(var);
+        }
         cmd.current_dir(self.path())
             .env("HOME", &home)
             .env("GIT_CONFIG_GLOBAL", home.join(".gitconfig"))
@@ -223,6 +252,126 @@ impl Default for TestRepo {
     fn default() -> Self {
         Self::new()
     }
+}
+
+/// A stand-in for Anthropic's Messages API on localhost, for the judge. Each request gets the
+/// verdict of the first rule whose text is in its body (else the default), or the error
+/// status it was made with; every body is kept, to look at.
+pub struct FakeModel {
+    url: String,
+    requests: Arc<Mutex<Vec<String>>>,
+}
+
+/// One rule: text in the request → verdict and reason.
+pub type Answer = (&'static str, &'static str, &'static str);
+
+impl FakeModel {
+    /// Answers with the first matching rule, else `default` (verdict, reason).
+    pub fn new(rules: &[Answer], default: (&'static str, &'static str)) -> Self {
+        Self::serve(rules.to_vec(), default, None)
+    }
+
+    /// Answers every request with HTTP `status` and an API error.
+    pub fn failing(status: u16) -> Self {
+        Self::serve(Vec::new(), ("unsure", ""), Some(status))
+    }
+
+    fn serve(
+        rules: Vec<Answer>,
+        default: (&'static str, &'static str),
+        status: Option<u16>,
+    ) -> Self {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind a local port");
+        let url = format!("http://{}", listener.local_addr().expect("local address"));
+        let requests = Arc::new(Mutex::new(Vec::new()));
+        let kept = Arc::clone(&requests);
+        std::thread::spawn(move || {
+            for stream in listener.incoming() {
+                let Ok(stream) = stream else { continue };
+                let rules = rules.clone();
+                let kept = Arc::clone(&kept);
+                std::thread::spawn(move || answer(stream, &rules, default, status, &kept));
+            }
+        });
+        Self { url, requests }
+    }
+
+    /// The variables that point the judge at it.
+    pub fn env(&self) -> [(&'static str, &str); 2] {
+        [
+            ("ANTHROPIC_BASE_URL", &self.url),
+            ("ANTHROPIC_API_KEY", "test-key"),
+        ]
+    }
+
+    /// The bodies of the requests it got.
+    pub fn requests(&self) -> Vec<String> {
+        self.requests.lock().expect("requests lock").clone()
+    }
+}
+
+fn answer(
+    stream: std::net::TcpStream,
+    rules: &[Answer],
+    default: (&str, &str),
+    status: Option<u16>,
+    kept: &Mutex<Vec<String>>,
+) {
+    let mut reader = BufReader::new(stream);
+    let mut length = 0;
+    loop {
+        let mut header = String::new();
+        if reader.read_line(&mut header).unwrap_or(0) == 0 {
+            return;
+        }
+        let header = header.trim_end();
+        if header.is_empty() {
+            break;
+        }
+        if let Some((name, value)) = header.split_once(':')
+            && name.eq_ignore_ascii_case("content-length")
+        {
+            length = value.trim().parse().unwrap_or(0);
+        }
+    }
+    let mut body = vec![0; length];
+    if reader.read_exact(&mut body).is_err() {
+        return;
+    }
+    let body = String::from_utf8_lossy(&body).into_owned();
+    let (verdict, reason) = rules
+        .iter()
+        .find(|(text, _, _)| body.contains(text))
+        .map_or(default, |(_, verdict, reason)| (*verdict, *reason));
+    kept.lock().expect("requests lock").push(body);
+    let (code, reply) = match status {
+        Some(code) => (
+            code,
+            r#"{"type":"error","error":{"type":"invalid_request_error","message":"bad request"}}"#
+                .to_owned(),
+        ),
+        None => {
+            let text = serde_json::json!({ "verdict": verdict, "reason": reason }).to_string();
+            let message = serde_json::json!({
+                "id": "msg_test",
+                "type": "message",
+                "role": "assistant",
+                "model": "claude-sonnet-5-5",
+                "content": [{ "type": "text", "text": text }],
+                "stop_reason": "end_turn",
+                "stop_sequence": null,
+                "usage": { "input_tokens": 1000, "output_tokens": 50 },
+            });
+            (200, message.to_string())
+        }
+    };
+    let mut stream = reader.into_inner();
+    let _ = write!(
+        stream,
+        "HTTP/1.1 {code} X\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{reply}",
+        reply.len()
+    );
+    let _ = stream.flush();
 }
 
 fn run(cmd: &mut Command) -> Run {

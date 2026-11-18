@@ -7,6 +7,9 @@
 #   push           each commit pushed: BEFORE..AFTER, or for a new branch (or rewritten
 #                  history) what it adds since it split off from the default branch
 #
+# With `judge: true` it adds --judge (and --judge-model, --judge-effort): the AI judge, with the key the
+# workflow sets on the step. Its verdict cache is restored and saved around this script.
+#
 # Reads the action's inputs as INPUT_* variables and the event from $GITHUB_EVENT_PATH, and
 # passes assertrust's `findings` output on. Exits with assertrust's code: 0 clean or
 # warn-only, 1 a finding reached `fail-on`, 2 it couldn't run. Written for bash 3.2 too
@@ -154,7 +157,7 @@ has_flag() {
 }
 
 main() {
-  local args extra=() mode=() fail_on=()
+  local args extra=() mode=() fail_on=() judge=()
   # `args: |` may put them on several lines.
   args=$(printf '%s' "${INPUT_ARGS:-}" | tr '\n' ' ')
   read -r -a extra <<<"$args"
@@ -172,6 +175,17 @@ main() {
   if [[ -n "${INPUT_FAIL_ON:-}" ]] && ! has_flag "$args" --fail-on; then
     fail_on=(--fail-on "$INPUT_FAIL_ON")
   fi
+  case "${INPUT_JUDGE:-false}" in
+    true) judge=(--judge) ;;
+    false | "") ;;
+    *) error "judge is \`$INPUT_JUDGE\`; it can be true or false" ;;
+  esac
+  if [[ -n "${INPUT_JUDGE_MODEL:-}" ]] && ! has_flag "$args" --judge-model; then
+    judge+=(--judge-model "$INPUT_JUDGE_MODEL")
+  fi
+  if [[ -n "${INPUT_JUDGE_EFFORT:-}" ]] && ! has_flag "$args" --judge-effort; then
+    judge+=(--judge-effort "$INPUT_JUDGE_EFFORT")
+  fi
   find_binary
 
   # Its own summary and outputs files first, to post the summary as the comment too.
@@ -179,7 +193,8 @@ main() {
   summary=$(mktemp)
   outputs=$(mktemp)
   GITHUB_STEP_SUMMARY=$summary GITHUB_OUTPUT=$outputs "$binary" check --format github \
-    ${mode[@]+"${mode[@]}"} ${fail_on[@]+"${fail_on[@]}"} ${extra[@]+"${extra[@]}"} || code=$?
+    ${mode[@]+"${mode[@]}"} ${fail_on[@]+"${fail_on[@]}"} ${judge[@]+"${judge[@]}"} \
+    ${extra[@]+"${extra[@]}"} || code=$?
   if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
     cat "$summary" >>"$GITHUB_STEP_SUMMARY"
   fi
@@ -187,6 +202,10 @@ main() {
     cat "$outputs" >>"$GITHUB_OUTPUT"
   fi
   findings=$(sed -n 's/^findings=//p' "$outputs")
+  # The judge's verdicts, for action.yml to keep for the next run.
+  if [[ -n "${GITHUB_OUTPUT:-}" ]] && compgen -G ".git/assertrust/judge/*.json" >/dev/null; then
+    echo "judge-cache=true" >>"$GITHUB_OUTPUT"
+  fi
   if [[ "$code" -le 1 && "${INPUT_COMMENT:-true}" == true && "${GITHUB_EVENT_NAME:-}" == pull_request ]]; then
     comment "$summary" "$findings"
   fi

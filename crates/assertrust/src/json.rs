@@ -14,22 +14,30 @@
 //!
 //! Hidden, allowed, undone-later and PR-added findings are all there, with their `status`
 //! (`shown`, `hidden`, `allowed`, `transient`, `pr-added`); an allowed one has
-//! `"allowed": { "reason", "by" }`.
+//! `"allowed": { "reason", "by" }`. With the AI judge on, a judged finding has `"judge":
+//! { "verdict", "reason" }`, and the document has `"judge"`: the model, how many findings
+//! it judged, and the tokens and dollars spent.
 
 use assertrust_git::Analysis;
 use serde_json::{Value, json};
 
 use crate::check_command::level;
 use crate::config::Config;
+use crate::judge::Summary;
 use crate::output::mode_name;
 use crate::report::{Report, Reported, Status};
 
 /// The output format's version.
 const SCHEMA: u32 = 1;
 
-pub fn render(analysis: &Analysis, report: &Report, config: &Config) -> String {
+pub fn render(
+    analysis: &Analysis,
+    report: &Report,
+    config: &Config,
+    judged: Option<&Summary>,
+) -> String {
     let findings: Vec<Value> = report.findings.iter().map(finding).collect();
-    let document = json!({
+    let mut document = json!({
         "schema": SCHEMA,
         "mode": mode_name(analysis.kind),
         "range": analysis.label,
@@ -38,7 +46,26 @@ pub fn render(analysis: &Analysis, report: &Report, config: &Config) -> String {
         "findings": findings,
         "notes": report.notes,
     });
+    if let Some(judged) = judged {
+        document["judge"] = judge(judged);
+    }
     pretty(&document)
+}
+
+/// What the judge did: `{ "model", "effort", "judged", "cached", "failed", "capped",
+/// "input_tokens", "output_tokens", "cost_usd" }`.
+pub fn judge(summary: &Summary) -> Value {
+    json!({
+        "model": summary.model,
+        "effort": summary.effort,
+        "judged": summary.judged,
+        "cached": summary.cached,
+        "failed": summary.failed,
+        "capped": summary.capped,
+        "input_tokens": summary.usage.input_tokens,
+        "output_tokens": summary.usage.output_tokens,
+        "cost_usd": summary.usage.cost,
+    })
 }
 
 /// One finding, as `check` and `backtest` list it.
@@ -68,6 +95,9 @@ pub fn finding(reported: &Reported) -> Value {
     });
     if let Status::Allowed { reason, by } = &reported.status {
         value["allowed"] = json!({ "reason": reason, "by": by });
+    }
+    if let Some(judgment) = &reported.judgment {
+        value["judge"] = judgment.to_json();
     }
     value
 }

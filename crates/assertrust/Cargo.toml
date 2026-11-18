@@ -7,18 +7,27 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 
+[features]
+default = ["llm"]
+# The AI judge's model client (`--judge`). Without it, everything else works the same, and
+# the judge only says it isn't built in.
+llm = ["assertrust-judge/llm"]
+
 [dependencies]
 assertrust-git.workspace = true
 assertrust-ir.workspace = true
+assertrust-judge.workspace = true
 assertrust-match.workspace = true
 assertrust-rules.workspace = true
 clap.workspace = true
 serde_json.workspace = true
+similar.workspace = true
 toml.workspace = true
 
 [dev-dependencies]
 insta.workspace = true
 tempfile.workspace = true
+yaml-rust2.workspace = true
 
 [lints]
 workspace = true

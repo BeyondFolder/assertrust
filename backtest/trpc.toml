@@ -9,6 +9,150 @@ repo = "https://github.com/trpc/trpc.git"
 range = "af290163458abfe9892bd8c91fac4292fd09b2b3..8eff9ff0ddf4be4a682bf205fb66b00a26901075"
 
 [[finding]]
+unit = "238821d4ee57"
+pr = 7606
+rule = "outcome-changed"
+path = "packages/client/src/links/httpAbortCleanup.test.ts"
+test = "%s abort listener cleanup > removes caller listeners after %s"
+before = ["httpLink", "httpBatchLink"]
+after = ["['httpLink', httpLink]", "['httpBatchLink', httpBatchLink]"]
+message = ".each rows changed: httpLink, httpBatchLink"
+label = "wrong"
+note = "Same two links, reshaped into [name, link] rows so the suite title prints the link's name ('name the abort cleanup suites after their link'); nothing is checked less."
+
+[[finding]]
+unit = "238821d4ee57"
+pr = 7606
+rule = "outcome-changed"
+path = "packages/client/src/links/httpAbortCleanup.test.ts"
+test = "%s abort listener cleanup > keeps cancellation connected while reading the response body"
+before = ["httpLink", "httpBatchLink"]
+after = ["['httpLink', httpLink]", "['httpBatchLink', httpBatchLink]"]
+message = ".each rows changed: httpLink, httpBatchLink"
+label = "wrong"
+note = "Same two links, reshaped into [name, link] rows so the suite title prints the link's name ('name the abort cleanup suites after their link'); nothing is checked less."
+
+[[finding]]
+unit = "238821d4ee57"
+pr = 7606
+rule = "outcome-changed"
+path = "packages/client/src/links/httpAbortCleanup.test.ts"
+test = "%s abort listener cleanup > unsubscribe aborts an active fetch and removes caller listeners"
+before = ["httpLink", "httpBatchLink"]
+after = ["['httpLink', httpLink]", "['httpBatchLink', httpBatchLink]"]
+message = ".each rows changed: httpLink, httpBatchLink"
+label = "wrong"
+note = "Same two links, reshaped into [name, link] rows so the suite title prints the link's name ('name the abort cleanup suites after their link'); nothing is checked less."
+
+[[finding]]
+unit = "238821d4ee57"
+pr = 7606
+rule = "outcome-changed"
+path = "packages/client/src/links/httpAbortCleanup.test.ts"
+test = "%s abort listener cleanup > does not abort a successfully consumed response"
+before = ["httpLink", "httpBatchLink"]
+after = ["['httpLink', httpLink]", "['httpBatchLink', httpBatchLink]"]
+message = ".each rows changed: httpLink, httpBatchLink"
+label = "wrong"
+note = "Same two links, reshaped into [name, link] rows so the suite title prints the link's name ('name the abort cleanup suites after their link'); nothing is checked less."
+
+[[finding]]
+unit = "d194022e32a4"
+pr = 7851
+rule = "outcome-changed"
+path = "www/src/demos/demos.test.ts"
+test = "timeline > starts the comments after the post with fetch-on-render"
+before = ["expect(plan.requests.map((request) => [request.start, request.end])).toEqual([[0, 200], [200, 400]])"]
+after = ["expect(plan.requests.map((request) => [request.start, request.end])).toEqual([[0, 200], [200, 500]])"]
+message = "toEqual([[0, 200], [200, 400]]) → toEqual([[0, 200], [200, 500]])"
+label = "wrong"
+note = "The same commit gives post.comments a weight of 1.5 round trips in timeline.ts, so the comments now end at 500 instead of 400."
+
+[[finding]]
+unit = "d194022e32a4"
+pr = 7851
+rule = "outcome-changed"
+path = "www/src/demos/demos.test.ts"
+test = "timeline > starts the comments after the post with fetch-on-render"
+before = ["expect(plan.readyAt).toBe(400)"]
+after = ["expect(plan.readyAt).toBe(500)"]
+message = "toBe(400) → toBe(500)"
+label = "wrong"
+note = "The same commit gives post.comments a weight of 1.5 round trips in timeline.ts, so the waterfall is ready at 500 instead of 400."
+
+[[finding]]
+unit = "d194022e32a4"
+pr = 7851
+rule = "outcome-changed"
+path = "www/src/demos/demos.test.ts"
+test = "timeline > starts both at once with render-as-you-fetch"
+before = ["expect(plan.requests.map((request) => [request.start, request.end])).toEqual([[0, 100], [0, 100]])"]
+after = ["expect(plan.requests.map((request) => [request.start, request.end])).toEqual([[0, 100], [0, 150]])"]
+message = "toEqual([[0, 100], [0, 100]]) → toEqual([[0, 100], [0, 150]])"
+label = "wrong"
+note = "The same commit gives post.comments a weight of 1.5 round trips in timeline.ts, so the parallel comments end at 150 instead of 100."
+
+[[finding]]
+unit = "d194022e32a4"
+pr = 7851
+rule = "outcome-changed"
+path = "www/src/demos/demos.test.ts"
+test = "timeline > starts both at once with render-as-you-fetch"
+before = ["expect(plan.readyAt).toBe(100)"]
+after = ["expect(plan.readyAt).toBe(150)"]
+message = "toBe(100) → toBe(150)"
+label = "wrong"
+note = "The same commit gives post.comments a weight of 1.5 round trips in timeline.ts, so the parallel page is ready at 150 instead of 100."
+
+[[finding]]
+unit = "d194022e32a4"
+pr = 7851
+rule = "outcome-changed"
+path = "www/src/demos/demos.test.ts"
+test = "network > delays each call by its procedure's weight"
+before = ["expect(weights).toEqual([procedureWeights['post.byId'], procedureWeights['post.comments']])"]
+after = ["expect(weights).toEqual([1, 1.5, 1.2])"]
+message = "toEqual([procedureWeights['post.byId'], procedureWeights['p… → toEqual([1, 1.5, 1.2])"
+label = "wrong"
+note = "The weights are now pinned as literals instead of read back from procedureWeights, and a third call (byAuthor, 1.2) is checked too: stricter."
+
+[[finding]]
+unit = "d194022e32a4"
+pr = 7851
+rule = "outcome-changed"
+path = "www/src/demos/demos.test.ts"
+test = "network > delays each call by its procedure's weight"
+before = ["expect(weights).toEqual([1, 1.5, 1.2])"]
+after = ["expect(weights).toEqual([1, 1.5, 1.2, 0.8, 1.1])"]
+message = "toEqual([1, 1.5, 1.2]) → toEqual([1, 1.5, 1.2, 0.8, 1.1])"
+label = "wrong"
+note = "The same commit adds post.moreByAuthor, post.list and post.commentCounts; the test calls the two new ones and checks their weights too (0.8, 1.1): stricter."
+
+[[finding]]
+unit = "d194022e32a4"
+pr = 7851
+rule = "outcome-changed"
+path = "www/src/demos/demos.test.ts"
+test = "network > delays each call by its procedure's weight"
+before = ["expect(weights).toEqual([1, 1.5, 1.2, 0.8, 1.1])"]
+after = ["expect(weights).toEqual([1, 1.5, 1.2, 0.8])"]
+message = "toEqual([1, 1.5, 1.2, 0.8, 1.1]) → toEqual([1, 1.5, 1.2, 0.8])"
+label = "wrong"
+note = "The same commit removes post.commentCounts (post.list now returns the counts), so its 1.1 weight goes with it."
+
+[[finding]]
+unit = "d194022e32a4"
+pr = 7851
+rule = "outcome-changed"
+path = "www/src/demos/demos.test.ts"
+test = "backend > pages the list, three posts a page, and says how many pages"
+before = ["expect(pages.map((page) => page.map((post) => post.id))).toEqual([[1, 2, 3], [4, 5, 6], [7, 8, 9]])"]
+after = ["expect(pages.map((page) => page.posts.map((post) => post.id))).toEqual([[1, 2, 3], [4, 5, 6], [7, 8, 9], []])"]
+message = "toEqual([[1, 2, 3], [4, 5, 6], [7, 8, 9]]) → toEqual([[1, 2, 3], [4, 5, 6], [7, 8, 9], []])"
+label = "wrong"
+note = "The same commit makes post.list return { posts, pageCount }; the test reads .posts, adds a pageCount check and an empty fourth page: stricter."
+
+[[finding]]
 unit = "d194022e32a4"
 pr = 7851
 rule = "test-disabled"
@@ -47,6 +191,306 @@ note = "The PR reverts the default-maxBatchSize feature (v11 keeps it opt-in), a
 [[finding]]
 unit = "9f058097e45f"
 pr = 7866
+rule = "outcome-changed"
+path = "www/build/sponsors-list.test.ts"
+test = "trackingLink > adds trpc's ref and UTM parameters"
+before = ["expect(trackingLink('https://greptile.com/')).toBe('https://greptile.com/?ref=trpc&utm_source=github&utm_medium=referral&utm_campaign=trpc')"]
+after = ["expect(trackingLink('https://globex.dev/')).toBe('https://globex.dev/?ref=trpc&utm_source=github&utm_medium=referral&utm_campaign=trpc')"]
+message = "toBe('https://greptile.com/?ref=trpc&utm_source=github&utm_… → toBe('https://globex.dev/?ref=trpc&utm_source=github&utm_me…"
+label = "wrong"
+note = "'use made-up sponsors in the sponsor sync tests': the real greptile.com input became globex.dev, and the expected link follows it with the same parameters."
+
+[[finding]]
+unit = "9f058097e45f"
+pr = 7866
+rule = "outcome-changed"
+path = "www/build/sponsors-list.test.ts"
+test = "trackingLink > keeps a sponsor's own ref, and replaces their UTM parameters"
+before = ["expect(trackingLink('https://www.coderabbit.ai/?ref=cr&utm_source=x&page=1')).toBe('https://www.coderabbit.ai/?ref=cr&utm_source=github&page=1&utm_medium=referral&utm_campaign=trpc')"]
+after = ["expect(trackingLink('https://www.initech.dev/?ref=cr&utm_source=x&page=1')).toBe('https://www.initech.dev/?ref=cr&utm_source=github&page=1&utm_medium=referral&utm_campaign=trpc')"]
+message = "toBe('https://www.coderabbit.ai/?ref=cr&utm_source=github&p… → toBe('https://www.initech.dev/?ref=cr&utm_source=github&pag…"
+label = "wrong"
+note = "'use made-up sponsors in the sponsor sync tests': the coderabbit.ai input became initech.dev, and the expected link follows it with the same parameters."
+
+[[finding]]
+unit = "9f058097e45f"
+pr = 7866
+rule = "outcome-changed"
+path = "www/build/sponsors-list.test.ts"
+test = "directDollars > counts every period started, the current one included"
+before = ["expect(directDollars(serpApi, Date.parse('2026-02-11'))).toBe(6000)"]
+after = ["expect(directDollars(acme, Date.parse('2026-02-11'))).toBe(7200)"]
+message = "toBe(6000) → toBe(7200)"
+label = "wrong"
+note = "Fixture swap to made-up sponsors: SerpApi (6000 a year) became Acme at 7200 a year, so the expected total follows the new input."
+
+[[finding]]
+unit = "9f058097e45f"
+pr = 7866
+rule = "outcome-changed"
+path = "www/build/sponsors-list.test.ts"
+test = "directDollars > counts every period started, the current one included"
+before = ["expect(directDollars(serpApi, Date.parse('2027-02-10'))).toBe(6000)"]
+after = ["expect(directDollars(acme, Date.parse('2027-02-10'))).toBe(7200)"]
+message = "toBe(6000) → toBe(7200)"
+label = "wrong"
+note = "Fixture swap to made-up sponsors: SerpApi (6000 a year) became Acme at 7200 a year, so the expected total follows the new input."
+
+[[finding]]
+unit = "9f058097e45f"
+pr = 7866
+rule = "outcome-changed"
+path = "www/build/sponsors-list.test.ts"
+test = "directDollars > counts every period started, the current one included"
+before = ["expect(directDollars(serpApi, Date.parse('2027-02-12'))).toBe(12000)"]
+after = ["expect(directDollars(acme, Date.parse('2027-02-12'))).toBe(14400)"]
+message = "toBe(12000) → toBe(14400)"
+label = "wrong"
+note = "Fixture swap to made-up sponsors: SerpApi (6000 a year) became Acme at 7200 a year, so two periods are now 14400 instead of 12000."
+
+[[finding]]
+unit = "9f058097e45f"
+pr = 7866
+rule = "outcome-changed"
+path = "www/build/sponsors-list.test.ts"
+test = "directDollars > counts every period started, the current one included"
+before = ["expect(directDollars(monthly, Date.parse('2026-02-11') + 45 * day)).toBe(1000)"]
+after = ["expect(directDollars(monthly, Date.parse('2026-02-11') + 45 * day)).toBe(600)"]
+message = "toBe(1000) → toBe(600)"
+label = "wrong"
+note = "Fixture swap to made-up sponsors: the monthly variant went from 500 to 300 dollars a month, so two periods are now 600 instead of 1000."
+
+[[finding]]
+unit = "9f058097e45f"
+pr = 7866
+rule = "outcome-changed"
+path = "www/build/sponsors-list.test.ts"
+test = "directDollars > counts the first period for a sponsor who starts later"
+before = ["expect(directDollars(serpApi, Date.parse('2026-01-01'))).toBe(6000)"]
+after = ["expect(directDollars(acme, Date.parse('2026-01-01'))).toBe(7200)"]
+message = "toBe(6000) → toBe(7200)"
+label = "wrong"
+note = "Fixture swap to made-up sponsors: SerpApi (6000 a year) became Acme at 7200 a year, so the expected total follows the new input."
+
+[[finding]]
+unit = "9f058097e45f"
+pr = 7866
+rule = "outcome-changed"
+path = "www/build/sponsors-list.test.ts"
+test = "sponsorsList > weighs sponsors by what they paid in all, the most at 100"
+before = ["expect(sponsors.map((sponsor) => [sponsor.login, sponsor.weight])).toEqual([['big', 100], ['mid', 25], ['tiny', 1]])"]
+after = ["expect(sponsors.map((sponsor) => [sponsorKey(sponsor), sponsor.weight])).toEqual([['github/big', 100], ['github/mid', 25], ['github/tiny', 1]])"]
+message = "toEqual([['big', 100], ['mid', 25], ['tiny', 1]]) → toEqual([['github/big', 100], ['github/mid', 25], ['github/…"
+label = "wrong"
+note = "Sponsors now carry a source, and the test checks sponsorKey ('github/<login>') instead of login: the same sponsors and weights, plus their source."
+
+[[finding]]
+unit = "9f058097e45f"
+pr = 7866
+rule = "outcome-changed"
+path = "www/build/sponsors-list.test.ts"
+test = "sponsorsList > counts the monthly tier of a sponsor GitHub has not charged yet"
+before = ["expect(sponsors.map((sponsor) => [sponsor.login, sponsor.weight])).toEqual([['new', 50], ['old', 100]])"]
+after = ["expect(sponsors.map((sponsor) => [sponsorKey(sponsor), sponsor.weight])).toEqual([['github/new', 50], ['github/old', 100]])"]
+message = "toEqual([['new', 50], ['old', 100]]) → toEqual([['github/new', 50], ['github/old', 100]])"
+label = "wrong"
+note = "Sponsors now carry a source, and the test checks sponsorKey ('github/<login>') instead of login: the same sponsors and weights, plus their source."
+
+[[finding]]
+unit = "9f058097e45f"
+pr = 7866
+rule = "outcome-changed"
+path = "www/build/sponsors-list.test.ts"
+test = "sponsorsList > leaves out private sponsors, except those who said they can be shown"
+before = ["expect(sponsors.map((sponsor) => sponsor.login)).toEqual(['fine', 'public'])"]
+after = ["expect(sponsors.map(sponsorKey)).toEqual(['github/fine', 'github/public'])"]
+message = "toEqual(['fine', 'public']) → toEqual(['github/fine', 'github/public'])"
+label = "wrong"
+note = "Sponsors now carry a source, and the test checks sponsorKey ('github/<login>') instead of login: the same sponsors, plus their source."
+
+[[finding]]
+unit = "9f058097e45f"
+pr = 7866
+rule = "outcome-changed"
+path = "www/build/sponsors-list.test.ts"
+test = "sponsorsList > adds direct sponsors and money GitHub does not attribute"
+before = ["expect(sponsors).toEqual([{ createdAt: Date.parse('2025-03-27'), imgSrc: 'https://avatars.githubusercontent.com/greptileai?v=4', link: 'https://greptile.com/?ref=trpc&utm_source=github&utm_medium=referral&utm_campaign=trpc', login: 'greptileai', name: 'Greptile', weight: 100 }, { createdAt: Date.parse('2026-02-11'), imgSrc: 'https://github.com/serpapi.png', link: 'https://serpapi.com/?ref=trpc&utm_source=github&utm_medium=referral&utm_campaign=trpc', login: 'SerpApi', name: 'SerpApi', rank: 1, tier: 'silver', weight: 100 }])"]
+after = ["expect(sponsors).toEqual([{ createdAt: Date.parse('2025-03-27'), imgSrc: 'https://avatars.githubusercontent.com/globex?v=4', link: 'https://globex.dev/?ref=trpc&utm_source=github&utm_medium=referral&utm_campaign=trpc', login: 'globex', name: 'Globex', source: 'github', weight: 100 }, { createdAt: Date.parse('2026-02-11'), imgSrc: 'https://github.com/acme.png', link: 'https://acme.dev/?ref=trpc&utm_source=github&utm_medium=referral&utm_campaign=trpc', login: 'Acme', name: 'Acme', rank: 1, source: 'github', tier: 'silver', weight: 100 }])"]
+message = "toEqual([{ createdAt: Date.parse('2025-03-27'), imgSrc: 'ht… → toEqual([{ createdAt: Date.parse('2025-03-27'), imgSrc: 'ht…"
+label = "wrong"
+note = "The objects gain the new source field ('tell GitHub and Open Collective sponsors apart by source'), and the real sponsors became made-up Globex/Acme with matching inputs."
+
+[[finding]]
+unit = "9f058097e45f"
+pr = 7866
+rule = "outcome-changed"
+path = "www/build/sponsors-list.test.ts"
+test = "sponsorsList > tiers sponsors by what they give a month across accounts, ranked by that, then by what they paid in all"
+before = ["expect(sponsors.filter((sponsor) => sponsor.rank !== undefined).toSorted((a, b) => (a.rank ?? 0) - (b.rank ?? 0)).map((sponsor) => [ sponsor.rank, sponsor.login, sponsor.tier ])).toEqual([[1, 'gold', 'gold'], [2, 'SerpApi', 'silver'], [3, 'oldSilver', 'silver'], [4, 'newSilver', 'silver'], [5, 'bronze', 'bronze']])"]
+after = ["expect(sponsors.filter((sponsor) => sponsor.rank !== undefined).toSorted((a, b) => (a.rank ?? 0) - (b.rank ?? 0)).map((sponsor) => [ sponsor.rank, sponsorKey(sponsor), sponsor.tier ])).toEqual([[1, 'github/gold', 'gold'], [2, 'github/Acme', 'silver'], [3, 'github/oldSilver', 'silver'], [4, 'github/newSilver', 'silver'], [5, 'github/bronze', 'bronze']])"]
+message = "toEqual([[1, 'gold', 'gold'], [2, 'SerpApi', 'silver'], [3,… → toEqual([[1, 'github/gold', 'gold'], [2, 'github/Acme', 'si…"
+label = "wrong"
+note = "Checks sponsorKey instead of login after the source refactor, with SerpApi renamed to the made-up Acme: same ranks and tiers, plus the source."
+
+[[finding]]
+unit = "9f058097e45f"
+pr = 7866
+rule = "outcome-changed"
+path = "www/build/sponsors-list.test.ts"
+test = "sponsorsList > tiers sponsors by what they give a month across accounts, ranked by that, then by what they paid in all"
+before = ["expect(untiered.map((sponsor) => sponsor.login).toSorted()).toEqual(['backer', 'once'])"]
+after = ["expect(untiered.map(sponsorKey).toSorted()).toEqual(['github/backer', 'github/once'])"]
+message = "toEqual(['backer', 'once']) → toEqual(['github/backer', 'github/once'])"
+label = "wrong"
+note = "Checks sponsorKey ('github/<login>') instead of login after the source refactor: the same two untiered sponsors, plus their source."
+
+[[finding]]
+unit = "9f058097e45f"
+pr = 7866
+rule = "outcome-changed"
+path = "www/build/sponsors-list.test.ts"
+test = "sponsorsList > adds a direct sponsor's payments to their GitHub sponsorship"
+before = ["expect(sponsors).toEqual([expect.objectContaining({ login: 'other', weight: 100 }), expect.objectContaining({ createdAt: Date.parse('2026-02-11'), login: 'SerpApi', name: 'SERPAPI', weight: 100 })])"]
+after = ["expect(sponsors).toEqual([expect.objectContaining({ login: 'other', weight: 100 }), expect.objectContaining({ createdAt: Date.parse('2026-02-11'), login: 'Acme', name: 'ACME', weight: 100 })])"]
+message = "toEqual([expect.objectContaining({ login: 'other', weight: … → toEqual([expect.objectContaining({ login: 'other', weight: …"
+label = "wrong"
+note = "Fixture swap to made-up sponsors: SerpApi became Acme with inputs scaled to match, and the expected login, name and weight still pin the same result."
+
+[[finding]]
+unit = "9f058097e45f"
+pr = 7866
+rule = "outcome-changed"
+path = "www/build/sponsors-list.test.ts"
+test = "sponsorsList > links to the sponsor's GitHub profile without a usable website, and names them by login without a name"
+before = ["expect(sponsors.map((sponsor) => [ sponsor.login, sponsor.name, sponsor.link ])).toEqual([['badsite', 'BADSITE', 'https://github.com/badsite'], ['nosite', 'nosite', 'https://github.com/nosite']])"]
+after = ["expect(sponsors.map((sponsor) => [ sponsorKey(sponsor), sponsor.name, sponsor.link ])).toEqual([['github/badsite', 'BADSITE', 'https://github.com/badsite'], ['github/nosite', 'nosite', 'https://github.com/nosite']])"]
+message = "toEqual([['badsite', 'BADSITE', 'https://github.com/badsite… → toEqual([['github/badsite', 'BADSITE', 'https://github.com/…"
+label = "wrong"
+note = "Checks sponsorKey ('github/<login>') instead of login after the source refactor: the same names and links, plus the source."
+
+[[finding]]
+unit = "9f058097e45f"
+pr = 7866
+rule = "outcome-changed"
+path = "www/build/sponsors-list.test.ts"
+test = "sponsorsList > orders sponsors by when they started, then by source and login"
+before = ["expect(sponsors.map((sponsor) => sponsor.login)).toEqual(['c', 'a', 'b'])"]
+after = ["expect(sponsors.map(sponsorKey)).toEqual(['github/c', 'github/a', 'github/b'])"]
+message = "toEqual(['c', 'a', 'b']) → toEqual(['github/c', 'github/a', 'github/b'])"
+label = "wrong"
+note = "Checks sponsorKey instead of login after the source refactor, which also sorts by source then login: same order, plus the source."
+
+[[finding]]
+unit = "9f058097e45f"
+pr = 7866
+rule = "outcome-changed"
+path = "www/build/sponsors-list.test.ts"
+test = "sponsorsList > merges Open Collective backers who are one another, and tells sites apart by their query"
+before = ["expect(sponsors.map((sponsor) => [sponsor.login, sponsor.tier ?? null])).toEqual([['alice', 'bronze'], ['page-1', null], ['page-2', null]])"]
+after = ["expect(sponsors.map((sponsor) => [sponsorKey(sponsor), sponsor.tier ?? null])).toEqual([['opencollective/alice', 'bronze'], ['opencollective/page-1', null], ['opencollective/page-2', null]])"]
+message = "toEqual([['alice', 'bronze'], ['page-1', null], ['page-2', … → toEqual([['opencollective/alice', 'bronze'], ['opencollecti…"
+label = "wrong"
+note = "Open Collective backers now carry a slug instead of a fake login, checked through sponsorKey ('opencollective/<slug>'): the same three entries and tiers."
+
+[[finding]]
+unit = "9f058097e45f"
+pr = 7866
+rule = "outcome-changed"
+path = "www/build/sponsors-list.test.ts"
+test = "sponsorsList > merges Open Collective backers who are one another, and tells sites apart by their path and query"
+before = ["expect(sponsors.map((sponsor) => [sponsorKey(sponsor), sponsor.tier ?? null])).toEqual([['opencollective/alice', 'bronze'], ['opencollective/page-1', null], ['opencollective/page-2', null]])"]
+after = ["expect(sponsors.map((sponsor) => [sponsorKey(sponsor), sponsor.tier ?? null])).toEqual([['opencollective/alice', 'bronze'], ['opencollective/page-1', null], ['opencollective/page-2', null], ['opencollective/path-lower', null], ['opencollective/path-upper', null]])"]
+message = "toEqual([['opencollective/alice', 'bronze'], ['opencollecti… → toEqual([['opencollective/alice', 'bronze'], ['opencollecti…"
+label = "wrong"
+note = "The same commit keeps website paths' case when matching; two new backers (path-lower, path-upper) are added and checked as separate sponsors: stricter."
+
+[[finding]]
+unit = "9f058097e45f"
+pr = 7866
+rule = "outcome-changed"
+path = "www/build/sponsors-list.test.ts"
+test = "sponsorsList > merges Open Collective backers who are one another, and tells sites apart by their port, path and query"
+before = ["expect(sponsors.map((sponsor) => [sponsorKey(sponsor), sponsor.tier ?? null])).toEqual([['opencollective/alice', 'bronze'], ['opencollective/page-1', null], ['opencollective/page-2', null], ['opencollective/path-lower', null], ['opencollective/path-upper', null]])"]
+after = ["expect(sponsors.map((sponsor) => [sponsorKey(sponsor), sponsor.tier ?? null])).toEqual([['opencollective/alice', 'bronze'], ['opencollective/page-1', null], ['opencollective/page-2', null], ['opencollective/path-lower', null], ['opencollective/path-upper', null], ['opencollective/port', null]])"]
+message = "toEqual([['opencollective/alice', 'bronze'], ['opencollecti… → toEqual([['opencollective/alice', 'bronze'], ['opencollecti…"
+label = "wrong"
+note = "The same commit matches websites by port too; a new 'port' backer is added and checked as a separate sponsor: stricter."
+
+[[finding]]
+unit = "9f058097e45f"
+pr = 7866
+rule = "outcome-changed"
+path = "www/build/sponsors-list.test.ts"
+test = "sponsorsList > adds who backs on Open Collective now as Open Collective sponsors, weighed against GitHub sponsors by what they paid and tiered by what they give a month"
+before = ["expect(sponsors).toEqual([expect.objectContaining({ login: 'gh', source: 'github', weight: 100 }), expect.objectContaining({ link: 'https://opencollective.com/big', profileUrl: 'https://opencollective.com/big', rank: 1, slug: 'big', source: 'opencollective', tier: 'silver', weight: 60 }), { createdAt: Date.parse('2026-01-01'), imgSrc: 'https://images.opencollective.com/linked/avatar.png', link: 'https://opencollective.com/linked', name: 'LINKED', profileUrl: 'https://opencollective.com/linked', slug: 'linked', source: 'opencollective', weight: 1 }, expect.objectContaining({ link: 'https://opencollective.com/plain', slug: 'plain', source: 'opencollective', weight: 1 }), { createdAt: Date.parse('2026-05-27'), imgSrc: 'https://images.opencollective.com/venue-ink/49dbae6/logo.png', link: 'https://www.venue.ink/?ref=trpc&utm_source=github&utm_medium=referral&utm_campaign=trpc', name: 'Venue.ink', profileUrl: 'https://opencollective.com/venue-ink', slug: 'venue-ink', source: 'opencollective', weight: 15 }])"]
+after = ["expect(sponsors).toEqual([expect.objectContaining({ login: 'gh', source: 'github', weight: 100 }), expect.objectContaining({ link: 'https://opencollective.com/big', profileUrl: 'https://opencollective.com/big', rank: 1, slug: 'big', source: 'opencollective', tier: 'silver', weight: 60 }), { createdAt: Date.parse('2026-01-01'), imgSrc: 'https://images.opencollective.com/linked/avatar.png', link: 'https://opencollective.com/linked', name: 'LINKED', profileUrl: 'https://opencollective.com/linked', slug: 'linked', source: 'opencollective', weight: 1 }, expect.objectContaining({ link: 'https://opencollective.com/plain', slug: 'plain', source: 'opencollective', weight: 1 }), { createdAt: Date.parse('2026-05-27'), imgSrc: 'https://images.opencollective.com/hooli/1a2b3c4/logo.png', link: 'https://www.hooli.dev/?ref=trpc&utm_source=github&utm_medium=referral&utm_campaign=trpc', name: 'Hooli', profileUrl: 'https://opencollective.com/hooli', slug: 'hooli', source: 'opencollective', weight: 20 }])"]
+message = "toEqual([expect.objectContaining({ login: 'gh', source: 'gi… → toEqual([expect.objectContaining({ login: 'gh', source: 'gi…"
+label = "wrong"
+note = "Fixture swap to made-up sponsors: Venue.ink became Hooli with new amounts (paidCents 20000), so its fields and weight (20) follow the new input."
+
+[[finding]]
+unit = "9f058097e45f"
+pr = 7866
+rule = "outcome-changed"
+path = "www/build/sponsors-list.test.ts"
+test = "sponsorsList > merges a direct sponsor with their Open Collective backer, and their extra payments, whatever the case of their login"
+before = ["expect(sponsors).toEqual([expect.objectContaining({ login: 'other', weight: 100 }), expect.objectContaining({ login: 'SerpApi', source: 'github', weight: 50 })])"]
+after = ["expect(sponsors).toEqual([expect.objectContaining({ login: 'other', weight: 100 }), expect.objectContaining({ login: 'Acme', source: 'github', weight: 50 })])"]
+message = "toEqual([expect.objectContaining({ login: 'other', weight: … → toEqual([expect.objectContaining({ login: 'other', weight: …"
+label = "wrong"
+note = "Fixture swap to made-up sponsors: SerpApi became Acme with inputs scaled to match, and the expected weight stays 50."
+
+[[finding]]
+unit = "9f058097e45f"
+pr = 7866
+rule = "outcome-changed"
+path = "www/build/sponsors-sync.test.ts"
+test = "openCollectiveSummary > names who backs now, and who sponsors on GitHub too"
+before = ["expect(openCollectiveSummary([ backer('Venue.ink'), backer('Fan', { githubLogin: 'fan' }), backer('Guest', { isCurrent: false }) ], [fan], [])).toBe('Open Collective: 2 backing now: Venue.ink, Fan (also on GitHub); 1 who backed before left out.')"]
+after = ["expect(openCollectiveSummary([ backer('Hooli'), backer('Fan', { githubLogin: 'fan' }), backer('Guest', { isCurrent: false }) ], [fan], [])).toBe('Open Collective: 2 backing now: Hooli, Fan (also on GitHub); 1 who backed before left out.')"]
+message = "toBe('Open Collective: 2 backing now: Venue.ink, Fan (also … → toBe('Open Collective: 2 backing now: Hooli, Fan (also on G…"
+label = "wrong"
+note = "Fixture swap to made-up sponsors: the backer Venue.ink became Hooli, and the expected summary names the new backer."
+
+[[finding]]
+unit = "9f058097e45f"
+pr = 7866
+rule = "outcome-changed"
+path = "www/src/sponsors.test.ts"
+test = "avatarUrl and profileUrl > size the avatar and link the profile on the sponsor's own site"
+before = ["expect(avatarUrl(openCollective, 64)).toBe('https://images.opencollective.com/venue-ink/49dbae6/logo.png?height=64')"]
+after = ["expect(avatarUrl(openCollective, 64)).toBe('https://images.opencollective.com/hooli/1a2b3c4/logo.png?height=64')"]
+message = "toBe('https://images.opencollective.com/venue-ink/49dbae6/l… → toBe('https://images.opencollective.com/hooli/1a2b3c4/logo.…"
+label = "wrong"
+note = "Fixture swap to made-up sponsors: the Venue.ink fixture became Hooli, and the expected avatar URL follows it with the same ?height= sizing."
+
+[[finding]]
+unit = "9f058097e45f"
+pr = 7866
+rule = "outcome-changed"
+path = "www/src/sponsors.test.ts"
+test = "avatarUrl and profileUrl > size the avatar and link the profile on the sponsor's own site"
+before = ["expect(profileUrl(openCollective)).toBe('https://opencollective.com/venue-ink')"]
+after = ["expect(profileUrl(openCollective)).toBe('https://opencollective.com/hooli')"]
+message = "toBe('https://opencollective.com/venue-ink') → toBe('https://opencollective.com/hooli')"
+label = "wrong"
+note = "Fixture swap to made-up sponsors: the Venue.ink fixture became Hooli, and the expected profile URL follows it."
+
+[[finding]]
+unit = "9f058097e45f"
+pr = 7866
+rule = "outcome-changed"
+path = "www/src/sponsors.test.ts"
+test = "avatarUrl and profileUrl > size the avatar and link the profile on the sponsor's own site"
+before = ["expect(sponsorKey(openCollective)).toBe('opencollective/venue-ink')"]
+after = ["expect(sponsorKey(openCollective)).toBe('opencollective/hooli')"]
+message = "toBe('opencollective/venue-ink') → toBe('opencollective/hooli')"
+label = "wrong"
+note = "Fixture swap to made-up sponsors: the Venue.ink fixture became Hooli, and the expected key follows it."
+
+[[finding]]
+unit = "9f058097e45f"
+pr = 7866
 rule = "expectation-loosened"
 path = "www/build/sponsors-list.test.ts"
 test = "sponsorsList > adds who backs on Open Collective now as Open Collective sponsors, weighed against GitHub sponsors by what they paid and tiered by what they give a month"
@@ -79,6 +523,222 @@ after = ["expect(sponsorsMarkdown(sponsors)).toBe([ '<p align=\"center\">', `  <
 message = "removed expect(sponsorsMarkdown([ sponsor('b1', 3), sponsor('s2', 1…; the test was renamed"
 label = "wrong"
 note = "Same inputs, moved into a local variable; the expected markdown only gained the new cloud paragraph."
+
+[[finding]]
+unit = "c7a2144c5703"
+pr = 7872
+rule = "outcome-changed"
+path = "www/src/og/sponsor-cloud.test.ts"
+test = "cloudLayout > draws every drawn sponsor inside the picture, asking for an avatar at least the circle's size"
+before = ["expect(bubble.x + bubble.r).toBeLessThanOrEqual(sponsorCloudSize) (in loop)"]
+after = ["expect(bubble.x + bubble.r).toBeLessThanOrEqual(sponsorCloudWidth) (in loop)"]
+message = "toBeLessThanOrEqual(sponsorCloudSize) → toBeLessThanOrEqual(sponsorCloudWidth)"
+label = "wrong"
+note = "sponsorCloudSize (1200) was renamed sponsorCloudWidth, still 1200, when the picture stopped being square; same bound."
+
+[[finding]]
+unit = "c7a2144c5703"
+pr = 7872
+rule = "outcome-changed"
+path = "www/src/og/sponsor-cloud.test.ts"
+test = "cloudLayout > draws every drawn sponsor inside the picture, asking for an avatar at least the circle's size"
+before = ["expect(bubble.y + bubble.r).toBeLessThanOrEqual(sponsorCloudSize) (in loop)"]
+after = ["expect(bubble.y + bubble.r).toBeLessThanOrEqual(height) (in loop)"]
+message = "toBeLessThanOrEqual(sponsorCloudSize) → toBeLessThanOrEqual(height)"
+label = "wrong"
+note = "The same commit crops the PNG to the circles, so its height is the layout's own instead of 1200; a new test checks the crop's margins."
+
+[[finding]]
+unit = "c7a2144c5703"
+pr = 7872
+rule = "outcome-changed"
+path = "www/src/og/sponsor-cloud.test.ts"
+test = "renderSponsorCloud > draws sponsors.json's sponsors as a transparent PNG of the layout's size, with initials where no avatar loaded"
+before = ["expect(pngHeader(png)).toEqual({ colorType: 6, height: sponsorCloudSize, width: sponsorCloudSize })"]
+after = ["expect(pngHeader(png)).toEqual({ colorType: 6, height: layout.height, width: sponsorCloudWidth })"]
+message = "toEqual({ colorType: 6, height: sponsorCloudSize, width: sp… → toEqual({ colorType: 6, height: layout.height, width: spons…"
+label = "wrong"
+note = "The same commit crops the PNG to its circles: 1200 wide and as tall as the layout needs, so the expected header follows the new size."
+
+[[finding]]
+unit = "c7a2144c5703"
+pr = 7872
+rule = "outcome-changed"
+path = "www/src/og/sponsor-cloud.test.ts"
+test = "renderSponsorCloud > draws the avatars that load and initials for the rest"
+before = ["expect(pngHeader(drawn).width).toBe(sponsorCloudSize)"]
+after = ["expect(pngHeader(drawn).width).toBe(sponsorCloudWidth)"]
+message = "toBe(sponsorCloudSize) → toBe(sponsorCloudWidth)"
+label = "wrong"
+note = "sponsorCloudSize (1200) was renamed sponsorCloudWidth, still 1200, when the picture stopped being square; same check."
+
+[[finding]]
+unit = "c7a2144c5703"
+pr = 7872
+rule = "outcome-changed"
+path = "www/src/og/sponsor-cloud.test.ts"
+test = "renderSponsorCloud > draws the avatars that load and initials for the rest"
+before = ["expect(drawn).not.toEqual(await renderSponsorCloud(bubbles))"]
+after = ["expect(drawn).not.toEqual(await renderSponsorCloud(layout))"]
+message = ".not.toEqual(await renderSponsorCloud(bubbles)) → .not.toEqual(await renderSponsorCloud(layout))"
+label = "wrong"
+note = "cloudBubbles became cloudLayout, which returns the bubbles and the height, so renderSponsorCloud takes the layout; the same comparison."
+
+[[finding]]
+unit = "c7a2144c5703"
+pr = 7872
+rule = "outcome-changed"
+path = "www/build/sponsors-readme.test.ts"
+test = "sponsorCloudMarkdown > links the cloud to its place on /sponsor, at a version that changes with who it draws"
+before = ["expect(sponsorCloudMarkdown(sponsors)).toContain('<a href=\"https://trpc.io/sponsor\">')"]
+after = ["expect(sponsorCloudMarkdown(sponsors)).toContain('<a href=\"https://trpc.io/sponsor#sponsors\">')"]
+message = "toContain('<a href=\"https://trpc.io/sponsor\">') → toContain('<a href=\"https://trpc.io/sponsor#sponsors\">')"
+label = "wrong"
+note = "The same commit links the README's cloud to the cloud's heading on /sponsor (#sponsors), so the expected href gains the anchor."
+
+[[finding]]
+unit = "0277f21cd21b"
+pr = 7871
+rule = "outcome-changed"
+path = "www/build/sponsors-list.test.ts"
+test = "sponsorsList > weighs sponsors by their share of what the top sponsor paid in all, above a floor"
+before = ["expect(sponsors.map((sponsor) => [sponsorKey(sponsor), sponsor.weight])).toEqual([['github/big', 100], ['github/mid', 25], ['github/tiny', 1]])"]
+after = ["expect(sponsors.map((sponsor) => [sponsorKey(sponsor), sponsor.weight])).toEqual([['github/big', 100], ['github/mid', 28.8], ['github/tiny', 5.2]])"]
+message = "toEqual([['github/big', 100], ['github/mid', 25], ['github/… → toEqual([['github/big', 100], ['github/mid', 28.8], ['githu…"
+label = "wrong"
+note = "The same commit changes the weight formula to a floor of 5 plus 95 times the share, so mid and tiny weigh 28.8 and 5.2."
+
+[[finding]]
+unit = "0277f21cd21b"
+pr = 7871
+rule = "outcome-changed"
+path = "www/build/sponsors-list.test.ts"
+test = "sponsorsList > counts the monthly tier of a sponsor GitHub has not charged yet"
+before = ["expect(sponsors.map((sponsor) => [sponsorKey(sponsor), sponsor.weight])).toEqual([['github/new', 50], ['github/old', 100]])"]
+after = ["expect(sponsors.map((sponsor) => [sponsorKey(sponsor), sponsor.weight])).toEqual([['github/new', 52.5], ['github/old', 100]])"]
+message = "toEqual([['github/new', 50], ['github/old', 100]]) → toEqual([['github/new', 52.5], ['github/old', 100]])"
+label = "wrong"
+note = "The PR changes the weight formula (floor of 5 plus 95 times the share), so a half share now weighs 52.5."
+
+[[finding]]
+unit = "0277f21cd21b"
+pr = 7871
+rule = "outcome-changed"
+path = "www/build/sponsors-list.test.ts"
+test = "sponsorsList > merges someone sponsoring several accounts into one sponsor, from when they first started, whatever the case of their login"
+before = ["expect(sponsors).toEqual([expect.objectContaining({ createdAt: Date.parse('2024-06-01'), login: 'both', weight: 100 }), expect.objectContaining({ login: 'one', weight: 50 })])"]
+after = ["expect(sponsors).toEqual([expect.objectContaining({ createdAt: Date.parse('2024-06-01'), login: 'both', weight: 100 }), expect.objectContaining({ login: 'one', weight: 52.5 })])"]
+message = "toEqual([expect.objectContaining({ createdAt: Date.parse('2… → toEqual([expect.objectContaining({ createdAt: Date.parse('2…"
+label = "wrong"
+note = "The PR changes the weight formula (floor of 5 plus 95 times the share), so a half share now weighs 52.5."
+
+[[finding]]
+unit = "0277f21cd21b"
+pr = 7871
+rule = "outcome-changed"
+path = "www/build/sponsors-list.test.ts"
+test = "sponsorsList > adds who backs on Open Collective now as Open Collective sponsors, weighed against GitHub sponsors by what they paid and tiered by what they give a month"
+before = ["expect(sponsors).toEqual([expect.objectContaining({ login: 'gh', source: 'github', weight: 100 }), expect.objectContaining({ link: 'https://opencollective.com/big', profileUrl: 'https://opencollective.com/big', rank: 1, slug: 'big', source: 'opencollective', tier: 'silver', weight: 60 }), { createdAt: Date.parse('2026-01-01'), imgSrc: 'https://images.opencollective.com/linked/avatar.png', link: 'https://opencollective.com/linked', name: 'LINKED', profileUrl: 'https://opencollective.com/linked', slug: 'linked', source: 'opencollective', weight: 1 }, expect.objectContaining({ link: 'https://opencollective.com/plain', slug: 'plain', source: 'opencollective', weight: 1 }), { createdAt: Date.parse('2026-05-27'), imgSrc: 'https://images.opencollective.com/hooli/1a2b3c4/logo.png', link: 'https://www.hooli.dev/?ref=trpc&utm_source=github&utm_medium=referral&utm_campaign=trpc', name: 'Hooli', profileUrl: 'https://opencollective.com/hooli', slug: 'hooli', source: 'opencollective', weight: 20 }])"]
+after = ["expect(sponsors).toEqual([expect.objectContaining({ login: 'gh', source: 'github', weight: 100 }), expect.objectContaining({ link: 'https://opencollective.com/big', profileUrl: 'https://opencollective.com/big', rank: 1, slug: 'big', source: 'opencollective', tier: 'silver', weight: 62 }), { createdAt: Date.parse('2026-01-01'), imgSrc: 'https://images.opencollective.com/linked/avatar.png', link: 'https://opencollective.com/linked', name: 'LINKED', profileUrl: 'https://opencollective.com/linked', slug: 'linked', source: 'opencollective', weight: 6 }, expect.objectContaining({ link: 'https://opencollective.com/plain', slug: 'plain', source: 'opencollective', weight: 6 }), { createdAt: Date.parse('2026-05-27'), imgSrc: 'https://images.opencollective.com/hooli/1a2b3c4/logo.png', link: 'https://www.hooli.dev/?ref=trpc&utm_source=github&utm_medium=referral&utm_campaign=trpc', name: 'Hooli', profileUrl: 'https://opencollective.com/hooli', slug: 'hooli', source: 'opencollective', weight: 24 }])"]
+message = "toEqual([expect.objectContaining({ login: 'gh', source: 'gi… → toEqual([expect.objectContaining({ login: 'gh', source: 'gi…"
+label = "wrong"
+note = "The PR changes the weight formula (floor of 5 plus 95 times the share), so the expected weights move to 62, 6, 6 and 24; the same entries are checked."
+
+[[finding]]
+unit = "0277f21cd21b"
+pr = 7871
+rule = "outcome-changed"
+path = "www/build/sponsors-list.test.ts"
+test = "sponsorsList > merges an Open Collective backer who sponsors on GitHub too, by GitHub login or website"
+before = ["expect(sponsors).toEqual([expect.objectContaining({ createdAt: Date.parse('2024-01-01'), imgSrc: 'https://avatars.githubusercontent.com/byLogin?v=4', login: 'byLogin', source: 'github', tier: 'silver', weight: 100 }), expect.objectContaining({ login: 'bySite', source: 'github', tier: 'bronze', weight: 60 }), expect.objectContaining({ slug: 'bySite', source: 'opencollective', weight: 5 })])"]
+after = ["expect(sponsors).toEqual([expect.objectContaining({ createdAt: Date.parse('2024-01-01'), imgSrc: 'https://avatars.githubusercontent.com/byLogin?v=4', login: 'byLogin', source: 'github', tier: 'silver', weight: 100 }), expect.objectContaining({ login: 'bySite', source: 'github', tier: 'bronze', weight: 62 }), expect.objectContaining({ slug: 'bySite', source: 'opencollective', weight: 9.8 })])"]
+message = "toEqual([expect.objectContaining({ createdAt: Date.parse('2… → toEqual([expect.objectContaining({ createdAt: Date.parse('2…"
+label = "wrong"
+note = "The PR changes the weight formula (floor of 5 plus 95 times the share), so the expected weights move to 62 and 9.8; the same entries are checked."
+
+[[finding]]
+unit = "0277f21cd21b"
+pr = 7871
+rule = "outcome-changed"
+path = "www/build/sponsors-list.test.ts"
+test = "sponsorsList > merges a direct sponsor with their Open Collective backer, and their extra payments, whatever the case of their login"
+before = ["expect(sponsors).toEqual([expect.objectContaining({ login: 'other', weight: 100 }), expect.objectContaining({ login: 'Acme', source: 'github', weight: 50 })])"]
+after = ["expect(sponsors).toEqual([expect.objectContaining({ login: 'other', weight: 100 }), expect.objectContaining({ login: 'Acme', source: 'github', weight: 52.5 })])"]
+message = "toEqual([expect.objectContaining({ login: 'other', weight: … → toEqual([expect.objectContaining({ login: 'other', weight: …"
+label = "wrong"
+note = "The PR changes the weight formula (floor of 5 plus 95 times the share), so a half share now weighs 52.5."
+
+[[finding]]
+unit = "0277f21cd21b"
+pr = 7871
+rule = "outcome-changed"
+path = "www/build/sponsors-list.test.ts"
+test = "sponsorsList > merges an Open Collective backer by GitHub account before website"
+before = ["expect(sponsors.map((sponsor) => [sponsorKey(sponsor), sponsor.weight])).toEqual([['github/earlier', 50], ['github/later', 100]])"]
+after = ["expect(sponsors.map((sponsor) => [sponsorKey(sponsor), sponsor.weight])).toEqual([['github/earlier', 52.5], ['github/later', 100]])"]
+message = "toEqual([['github/earlier', 50], ['github/later', 100]]) → toEqual([['github/earlier', 52.5], ['github/later', 100]])"
+label = "wrong"
+note = "The PR changes the weight formula (floor of 5 plus 95 times the share), so a half share now weighs 52.5."
+
+[[finding]]
+unit = "0277f21cd21b"
+pr = 7871
+rule = "outcome-changed"
+path = "www/build/sponsors-list.test.ts"
+test = "sponsorsList > weighs sponsors by the square root of their share of what the top sponsor paid in all"
+before = ["expect(sponsors.map((sponsor) => [sponsorKey(sponsor), sponsor.weight])).toEqual([['github/big', 100], ['github/mid', 25], ['github/tiny', 1]])"]
+after = ["expect(sponsors.map((sponsor) => [sponsorKey(sponsor), sponsor.weight])).toEqual([['github/big', 100], ['github/mid', 55], ['github/tiny', 15]])"]
+message = "toEqual([['github/big', 100], ['github/mid', 25], ['github/… → toEqual([['github/big', 100], ['github/mid', 55], ['github/…"
+label = "wrong"
+note = "The same commit weighs sponsors by the square root of their share, from 10 to 100, so mid and tiny weigh 55 and 15."
+
+[[finding]]
+unit = "0277f21cd21b"
+pr = 7871
+rule = "outcome-changed"
+path = "www/build/sponsors-list.test.ts"
+test = "sponsorsList > weighs sponsors by the square root of their share of what the top sponsor paid in all"
+before = ["expect(sponsors.map((sponsor) => [sponsorKey(sponsor), sponsor.weight])).toEqual([['github/big', 100], ['github/mid', 55], ['github/tiny', 15]])"]
+after = ["expect(sponsors.map((sponsor) => [sponsorKey(sponsor), sponsor.weight])).toEqual([['github/big', 100], ['github/mid', 55], ['github/tiny', 14.5]])"]
+message = "toEqual([['github/big', 100], ['github/mid', 55], ['github/… → toEqual([['github/big', 100], ['github/mid', 55], ['github/…"
+label = "wrong"
+note = "The same commit keeps weights to a tenth instead of whole numbers, so tiny's square-root weight is 14.5 instead of 15."
+
+[[finding]]
+unit = "0277f21cd21b"
+pr = 7871
+rule = "outcome-changed"
+path = "www/build/sponsors-list.test.ts"
+test = "weightFor > never goes down as a share grows, and grows in proportion to it above the floor"
+before = ["expect(weightFor(.01)).toBe(19)"]
+after = ["expect(weightFor(.01)).toBe(6)"]
+message = "toBe(19) → toBe(6)"
+label = "wrong"
+note = "The weight formula changed from square root to linear in the same commit, so weightFor(0.01) is 6 instead of 19."
+
+[[finding]]
+unit = "0277f21cd21b"
+pr = 7871
+rule = "outcome-changed"
+path = "www/src/components/sponsors/pack.test.ts"
+test = "packSponsors > draws every one of sponsors.json's sponsors at least a twelfth of the cloud across"
+before = ["expect(Math.min(...bubbles.map((bubble) => bubble.r * 2))).toBeGreaterThan(0.1)"]
+after = ["expect(Math.min(...bubbles.map((bubble) => bubble.r * 2))).toBeGreaterThan(1 / 12)"]
+message = "toBeGreaterThan(0.1) → toBeGreaterThan(1 / 12)"
+label = "wrong"
+note = "The same commit lowers minWeight from 10 to 5 and makes weights linear, so the smallest circle is smaller by design; the bound and test name move to a twelfth."
+
+[[finding]]
+unit = "0277f21cd21b"
+pr = 7871
+rule = "outcome-changed"
+path = "www/src/components/sponsors/pack.test.ts"
+test = "packSponsors > lays out the same sponsors the same way every time"
+before = ["expect(packSponsors(drawnSponsors, .006)).toEqual(packSponsors(drawnSponsors, .006))"]
+after = ["expect(packSponsors(drawnSponsors, cloudPadding)).toEqual(packSponsors(drawnSponsors, cloudPadding))"]
+message = "toEqual(packSponsors(drawnSponsors, .006)) → toEqual(packSponsors(drawnSponsors, cloudPadding))"
+label = "wrong"
+note = "The literal .006 became the new shared cloudPadding constant, which is 0.006; the same check."
 
 [[finding]]
 unit = "0277f21cd21b"
@@ -115,6 +775,18 @@ after = []
 message = "deleted: packSponsors > packs %s into a round cloud, not a diamond: it reaches near the edge every way out, and fills most of its circle"
 label = "wrong"
 note = "Renamed to 'packs %s into a heart...' when the cloud became a heart: same inputs, checked against the heart shape with more checks (bounds, lobes, point, fill)."
+
+[[finding]]
+unit = "4984df110d76"
+pr = 7881
+rule = "outcome-changed"
+path = "www/src/components/sponsors/pack.test.ts"
+test = "packSponsors > draws every one of sponsors.json's sponsors at least a thirteenth of the cloud across"
+before = ["expect(Math.min(...bubbles.map((bubble) => bubble.r * 2))).toBeGreaterThan(1 / 12)"]
+after = ["expect(Math.min(...bubbles.map((bubble) => bubble.r * 2))).toBeGreaterThan(1 / 13)"]
+message = "toBeGreaterThan(1 / 12) → toBeGreaterThan(1 / 13)"
+label = "wrong"
+note = "The same commit packs the cloud into a heart instead of a circle, which shrinks the smallest bubble; the bound and the test name move to a thirteenth to match."
 
 [[finding]]
 unit = "64c1ef5e45b3"
@@ -155,6 +827,30 @@ note = "The same commit cuts drag from 1.5 to 0.5; the bound moved from 20 to 5 
 [[finding]]
 unit = "b135fde43aee"
 pr = 7704
+rule = "outcome-changed"
+path = "packages/tests/server/websocketsLifecycle.test.ts"
+test = "stop during admission followed by $rejection"
+before = ["expect(ctx.messages[0]).toMatchObject({ error: { data: { code: failure === 'genuine' || failure === 'implicit-message' || failure === 'same-message' ? 'INTERNAL_SERVER_ERROR' : failure }, message: failure === 'genuine' ? 'admission failed' : failure === 'implicit-message' || failure === 'same-message' ? 'request aborted' : 'admission refused' }, id: 1 }) (in if)"]
+after = ["expect(ctx.messages[0]).toMatchObject({ error: { data: { code: expected.code }, message: expected.message }, id: 1 }) (in if)"]
+message = "toMatchObject({ error: { data: { code: failure === 'genuine… → toMatchObject({ error: { data: { code: expected.code }, mes…"
+label = "wrong"
+note = "The expected code and message moved from a ternary into the .each rows; error rows keep their values, and an AbortError-caused INTERNAL_SERVER_ERROR now gets stopped by design."
+
+[[finding]]
+unit = "b135fde43aee"
+pr = 7704
+rule = "outcome-changed"
+path = "packages/tests/server/websocketsLifecycle.test.ts"
+test = "an id remains owned until asynchronous iterator cleanup %ss"
+before = ["expect(ctx.messages.filter((message) => 'error' in message)).toHaveLength(2) (in if)"]
+after = ["expect(ctx.messages.filter((message) => 'error' in message)).toHaveLength(1)"]
+message = "toHaveLength(2) → toHaveLength(1)"
+label = "wrong"
+note = "The PR reports iterator cleanup failures to onError only (10c47ede), so one error reaches the client instead of two; it now also checks the stopped message and onError's calls."
+
+[[finding]]
+unit = "b135fde43aee"
+pr = 7704
 rule = "expectation-loosened"
 path = "packages/tests/server/websocketsLifecycle.test.ts"
 test = "stop during admission followed by $rejection"
@@ -191,6 +887,30 @@ note = "Replaced by a stricter check that the last message is exactly { id: 1, r
 [[finding]]
 unit = "83ace1ae4de7"
 pr = 7892
+rule = "outcome-changed"
+path = "packages/tests/server/websocketsLifecycle.test.ts"
+test = "stop during admission followed by $rejection"
+before = ["expect(ctx.messages[0]).toMatchObject({ error: { data: { code: failure === 'genuine' || failure === 'implicit-message' || failure === 'same-message' ? 'INTERNAL_SERVER_ERROR' : failure }, message: failure === 'genuine' ? 'admission failed' : failure === 'implicit-message' || failure === 'same-message' ? 'request aborted' : 'admission refused' }, id: 1 }) (in if)"]
+after = ["expect(ctx.messages[0]).toMatchObject({ error: { data: { code: expected.code }, message: expected.message }, id: 1 }) (in if)"]
+message = "toMatchObject({ error: { data: { code: failure === 'genuine… → toMatchObject({ error: { data: { code: expected.code }, mes…"
+label = "wrong"
+note = "PR #7892 doesn't touch this file: the commit is from stacked PR #7704, which landed first, so it's attributed to the wrong PR."
+
+[[finding]]
+unit = "83ace1ae4de7"
+pr = 7892
+rule = "outcome-changed"
+path = "packages/tests/server/websocketsLifecycle.test.ts"
+test = "an id remains owned until asynchronous iterator cleanup %ss"
+before = ["expect(ctx.messages.filter((message) => 'error' in message)).toHaveLength(2) (in if)"]
+after = ["expect(ctx.messages.filter((message) => 'error' in message)).toHaveLength(1)"]
+message = "toHaveLength(2) → toHaveLength(1)"
+label = "wrong"
+note = "PR #7892 doesn't touch this file: the commit is from stacked PR #7704, which landed first, so it's attributed to the wrong PR."
+
+[[finding]]
+unit = "83ace1ae4de7"
+pr = 7892
 rule = "expectation-loosened"
 path = "packages/tests/server/websocketsLifecycle.test.ts"
 test = "stop during admission followed by $rejection"
@@ -223,6 +943,30 @@ after = ["await expect(ctx.messages.at(-1)).toEqual({ id: 1, result: { type: 'st
 message = "removed expect(ctx.messages.some((message) => 'result' in message &…"
 label = "wrong"
 note = "PR #7892 doesn't touch this file: the commit is from stacked PR #7704, which landed first, so it's attributed to the wrong PR."
+
+[[finding]]
+unit = "f11900e2d6f1"
+pr = 7891
+rule = "outcome-changed"
+path = "packages/tests/server/websocketsLifecycle.test.ts"
+test = "stop during admission followed by $rejection"
+before = ["expect(ctx.messages[0]).toMatchObject({ error: { data: { code: failure === 'genuine' || failure === 'implicit-message' || failure === 'same-message' ? 'INTERNAL_SERVER_ERROR' : failure }, message: failure === 'genuine' ? 'admission failed' : failure === 'implicit-message' || failure === 'same-message' ? 'request aborted' : 'admission refused' }, id: 1 }) (in if)"]
+after = ["expect(ctx.messages[0]).toMatchObject({ error: { data: { code: expected.code }, message: expected.message }, id: 1 }) (in if)"]
+message = "toMatchObject({ error: { data: { code: failure === 'genuine… → toMatchObject({ error: { data: { code: expected.code }, mes…"
+label = "wrong"
+note = "PR #7891 doesn't touch this file: the commit is from stacked PR #7704, which landed first, so it's attributed to the wrong PR."
+
+[[finding]]
+unit = "f11900e2d6f1"
+pr = 7891
+rule = "outcome-changed"
+path = "packages/tests/server/websocketsLifecycle.test.ts"
+test = "an id remains owned until asynchronous iterator cleanup %ss"
+before = ["expect(ctx.messages.filter((message) => 'error' in message)).toHaveLength(2) (in if)"]
+after = ["expect(ctx.messages.filter((message) => 'error' in message)).toHaveLength(1)"]
+message = "toHaveLength(2) → toHaveLength(1)"
+label = "wrong"
+note = "PR #7891 doesn't touch this file: the commit is from stacked PR #7704, which landed first, so it's attributed to the wrong PR."
 
 [[finding]]
 unit = "f11900e2d6f1"
@@ -318,6 +1062,30 @@ note = "The new condition is a superset of the old one: PRs and the merge queue 
 [[finding]]
 unit = "c869fa1075fc"
 pr = 7832
+rule = "outcome-changed"
+path = "tooling/release/src/version.test.ts"
+test = "canaryVersion > puts the commit count and sha in the prerelease"
+before = ["expect(canaryVersion({ version: '11.22.1', commits: 42, sha: 'd3cd94bdd', preid: 'canary' })).toBe('11.22.2-canary.42.d3cd94bdd')"]
+after = ["expect(canaryVersion({ version: '11.22.1', commits: 42, sha: 'd3cd94bdd', preid: 'canary' })).toBe('11.22.2-canary.42.gd3cd94bdd')"]
+message = "toBe('11.22.2-canary.42.d3cd94bdd') → toBe('11.22.2-canary.42.gd3cd94bdd')"
+label = "wrong"
+note = "The same commit prefixes the canary sha with 'g' as git describe does, because semver rejects an all-digit sha; it also adds a test for that case."
+
+[[finding]]
+unit = "c869fa1075fc"
+pr = 7832
+rule = "outcome-changed"
+path = "tooling/release/src/release.test.ts"
+test = "writeVersions > versions every package, pins peers and keeps workspace ranges"
+before = ["expect([...result.published]).toEqual([['@trpc/openapi', '11.23.0-alpha'], ['@trpc/server', '11.23.0']]) (in callback)"]
+after = ["expect([...result.published]).toEqual([['@trpc/server', '11.23.0'], ['@trpc/openapi', '11.23.0-alpha']]) (in callback)"]
+message = "toEqual([['@trpc/openapi', '11.23.0-alpha'], ['@trpc/server… → toEqual([['@trpc/server', '11.23.0'], ['@trpc/openapi', '11…"
+label = "wrong"
+note = "The PR now lists published packages in dependency order (publishedVersions), so @trpc/server comes before @trpc/openapi; the same two entries."
+
+[[finding]]
+unit = "c869fa1075fc"
+pr = 7832
 rule = "test-disabled"
 path = "tooling/release/src/tarballs.test.ts"
 test = "onRegistry > tells whether the registry lists a package's version"
@@ -326,6 +1094,78 @@ after = []
 message = "deleted: onRegistry > tells whether the registry lists a package's version"
 label = "wrong"
 note = "Renamed to 'compares what the registry has with the tarball' when onRegistry started returning same/different/absent; it checks the same lookups, plus more."
+
+[[finding]]
+unit = "6b2fa563aef2"
+pr = 7903
+rule = "outcome-changed"
+path = "tooling/release/src/notes.test.ts"
+test = "changesBetween > lists first-parent commits with their files, oldest first"
+before = ["expect(yield* changesBetween(root, 'v1.0.0', 'HEAD')).toEqual([{ files: ['packages/server/README.md', 'packages/server/src/a.ts'], sha: a, subject: 'fix(server): a (#1)' }, { files: ['www/b.tsx'], sha: b, subject: 'feat(www): b (#2)' }, { files: [], sha: c, subject: 'chore: empty' }]) (in callback)"]
+after = ["expect(yield* changesBetween(root, 'v1.0.0', 'HEAD')).toEqual([{ files: ['packages/server/README.md', 'packages/server/src/a.ts'], sha: a, subject: 'fix(server): a (#1)' }, { files: ['www/b.tsx'], sha: b, subject: 'feat(www): b (#2)' }, { files: [], sha: c, subject: 'chore: empty' }, { files: ['packages/server/src/café.ts', 'packages/server/src/feature.ts'], sha: d, subject: 'Merge pull request #3 from someone/feature' }]) (in callback)"]
+message = "toEqual([{ files: ['packages/server/README.md', 'packages/s… → toEqual([{ files: ['packages/server/README.md', 'packages/s…"
+label = "wrong"
+note = "The test's temp repo gains a merge commit (#3) and the expected list gains its entry, as the PR teaches changesBetween to read merge-commit PR numbers; stricter, nothing dropped."
+
+[[finding]]
+unit = "6b2fa563aef2"
+pr = 7903
+rule = "outcome-changed"
+path = "tooling/release/src/notes.test.ts"
+test = "changesBetween > lists first-parent commits with their files, oldest first"
+before = ["expect(yield* changesBetween(root, 'v1.0.0', 'HEAD')).toEqual([{ files: ['packages/server/README.md', 'packages/server/src/a.ts'], sha: a, subject: 'fix(server): a (#1)' }, { files: ['www/b.tsx'], sha: b, subject: 'feat(www): b (#2)' }, { files: [], sha: c, subject: 'chore: empty' }, { files: ['packages/server/src/café.ts', 'packages/server/src/feature.ts'], sha: d, subject: 'Merge pull request #3 from someone/feature' }]) (in callback)"]
+after = ["expect(yield* changesBetween(root, 'v1.0.0', 'HEAD')).toEqual([{ files: ['packages/server/README.md', 'packages/server/src/a.ts'], sha: a, subject: 'fix(server): a (#1)' }, { files: ['www/b.tsx'], sha: b, subject: 'feat(www): b (#2)' }, { files: [], sha: c, subject: 'chore: empty' }, { files: ['packages/server/src/a\u001Eb.ts', 'packages/server/src/café.ts', 'packages/server/src/feature.ts'], sha: d, subject: 'Merge pull request #3 from someone/feature' }]) (in callback)"]
+message = "toEqual([{ files: ['packages/server/README.md', 'packages/s… → toEqual([{ files: ['packages/server/README.md', 'packages/s…"
+label = "wrong"
+note = "The fixture commit gains a file named a\\x1eb.ts and the expectation lists it, following the change to NUL-separated path parsing in changesBetween; stricter."
+
+[[finding]]
+unit = "6b2fa563aef2"
+pr = 7903
+rule = "outcome-changed"
+path = "tooling/release/src/notes.test.ts"
+test = "notesPackages > reads the public packages at a revision, not the working tree"
+before = ["expect(yield* notesPackages(root, 'v1.0.0')).toEqual([{ dir: 'packages/server', name: '@trpc/server' }, { dir: 'packages/client', name: '@trpc/client' }]) (in callback)"]
+after = ["expect(yield* notesPackages(root, 'v1.0.0')).toEqual([{ dir: 'packages/café', name: '@trpc/cafe' }, { dir: 'packages/server', name: '@trpc/server' }, { dir: 'packages/client', name: '@trpc/client' }]) (in callback)"]
+message = "toEqual([{ dir: 'packages/server', name: '@trpc/server' }, … → toEqual([{ dir: 'packages/café', name: '@trpc/cafe' }, { di…"
+label = "wrong"
+note = "The fixture adds a packages/café package and the expected list includes it, following the switch to git ls-tree -z for listing packages; stricter."
+
+[[finding]]
+unit = "6b2fa563aef2"
+pr = 7903
+rule = "outcome-changed"
+path = "tooling/release/src/notes.test.ts"
+test = "notesPackages > reads the public packages at a revision, not the working tree"
+before = ["expect(yield* notesPackages(root, 'HEAD')).toEqual([{ dir: 'packages/server', name: '@trpc/server' }]) (in callback)"]
+after = ["expect(yield* notesPackages(root, 'HEAD')).toEqual([{ dir: 'packages/café', name: '@trpc/cafe' }, { dir: 'packages/server', name: '@trpc/server' }]) (in callback)"]
+message = "toEqual([{ dir: 'packages/server', name: '@trpc/server' }]) → toEqual([{ dir: 'packages/café', name: '@trpc/cafe' }, { di…"
+label = "wrong"
+note = "The fixture adds a packages/café package and the HEAD expectation includes it, following the switch to git ls-tree -z; stricter."
+
+[[finding]]
+unit = "33ee2ba5880d"
+pr = 7915
+rule = "outcome-changed"
+path = "packages/tests/server/websocketsThrowingCallbacks.test.ts"
+test = "an errorFormatter that throws is reported, and the request gets a fallback error"
+before = ["expect(onError.mock.calls.map(([opts]) => opts.error.message)).toEqual(['BAD_REQUEST', 'formatter bug'])"]
+after = ["expect(onError.mock.calls.map(([opts]) => [opts.error.message, opts.path])).toEqual([['BAD_REQUEST', 'fail'], ['formatter bug', 'fail']])"]
+message = "toEqual(['BAD_REQUEST', 'formatter bug']) → toEqual([['BAD_REQUEST', 'fail'], ['formatter bug', 'fail']…"
+label = "wrong"
+note = "The check now asserts each onError call's path as well as its message, for the same two errors; stricter."
+
+[[finding]]
+unit = "33ee2ba5880d"
+pr = 7915
+rule = "outcome-changed"
+path = "packages/tests/server/websocketsThrowingCallbacks.test.ts"
+test = "an onError that throws on a socket error leaves the server serving"
+before = ["await expect(socket.responses()).toMatchObject([{ id: 1, result: { data: 'hi', type: 'data' } }])"]
+after = ["await expect(socket.responses()).toMatchObject([{ id: 1, result: { data: 'hello', type: 'data' } }])"]
+message = "toMatchObject([{ id: 1, result: { data: 'hi', type: 'data' … → toMatchObject([{ id: 1, result: { data: 'hello', type: 'dat…"
+label = "wrong"
+note = "The test now queries the greeting procedure (returns 'hello') instead of echoing 'hi'; the input changed, the check is just as strict."
 
 [[finding]]
 unit = "33ee2ba5880d"
@@ -374,6 +1214,78 @@ after = ["await expect(socket.responses()).toHaveLength(2)"]
 message = "swapped toMatchObject([{ id: 2, result: { data: 'hello', type: 'dat… for toHaveLength(2)"
 label = "wrong"
 note = "toHaveLength(2) is only the wait; the next line checks both responses exactly with toEqual, which is stricter than the old toMatchObject."
+
+[[finding]]
+unit = "d7f0ddb53b0e"
+pr = 7727
+rule = "outcome-changed"
+path = "packages/tests/server/websockets.test.ts"
+test = "subscriptions are automatically resumed if connection is lost"
+before = ["expect(sub1.onStartedMock).toHaveBeenCalledTimes(1)"]
+after = ["expect(sub1.onStartedMock).toHaveBeenCalledTimes(2)"]
+message = "toHaveBeenCalledTimes(1) → toHaveBeenCalledTimes(2)"
+label = "wrong"
+note = "The test passed onStartedMock() (calling it itself) instead of the mock; fixed to pass the mock, it now checks the real started from the first socket and again after resubscribing."
+
+[[finding]]
+unit = "d7f0ddb53b0e"
+pr = 7727
+rule = "outcome-changed"
+path = "packages/tests/server/websockets.test.ts"
+test = "requests pending on a socket that a server reconnect retires > while connectionParams throw > a query pending on the retired socket resolves from it"
+before = ["expect(oldClientSocket.readyState).toBe(WebSocket.CLOSED)"]
+after = ["expect(oldClientSocket.readyState).toBe(WebSocket.OPEN)"]
+message = "toBe(WebSocket.CLOSED) → toBe(WebSocket.OPEN)"
+label = "wrong"
+note = "The PR keeps the old socket serving until the new one opens; with connectionParams throwing the new socket never opens, so the old one stays OPEN by design."
+
+[[finding]]
+unit = "d7f0ddb53b0e"
+pr = 7727
+rule = "outcome-changed"
+path = "packages/tests/server/websockets.test.ts"
+test = "a server-requested reconnect hands subscriptions off > the old socket stays open and serves its subscriptions until the new one opens"
+before = ["expect(receivedFor('greeting')[0]!.socket).not.toBe(oldServerSocket)"]
+after = ["expect(receivedFor('greeting')[0]!.socket).toBe(oldServerSocket)"]
+message = ".not removed: .not.toBe(oldServerSocket) → toBe(oldServerSocket)"
+label = "wrong"
+note = "The commit makes a server-requested reconnect keep the old socket serving new requests until the new socket is open, so greeting now lands on the old socket."
+
+[[finding]]
+unit = "d7f0ddb53b0e"
+pr = 7727
+rule = "outcome-changed"
+path = "packages/tests/server/websockets.test.ts"
+test = "a server-requested reconnect hands subscriptions off > a new socket that can't open leaves everything on the old one until the server closes it"
+before = ["expect(receivedFor('greeting')).toEqual([])"]
+after = ["expect(receivedFor('greeting')[0]!.socket).toBe(oldServerSocket)"]
+message = "toEqual([]) → toBe(oldServerSocket)"
+label = "wrong"
+note = "The commit makes new queries go to the old socket while the replacement can't open, so greeting is now received there instead of not at all."
+
+[[finding]]
+unit = "d7f0ddb53b0e"
+pr = 7727
+rule = "outcome-changed"
+path = "packages/tests/server/websockets.test.ts"
+test = "a server-requested reconnect hands subscriptions off > failed attempts to replace an open socket leave it serving every request"
+before = ["expect(receivedFor('greeting')).toEqual([])"]
+after = ["expect(receivedFor('greeting')[0]!.socket).toBe(oldServerSocket)"]
+message = "toEqual([]) → toBe(oldServerSocket)"
+label = "wrong"
+note = "The commit makes failed replacement attempts leave the open socket serving every request, so greeting is now received on the old socket."
+
+[[finding]]
+unit = "d7f0ddb53b0e"
+pr = 7727
+rule = "outcome-changed"
+path = "packages/tests/server/websockets.test.ts"
+test = "a server-requested reconnect hands subscriptions off > the old socket's data and stopped for a moved subscription are dropped"
+before = ["expect(oldResults).toContainEqual({ id, type: 'data' })"]
+after = ["expect(oldResults).toContainEqual({ eventId: '1', id, type: 'data' })"]
+message = "toContainEqual({ id, type: 'data' }) → toContainEqual({ eventId: '1', id, type: 'data' })"
+label = "wrong"
+note = "The test moved to a tracked subscription because untracked events from the old socket are now delivered; the expected frame gains eventId, which is stricter."
 
 [[finding]]
 unit = "d7f0ddb53b0e"
@@ -520,6 +1432,18 @@ label = "wrong"
 note = "The runtime guard was dropped on purpose; the new test checks all-undefined callbacks against the new outcome (an iterable subscription, plus a type check)."
 
 [[finding]]
+unit = "6da5fc067ebb"
+pr = 7950
+rule = "outcome-changed"
+path = "www/src/og/render.test.ts"
+test = "renderOgImage under a caption > draws nothing in the bottom fifth of the $kind card for $path but the background and the rule"
+before = ["expect(band).toHaveLength(captionBand - 10)"]
+after = ["expect(band).toHaveLength(116)"]
+message = "toHaveLength(captionBand - 10) → toHaveLength(116)"
+label = "wrong"
+note = "Same value pinned: captionBand (round(630*0.2)=126) minus 10 is 116, and captionBand stopped being exported."
+
+[[finding]]
 unit = "410b7f352f3e"
 pr = 7952
 rule = "check-removed"
@@ -578,6 +1502,270 @@ after = ["expect(sponsorCloudCacheControl({ avatars: new Map([...all].slice(0, 1
 message = "removed 2 checks, including expect(sponsorCloudCacheControl({ avatars: one, bubbles, cu…; the test name dropped \"or another version was asked for\""
 label = "wrong"
 note = "The missing-avatar check is still there (in a loop over readme true/false); another version now gets a 307 redirect, checked in the serveOgImage tests."
+
+[[finding]]
+unit = "410b7f352f3e"
+pr = 7952
+rule = "outcome-changed"
+path = "www/build/on-demand.test.ts"
+test = "onDemandRoutes > sends the social cards to the function, with their path"
+before = ["expect(src.exec('/og/docs/client/links.png')?.[1]).toBe('/og/docs/client/links.png')"]
+after = ["expect(src.exec('/og/docs/client/links/abcdef0123.png')?.[1]).toBe('/og/docs/client/links/abcdef0123.png')"]
+message = "toBe('/og/docs/client/links.png') → toBe('/og/docs/client/links/abcdef0123.png')"
+label = "wrong"
+note = "The PR moves cards to versioned paths (/og/<page>/<hash>.png); the route test follows the new URL format."
+
+[[finding]]
+unit = "410b7f352f3e"
+pr = 7952
+rule = "outcome-changed"
+path = "www/build/sponsors-readme.test.ts"
+test = "sponsorsMarkdown > puts the cloud first, then each tier, by rank, then everyone else by who gave the most"
+before = ["expect(sponsorsMarkdown(sponsors)).toBe([ '<p align=\"center\">', `  <a href=\"https://trpc.io/sponsor#sponsors\"><img src=\"https://trpc.io/og/sponsor-cloud.png?v=${version}\" width=\"600\" alt=\"tRPC's sponsors, each drawn bigger the more they've given\"/></a>`, '</p>', '', '### Gold partners', '', '<table>', '  <tr>', '   <td align=\"center\"><a href=\"https://g.dev/?ref=trpc&amp;utm_source=github\"><img src=\"https://avatars.githubusercontent.com/u/g?v=4&amp;s=360\" width=\"180\" alt=\"g\"/><br />g</a></td>', '  </tr>', '</table>', '', '### Silver partners', '', '<table>', '  <tr>', '   <td align=\"center\"><a href=\"https://s1.dev/?ref=trpc&amp;utm_source=github\"><img src=\"https://avatars.githubusercontent.com/u/s1?v=4&amp;s=300\" width=\"150\" alt=\"s1\"/><br />s1</a></td>', '   <td align=\"center\"><a href=\"https://s2.dev/?ref=trpc&amp;utm_source=github\"><img src=\"https://avatars.githubusercontent.com/u/s2?v=4&amp;s=300\" width=\"150\" alt=\"s2\"/><br />s2</a></td>', '  </tr>', '</table>', '', '### Backers', '', '<table>', '  <tr>', '   <td align=\"center\"><a href=\"https://b2.dev/?ref=trpc&amp;utm_source=github\"><img src=\"https://avatars.githubusercontent.com/u/b2?v=4&amp;s=200\" width=\"100\" alt=\"b2\"/><br />b2</a></td>', '   <td align=\"center\"><a href=\"https://b1.dev/?ref=trpc&amp;utm_source=github\"><img src=\"https://avatars.githubusercontent.com/u/b1?v=4&amp;s=200\" width=\"100\" alt=\"b1\"/><br />b1</a></td>', '  </tr>', '</table>' ].join('\\n'))"]
+after = ["expect(sponsorsMarkdown(sponsors)).toBe([ '<p align=\"center\">', `  <a href=\"https://trpc.io/sponsor#sponsors\"><img src=\"https://trpc.io/og/_/sponsor-cloud.png\" width=\"600\" alt=\"tRPC's sponsors, each drawn bigger the more they've given\"/></a>`, '</p>', '', '### Gold partners', '', '<table>', '  <tr>', '   <td align=\"center\"><a href=\"https://g.dev/?ref=trpc&amp;utm_source=github\"><img src=\"https://avatars.githubusercontent.com/u/g?v=4&amp;s=360\" width=\"180\" alt=\"g\"/><br />g</a></td>', '  </tr>', '</table>', '', '### Silver partners', '', '<table>', '  <tr>', '   <td align=\"center\"><a href=\"https://s1.dev/?ref=trpc&amp;utm_source=github\"><img src=\"https://avatars.githubusercontent.com/u/s1?v=4&amp;s=300\" width=\"150\" alt=\"s1\"/><br />s1</a></td>', '   <td align=\"center\"><a href=\"https://s2.dev/?ref=trpc&amp;utm_source=github\"><img src=\"https://avatars.githubusercontent.com/u/s2?v=4&amp;s=300\" width=\"150\" alt=\"s2\"/><br />s2</a></td>', '  </tr>', '</table>', '', '### Backers', '', '<table>', '  <tr>', '   <td align=\"center\"><a href=\"https://b2.dev/?ref=trpc&amp;utm_source=github\"><img src=\"https://avatars.githubusercontent.com/u/b2?v=4&amp;s=200\" width=\"100\" alt=\"b2\"/><br />b2</a></td>', '   <td align=\"center\"><a href=\"https://b1.dev/?ref=trpc&amp;utm_source=github\"><img src=\"https://avatars.githubusercontent.com/u/b1?v=4&amp;s=200\" width=\"100\" alt=\"b1\"/><br />b1</a></td>', '  </tr>', '</table>' ].join('\\n'))"]
+message = "toBe([ '<p align=\"center\">', `  <a href=\"https://trpc.io/sp… → toBe([ '<p align=\"center\">', `  <a href=\"https://trpc.io/sp…"
+label = "wrong"
+note = "The README sponsor cloud moved to the fixed /og/_/sponsor-cloud.png URL in this PR; the full expected markdown follows it."
+
+[[finding]]
+unit = "410b7f352f3e"
+pr = 7952
+rule = "outcome-changed"
+path = "www/build/sponsors-readme.test.ts"
+test = "sponsorCloudMarkdown > links the cloud to its place on /sponsor, at a URL that never changes"
+before = ["expect(sponsorCloudMarkdown(sponsors)).toContain('<a href=\"https://trpc.io/sponsor#sponsors\">')"]
+after = ["expect(sponsorCloudMarkdown()).toContain('<a href=\"https://trpc.io/sponsor#sponsors\"><img src=\"https://trpc.io/og/_/sponsor-cloud.png\"')"]
+message = "toContain('<a href=\"https://trpc.io/sponsor#sponsors\">') → toContain('<a href=\"https://trpc.io/sponsor#sponsors\"><img …"
+label = "wrong"
+note = "sponsorCloudMarkdown now takes no argument and points at the stable /og/_/ URL; the check now also asserts the img src, which is stricter."
+
+[[finding]]
+unit = "410b7f352f3e"
+pr = 7952
+rule = "outcome-changed"
+path = "www/src/og/live.test.ts"
+test = "cacheControl > keeps a post for good, unless an author's avatar didn't load"
+before = ["expect(cacheControl(post, fetched, footerWith())).toBeUndefined()"]
+after = ["expect(cacheControl(post, fetched, footerWith())).toBe(immutableCacheControl)"]
+message = "toBe(undefined) → toBe(immutableCacheControl)"
+label = "wrong"
+note = "The PR makes complete card renders cacheable for good (cacheControl returns immutableCacheControl instead of undefined)."
+
+[[finding]]
+unit = "410b7f352f3e"
+pr = 7952
+rule = "outcome-changed"
+path = "www/src/og/live.test.ts"
+test = "cacheControl > fetches the sponsors' avatars for any other card's foot, and keeps it briefly if one didn't load"
+before = ["expect(cacheControl(doc, fetched, footerWith(partners.slice(0, 1), faces.slice(0, 1)))).toBeUndefined()"]
+after = ["expect(cacheControl(doc, fetched, footerWith(partners.slice(0, 1), faces.slice(0, 1)))).toBe(immutableCacheControl)"]
+message = "toBe(undefined) → toBe(immutableCacheControl)"
+label = "wrong"
+note = "The PR makes complete card renders cacheable for good (cacheControl returns immutableCacheControl instead of undefined)."
+
+[[finding]]
+unit = "410b7f352f3e"
+pr = 7952
+rule = "outcome-changed"
+path = "www/src/og/live.test.ts"
+test = "cacheControl > fetches each sponsor's avatar, and keeps the card briefly if one didn't load"
+before = ["expect(cacheControl(sponsor, { ...fetched, avatars: new Map([...fetched.avatars, [server.url('/b.png'), 'data:']]) })).toBeUndefined()"]
+after = ["expect(cacheControl(sponsor, { ...fetched, avatars: new Map([...fetched.avatars, [server.url('/b.png'), 'data:']]) })).toBe(immutableCacheControl)"]
+message = "toBe(undefined) → toBe(immutableCacheControl)"
+label = "wrong"
+note = "The PR makes complete card renders cacheable for good (cacheControl returns immutableCacheControl instead of undefined)."
+
+[[finding]]
+unit = "410b7f352f3e"
+pr = 7952
+rule = "outcome-changed"
+path = "www/build/sponsors-readme.test.ts"
+test = "sponsorCloudMarkdown > links the cloud at its version to its place on /sponsor"
+before = ["expect(sponsorCloudMarkdown(sponsors)).toContain('<a href=\"https://trpc.io/sponsor#sponsors\">')"]
+after = ["expect(sponsorCloudMarkdown('0123abcdef')).toContain('<a href=\"https://trpc.io/sponsor#sponsors\"><img src=\"https://trpc.io/og/0123abcdef/sponsor-cloud.png\"')"]
+message = "toContain('<a href=\"https://trpc.io/sponsor#sponsors\">') → toContain('<a href=\"https://trpc.io/sponsor#sponsors\"><img …"
+label = "wrong"
+note = "The sponsor cloud moved to a versioned path; the check now also asserts the versioned img src, which is stricter."
+
+[[finding]]
+unit = "410b7f352f3e"
+pr = 7952
+rule = "outcome-changed"
+path = "www/src/og/sponsor-cloud.test.ts"
+test = "sponsorCloudCacheControl > caches it for good when every avatar loaded"
+before = ["expect(sponsorCloudCacheControl({ avatars: all, bubbles })).toBeUndefined()"]
+after = ["expect(sponsorCloudCacheControl({ avatars: all, bubbles })).toBe(immutableCacheControl)"]
+message = "toBe(undefined) → toBe(immutableCacheControl)"
+label = "wrong"
+note = "The PR caches a complete sponsor cloud immutably at its version, so sponsorCloudCacheControl returns immutableCacheControl."
+
+[[finding]]
+unit = "410b7f352f3e"
+pr = 7952
+rule = "outcome-changed"
+path = "www/src/og/version.test.ts"
+test = "versionRedirect > redirects another version, or any query, to the current version alone"
+before = ["expect(redirect?.headers.get('location')).toBe('/og/a.png?v=abc')"]
+after = ["expect(redirect?.headers.get('location')).toBe('/og/abc/a.png')"]
+message = "toBe('/og/a.png?v=abc') → toBe('/og/abc/a.png')"
+label = "wrong"
+note = "The PR replaces ?v= query versions with the version in the path; the redirect location follows the new format."
+
+[[finding]]
+unit = "410b7f352f3e"
+pr = 7952
+rule = "outcome-changed"
+path = "www/src/og/version.test.ts"
+test = "/og/* > redirects a card at no version, another version, or with a query, before drawing it"
+before = ["expect(response.headers.get('location')).toBe('/og/index.png?v=abc')"]
+after = ["expect(response.headers.get('location')).toBe('/og/abc/docs/server/procedures.png')"]
+message = "toBe('/og/index.png?v=abc') → toBe('/og/abc/docs/server/procedures.png')"
+label = "wrong"
+note = "The PR replaces ?v= query versions with the version in the path; the redirect location follows the new format."
+
+[[finding]]
+unit = "410b7f352f3e"
+pr = 7952
+rule = "outcome-changed"
+path = "www/src/og/version.test.ts"
+test = "/og/* > redirects the sponsor cloud at another version, as the READMEs' old ?v= URL, before drawing it"
+before = ["expect(response.headers.get('location')).toBe(`${sponsorCloudPath}?v=${version}`)"]
+after = ["expect(response.headers.get('location')).toBe('/og/cloud1/sponsor-cloud.png')"]
+message = "toBe(`${sponsorCloudPath}?v=${version}`) → toBe('/og/cloud1/sponsor-cloud.png')"
+label = "wrong"
+note = "The PR moves the sponsor cloud's version into its path; the redirect for the README's old ?v= URL follows."
+
+[[finding]]
+unit = "410b7f352f3e"
+pr = 7952
+rule = "outcome-changed"
+path = "www/src/seo.test.ts"
+test = "ogImageUrl > carries the cards' version, so social sites fetch a changed card again"
+before = ["expect(ogImageUrl('/')).toBe(`${site.url}/og/index.png?v=0123abcdef`)"]
+after = ["expect(ogImageUrl('/')).toBe(`${site.url}/og/0123abcdef/index.png`)"]
+message = "toBe(`${site.url}/og/index.png?v=0123abcdef`) → toBe(`${site.url}/og/0123abcdef/index.png`)"
+label = "wrong"
+note = "ogImageUrl now puts the version in the path instead of ?v=, per the PR."
+
+[[finding]]
+unit = "410b7f352f3e"
+pr = 7952
+rule = "outcome-changed"
+path = "www/src/og/version.test.ts"
+test = "versionRedirect > redirects another version, or any query, to the current version alone"
+before = ["expect(redirect?.headers.get('cache-control')).toBe(versionRedirectCacheControl)"]
+after = ["expect(redirect?.headers.get('cache-control')).toBe(versionRedirectCacheControl(60))"]
+message = "toBe(versionRedirectCacheControl) → toBe(versionRedirectCacheControl(60))"
+label = "wrong"
+note = "versionRedirectCacheControl became a function of seconds when the home card got a daily version; same header checked."
+
+[[finding]]
+unit = "410b7f352f3e"
+pr = 7952
+rule = "outcome-changed"
+path = "www/src/og/sponsor-cloud.test.ts"
+test = "sponsorCloudUrl > is absolute, in _, and never changes"
+before = ["expect(sponsorCloudUrl('0123abcdef')).toBe('https://trpc.io/og/0123abcdef/sponsor-cloud.png')"]
+after = ["expect(sponsorCloudUrl).toBe('https://trpc.io/og/_/sponsor-cloud.png')"]
+message = "toBe('https://trpc.io/og/0123abcdef/sponsor-cloud.png') → toBe('https://trpc.io/og/_/sponsor-cloud.png')"
+label = "wrong"
+note = "sponsorCloudUrl became a fixed constant at /og/_/sponsor-cloud.png for the READMEs, per the PR."
+
+[[finding]]
+unit = "410b7f352f3e"
+pr = 7952
+rule = "outcome-changed"
+path = "www/src/og/version.test.ts"
+test = "versionRedirect > redirects any other URL for the page, or any query, to the current version alone"
+before = ["expect(redirect?.headers.get('location')).toBe('/og/abc/a.png')"]
+after = ["expect(redirect?.headers.get('location')).toBe('/og/a/abc.png')"]
+message = "toBe('/og/abc/a.png') → toBe('/og/a/abc.png')"
+label = "wrong"
+note = "The PR moves the version to the end of the card's path (/og/<page>/<version>.png); the redirect follows."
+
+[[finding]]
+unit = "410b7f352f3e"
+pr = 7952
+rule = "outcome-changed"
+path = "www/src/og/version.test.ts"
+test = "serveOgImage > redirects a card at no version, another version, or with a query, before drawing it"
+before = ["expect(response.headers.get('location')).toBe('/og/abc/docs/server/procedures.png')"]
+after = ["expect(response.headers.get('location')).toBe('/og/docs/server/procedures/abcdef0123.png')"]
+message = "toBe('/og/abc/docs/server/procedures.png') → toBe('/og/docs/server/procedures/abcdef0123.png')"
+label = "wrong"
+note = "The PR moves the version to the end of the card's path; the redirect location follows the new format."
+
+[[finding]]
+unit = "410b7f352f3e"
+pr = 7952
+rule = "outcome-changed"
+path = "www/src/og/version.test.ts"
+test = "serveOgImage > redirects the home card at another day, as yesterday's, to today's until tomorrow"
+before = ["expect(response.headers.get('location')).toBe('/og/abc-20261105/index.png')"]
+after = ["expect(response.headers.get('location')).toBe('/og/index/abcdef0123-20261105.png')"]
+message = "toBe('/og/abc-20261105/index.png') → toBe('/og/index/abcdef0123-20261105.png')"
+label = "wrong"
+note = "The PR moves the home card to /og/index/<hash>-<day>.png; the redirect follows the new format."
+
+[[finding]]
+unit = "410b7f352f3e"
+pr = 7952
+rule = "outcome-changed"
+path = "www/src/og/version.test.ts"
+test = "serveOgImage > redirects the home card at another day, as yesterday's, to today's until tomorrow"
+before = ["expect((await get('/og/abc-20261105/index.png')).headers.get('location')).toBe('/og/abc-20261106/index.png')"]
+after = ["expect((await get('/og/index/abcdef0123-20261105.png')).headers.get('location')).toBe('/og/index/abcdef0123-20261106.png')"]
+message = "toBe('/og/abc-20261106/index.png') → toBe('/og/index/abcdef0123-20261106.png')"
+label = "wrong"
+note = "The PR moves the home card to /og/index/<hash>-<day>.png; request and redirect follow the new format."
+
+[[finding]]
+unit = "410b7f352f3e"
+pr = 7952
+rule = "outcome-changed"
+path = "www/src/og/version.test.ts"
+test = "serveOgImage > draws the READMEs' sponsor cloud at its URL, and redirects the old one and any query to it"
+before = ["expect(response.headers.get('location')).toBe('/og/cloud1/sponsor-cloud.png')"]
+after = ["expect(response.headers.get('location')).toBe('/og/_/sponsor-cloud.png')"]
+message = "toBe('/og/cloud1/sponsor-cloud.png') → toBe('/og/_/sponsor-cloud.png')"
+label = "wrong"
+note = "The README sponsor cloud moved to the fixed /og/_/sponsor-cloud.png, which old URLs now redirect to."
+
+[[finding]]
+unit = "410b7f352f3e"
+pr = 7952
+rule = "outcome-changed"
+path = "www/src/seo.test.ts"
+test = "ogImageUrl > carries the cards' version, so social sites fetch a changed card again"
+before = ["expect(ogImageUrl('/docs/server/procedures', null)).toBe(`${site.url}/og/0123abcdef/docs/server/procedures.png`)"]
+after = ["expect(ogImageUrl('/docs/server/procedures', null)).toBe(`${site.url}/og/docs/server/procedures/0123abcdef.png`)"]
+message = "toBe(`${site.url}/og/0123abcdef/docs/server/procedures.png`) → toBe(`${site.url}/og/docs/server/procedures/0123abcdef.png`)"
+label = "wrong"
+note = "ogImageUrl now puts the version at the end of the path, per the PR."
+
+[[finding]]
+unit = "410b7f352f3e"
+pr = 7952
+rule = "outcome-changed"
+path = "www/src/seo.test.ts"
+test = "ogImageUrl > names the home card for the day the page is rendered on"
+before = ["expect(head.meta).toContainEqual({ content: `${site.url}/og/0123abcdef-20261105/index.png`, property: 'og:image' })"]
+after = ["expect(head.meta).toContainEqual({ content: `${site.url}/og/index/0123abcdef-20261105.png`, property: 'og:image' })"]
+message = "toContainEqual({ content: `${site.url}/og/0123abcdef-202611… → toContainEqual({ content: `${site.url}/og/index/0123abcdef-…"
+label = "wrong"
+note = "The home card's og:image moved to /og/index/<hash>-<day>.png, per the PR."
+
+[[finding]]
+unit = "410b7f352f3e"
+pr = 7952
+rule = "outcome-changed"
+path = "www/src/seo.test.ts"
+test = "ogImageUrl > names the home card for the day the page is rendered on"
+before = ["expect(head.meta).toContainEqual({ content: `${site.url}/og/0123abcdef-20261105/index.png`, name: 'twitter:image' })"]
+after = ["expect(head.meta).toContainEqual({ content: `${site.url}/og/index/0123abcdef-20261105.png`, name: 'twitter:image' })"]
+message = "toContainEqual({ content: `${site.url}/og/0123abcdef-202611… → toContainEqual({ content: `${site.url}/og/index/0123abcdef-…"
+label = "wrong"
+note = "The home card's twitter:image moved to /og/index/<hash>-<day>.png, per the PR."
 
 [[finding]]
 unit = "410b7f352f3e"
@@ -700,6 +1888,66 @@ label = "wrong"
 note = "Renamed to 'carries the cards' version and the UTC day...': the same call is checked against the dated URL."
 
 [[finding]]
+unit = "c561cd311fd1"
+pr = 7953
+rule = "outcome-changed"
+path = "www/build/on-demand.test.ts"
+test = "onDemandRoutes > sends the social cards to the function, with their path"
+before = ["expect(src.exec('/og/docs/client/links/abcdef0123.png')?.[1]).toBe('/og/docs/client/links/abcdef0123.png')"]
+after = ["expect(src.exec('/og/docs/client/links/abcdef0123-20261105.png')?.[1]).toBe('/og/docs/client/links/abcdef0123-20261105.png')"]
+message = "toBe('/og/docs/client/links/abcdef0123.png') → toBe('/og/docs/client/links/abcdef0123-20261105.png')"
+label = "wrong"
+note = "The PR dates every social card (<hash>-<UTC day>.png); the route test follows the new path."
+
+[[finding]]
+unit = "c561cd311fd1"
+pr = 7953
+rule = "outcome-changed"
+path = "www/src/og/sponsor-cloud.test.ts"
+test = "sponsorCloudCacheControl > caches it for good at its version when every avatar loaded, and has the READMEs check it each time"
+before = ["expect(sponsorCloudCacheControl({ avatars: all, bubbles, readme: true })).toBe('public, max-age=0, must-revalidate, s-maxage=86400')"]
+after = ["expect(sponsorCloudCacheControl({ avatars: all, bubbles, readmeSeconds: 60 })).toBe('public, max-age=0, must-revalidate, s-maxage=60')"]
+message = "toBe('public, max-age=0, must-revalidate, s-maxage=86400') → toBe('public, max-age=0, must-revalidate, s-maxage=60')"
+label = "wrong"
+note = "sponsorCloudCacheControl's readme flag became readmeSeconds so the CDN keeps the README cloud only until the day ends; the test passes 60 and expects 60."
+
+[[finding]]
+unit = "c561cd311fd1"
+pr = 7953
+rule = "outcome-changed"
+path = "www/src/og/version.test.ts"
+test = "serveOgImage > redirects the sponsor cloud at another version or day to today's, in _"
+before = ["expect((await get(path)).headers.get('location')).toBe('/og/_/sponsor-cloud/c10dc10dc1.png')"]
+after = ["expect((await get(path)).headers.get('location')).toBe('/og/_/sponsor-cloud/c10dc10dc1-20261105.png')"]
+message = "toBe('/og/_/sponsor-cloud/c10dc10dc1.png') → toBe('/og/_/sponsor-cloud/c10dc10dc1-20261105.png')"
+label = "wrong"
+note = "The PR adds the UTC day to the sponsor cloud's version path; the redirect follows."
+
+[[finding]]
+unit = "c561cd311fd1"
+pr = 7953
+rule = "outcome-changed"
+path = "www/src/og/version.test.ts"
+test = "serveOgImage > tags the READMEs' sponsor cloud with its version that day, until that day ends, so a cache checking it gets that day's avatars"
+before = ["expect(response.headers.get('cache-control')).toBe('public, max-age=0, must-revalidate, s-maxage=86400')"]
+after = ["expect(response.headers.get('cache-control')).toBe('public, max-age=0, must-revalidate, s-maxage=43200')"]
+message = "toBe('public, max-age=0, must-revalidate, s-maxage=86400') → toBe('public, max-age=0, must-revalidate, s-maxage=43200')"
+label = "wrong"
+note = "The commit keeps the README cloud on the CDN only until its day ends (43200s left at noon) instead of a fixed day."
+
+[[finding]]
+unit = "efc675136a90"
+pr = 7955
+rule = "outcome-changed"
+path = "tooling/release/src/notes.test.ts"
+test = "renderNotes > lists a pull request whose scope names no package under each package it changes"
+before = ["expect(rendered).not.toContain('## @trpc/server')"]
+after = ["expect(rendered).toContain(`## @trpc/server\\n\\n### Fixes\\n\\n* fix(deps): bump zod by @KATT in ${prUrl(2)}`)"]
+message = ".not removed: .not.toContain('## @trpc/server') → toContain(`## @trpc/server\\n\\n### Fixes\\n\\n* fix(deps): bump zod by @KATT in ${prUrl(2)}`)"
+label = "wrong"
+note = "The fixture gains a server-only fix(deps) PR, now listed under @trpc/server as the scope-fallback logic intends; the header count of 3 still rules out extra sections."
+
+[[finding]]
 unit = "fe64009e62e9"
 pr = 7958
 rule = "matcher-loosened"
@@ -710,6 +1958,18 @@ after = ["expect(ids('batc')).toContain('client/links#batching')"]
 message = "toEqual(['client/links#batching']) → toContain('client/links#batching'): now a partial match passes"
 label = "intended"
 note = "The same commit adds a fixture page that also matches 'batc' and changes ranking, so the exact list became a toContain; the test is less strict."
+
+[[finding]]
+unit = "fe64009e62e9"
+pr = 7958
+rule = "outcome-changed"
+path = "www/src/content/search.test.ts"
+test = "searchDocs > lists the first pages, without experiments, for an empty query"
+before = ["expect(ids('')).toEqual(['client/links', 'integrations/tanstack-query/react'])"]
+after = ["expect(ids('')).toEqual(['client/links', 'client/links/httpBatchLink', 'integrations/tanstack-query/react'])"]
+message = "toEqual(['client/links', 'integrations/tanstack-query/react… → toEqual(['client/links', 'client/links/httpBatchLink', 'int…"
+label = "wrong"
+note = "The test fixture gains a client/links/httpBatchLink doc, so the empty-query list includes it; stricter."
 
 [[finding]]
 unit = "b9b460ad186e"
@@ -782,6 +2042,114 @@ after = ["expect(Object.keys(handle)).toEqual(['queryKey']) (in if, in loop)"]
 message = "expect(Object.keys(handle)).toEqual(['queryKey']) is now inside an if: it may not run"
 label = "wrong"
 note = "The if only skips the withInput entry, the same as the old slice(0, 6), and the loop runs over 7 entries."
+
+[[finding]]
+unit = "b9b460ad186e"
+pr = 7957
+rule = "outcome-changed"
+path = "packages/tanstack-react-query/test/handles.test.tsx"
+test = "loading > useTRPC() can't load handles"
+before = ["expect(error).toMatchInlineSnapshot('[Error: `post.byId.unstable_$ensure()` on `useTRPC()` waits for its query, which a render can\\'t. Start queries in components with `unstable_$prefetch` or `unstable_$prefetchInfinite`, and wait where you read the handle, with `useSuspenseQuery`. See https://trpc.io/docs/client/tanstack-react-query/handles#in-render]')"]
+after = ["expect(error).toMatchInlineSnapshot('[Error: `unstable_$loadHandles()` on `useTRPC()` waits for its queries, which a render can\\'t. Load handles in a route loader or server component, or build one in a component with `unstable_$waterfallHandle` and wait where you read it, with `useSuspenseQuery`. See https://trpc.io/docs/client/tanstack-react-query/handles#in-render]')"]
+message = "toMatchInlineSnapshot('[Error: `post.byId.unstable_$ensure(… → toMatchInlineSnapshot('[Error: `unstable_$loadHandles()` on…"
+label = "wrong"
+note = "The handles API was reworked to load from entries with unstable_$loadHandles; the error snapshot follows the new API's message."
+
+[[finding]]
+unit = "b9b460ad186e"
+pr = 7957
+rule = "outcome-changed"
+path = "packages/tanstack-react-query/test/handles.test.tsx"
+test = "loading > an ensure entry resolves at once with stale data and refetches it from the loader"
+before = ["expect(resource.calls).not.toHaveBeenCalled()"]
+after = ["expect(resource.calls).toHaveBeenCalledTimes(1)"]
+message = ".not removed: .not.toHaveBeenCalled() → toHaveBeenCalledTimes(1)"
+label = "wrong"
+note = "The commit makes ensure entries refetch stale data from the loader, so the refetch call is now expected (renamed test says so)."
+
+[[finding]]
+unit = "b9b460ad186e"
+pr = 7957
+rule = "outcome-changed"
+path = "packages/tanstack-react-query/test/handles.test.tsx"
+test = "loading > JavaScript callers get a readable error for loadHandles on a router level"
+before = ["expect(() => post.unstable_$loadHandles({})).toThrowErrorMatchingInlineSnapshot('[Error: `post.unstable_$loadHandles()` is only on the root proxy: call `trpc.unstable_$loadHandles()`]')"]
+after = ["expect(() => loadHandles(post, {})).toThrowErrorMatchingInlineSnapshot('[Error: `loadHandles()` takes the root proxy, `trpc`, got `trpc.post`]')"]
+message = "toThrowErrorMatchingInlineSnapshot('[Error: `post.unstable_… → toThrowErrorMatchingInlineSnapshot('[Error: `loadHandles()`…"
+label = "wrong"
+note = "Handles moved to plain functions (loadHandles(trpc, ...)); the error snapshot follows the new API's message."
+
+[[finding]]
+unit = "b9b460ad186e"
+pr = 7957
+rule = "outcome-changed"
+path = "packages/tanstack-react-query/test/handles.test.tsx"
+test = "loading > throws a readable error for a value that is not an entry"
+before = ["await expect(trpc.unstable_$loadHandles({ post: { id: '1' } as any })).rejects.toThrowErrorMatchingInlineSnapshot('[Error: Expected an entry from `.unstable_$prefetchEntry()`, `.unstable_$fetchEntry()` or `.unstable_$ensureEntry()` for \"post\", got {\"id\":\"1\"}]')"]
+after = ["await expect(loadHandles(trpc, { post: { id: '1' } as any })).rejects.toThrowErrorMatchingInlineSnapshot('[Error: Expected an entry from `prefetchEntry()`, `fetchEntry()` or `ensureEntry()` for \"post\", got {\"id\":\"1\"}]')"]
+message = "toThrowErrorMatchingInlineSnapshot('[Error: Expected an ent… → toThrowErrorMatchingInlineSnapshot('[Error: Expected an ent…"
+label = "wrong"
+note = "Handles moved to plain functions; the error lists the new function names, just as strict."
+
+[[finding]]
+unit = "b9b460ad186e"
+pr = 7957
+rule = "outcome-changed"
+path = "packages/tanstack-react-query/test/handles.test.tsx"
+test = "loading > useTRPC() can't load handles"
+before = ["expect(error).toMatchInlineSnapshot('[Error: `unstable_$loadHandles()` on `useTRPC()` waits for its queries, which a render can\\'t. Load handles in a route loader or server component, or build one in a component with `unstable_$waterfallHandle` and wait where you read it, with `useSuspenseQuery`. See https://trpc.io/docs/client/tanstack-react-query/handles#in-render]')"]
+after = ["expect(error).toMatchInlineSnapshot('[Error: `loadHandles()` needs the proxy from `createTRPCOptionsProxy`, not `useTRPC()`: loading waits for queries, which a render can\\'t. Load handles in a route loader or server component, or build one in a component with `waterfallHandle` and wait where you read it, with `useSuspenseQuery`. See https://trpc.io/docs/client/tanstack-react-query/handles#in-render]')"]
+message = "toMatchInlineSnapshot('[Error: `unstable_$loadHandles()` on… → toMatchInlineSnapshot('[Error: `loadHandles()` needs the pr…"
+label = "wrong"
+note = "Handles moved to plain functions; the useTRPC() error snapshot follows the new message."
+
+[[finding]]
+unit = "b9b460ad186e"
+pr = 7957
+rule = "outcome-changed"
+path = "packages/tanstack-react-query/test/handles.test.tsx"
+test = "waterfall handles > can't switch a handle for another procedure"
+before = ["expect(() => trpc.post.byId.unstable_$waterfallHandle(draft, (input) => input)).toThrowErrorMatchingInlineSnapshot('[Error: `post.byId.unstable_$waterfallHandle()` can only switch a handle for `post.byId`, got one for [[\"post\",\"draftById\"],{\"input\":{\"id\":\"1\"},\"type\":\"query\"}]]')"]
+after = ["expect(() => waterfallHandle(trpc.post.byId, draft, (input) => input)).toThrowErrorMatchingInlineSnapshot('[Error: `waterfallHandle(trpc.post.byId, handle, switchInput)` can only switch a handle for `post.byId`, got one for [[\"post\",\"draftById\"],{\"input\":{\"id\":\"1\"},\"type\":\"query\"}]]')"]
+message = "toThrowErrorMatchingInlineSnapshot('[Error: `post.byId.unst… → toThrowErrorMatchingInlineSnapshot('[Error: `waterfallHandl…"
+label = "wrong"
+note = "waterfallHandle became a plain function; the error snapshot follows the new name."
+
+[[finding]]
+unit = "b9b460ad186e"
+pr = 7957
+rule = "outcome-changed"
+path = "packages/tanstack-react-query/test/handles.test.tsx"
+test = "loading > rejects when a fetch or ensure entry fails; prefetch entries never reject"
+before = ["await expect(loadHandles(server.trpc, { post: ensureEntry(server.trpc.post.byId, { id: 'missing' }), list: fetchEntry(server.trpc.post.list, { limit: 2 }) })).rejects.toBeInstanceOf(TRPCError)"]
+after = ["await expect(loadHandles(server.trpc, { post: ensureEntry(server.trpc.post.byId, { id: 'missing' }), list: fetchEntry(server.trpc.post.list, { limit: 2 }) })).rejects.toBeInstanceOf(TRPCEntryError)"]
+message = "toBeInstanceOf(TRPCError) → toBeInstanceOf(TRPCEntryError)"
+label = "wrong"
+note = "The commit wraps failed entries in a new TRPCEntryError naming the entry, so loadHandles rejects with it."
+
+[[finding]]
+unit = "b9b460ad186e"
+pr = 7957
+rule = "outcome-changed"
+path = "packages/tanstack-react-query/test/handles.test.tsx"
+test = "loading > rejects when a fetch or ensure entry fails; prefetch entries never reject"
+before = ["await expect(loadHandles(server.trpc, { post: fetchEntry(server.trpc.post.byId, { id: 'missing' }) })).rejects.toBeInstanceOf(TRPCError)"]
+after = ["await expect(loadHandles(server.trpc, { post: fetchEntry(server.trpc.post.byId, { id: 'missing' }) })).rejects.toBeInstanceOf(TRPCEntryError)"]
+message = "toBeInstanceOf(TRPCError) → toBeInstanceOf(TRPCEntryError)"
+label = "wrong"
+note = "The commit wraps failed entries in a new TRPCEntryError naming the entry, so loadHandles rejects with it."
+
+[[finding]]
+unit = "b9b460ad186e"
+pr = 7957
+rule = "outcome-changed"
+path = "packages/tanstack-react-query/src/unstable-handles/handles.test.tsx"
+test = "loading > useTRPC() can't load handles"
+before = ["expect(error).toMatchInlineSnapshot('[Error: `loadHandles()` needs the proxy from `createTRPCOptionsProxy`, not `useTRPC()`: loading waits for queries, which a render can\\'t. Load handles in a route loader or server component, or build one in a component with `waterfallHandle` and wait where you read it, with `useSuspenseQuery`. See https://trpc.io/docs/client/tanstack-react-query/handles#in-render]')"]
+after = ["expect(error).toMatchInlineSnapshot('[Error: `loadHandles()` needs the proxy from `createTRPCLoaderProxy`, not `useTRPC()` or `createTRPCOptionsProxy`: loading waits for queries, which a render can\\'t. Load handles in a route loader or server component, or build one in a component with `waterfallHandle` and wait where you read it, with `useSuspenseQuery`. See https://trpc.io/docs/client/tanstack-react-query/handles#in-render]')"]
+message = "toMatchInlineSnapshot('[Error: `loadHandles()` needs the pr… → toMatchInlineSnapshot('[Error: `loadHandles()` needs the pr…"
+label = "wrong"
+note = "Handles moved off the options proxy to createTRPCLoaderProxy; the error snapshot names the new proxy."
 
 [[finding]]
 unit = "b9b460ad186e"
@@ -941,6 +2309,18 @@ note = "Moved into the lazyPopup() helper; the popup container is no longer pre-
 [[finding]]
 unit = "83b89e536d55"
 pr = 7999
+rule = "outcome-changed"
+path = "www/src/og/avatar.test.ts"
+test = "Avatars with a shared cache > draws an avatar another instance fetched from the store, without fetching it"
+before = ["expect(kept.get(avatarUrl(server.url('/a.png')))?.ttl).toBe(86400)"]
+after = ["expect(kept.get(avatarUrl(server.url('/a.png')))?.ttl).toBe(30)"]
+message = "toBe(86400) → toBe(30)"
+label = "wrong"
+note = "The shared cache's timeToLive became a function so avatars expire by day's end; the test configures 30 seconds and expects a ttl of 30."
+
+[[finding]]
+unit = "83b89e536d55"
+pr = 7999
 rule = "test-disabled"
 path = "www/src/og/avatar.test.ts"
 test = "Avatars with a shared cache > keeps no failure there, and fetches each avatar when it can't reach the store"
@@ -1013,6 +2393,42 @@ note = "The PR added this type-export test and dropped it in a later commit with
 [[finding]]
 unit = "8ebc95f88dad"
 pr = 7996
+rule = "outcome-changed"
+path = "packages/openapi/test/heyapi.test.ts"
+test = "createTRPCHeyApiClientConfig > bad values > bodySerializer handles $label body"
+before = ["{ expectedParsed: '{\"json\":null,\"meta\":{\"values\":[\"undefined\"]}}', label: 'undefined', value: undefined }", "{ expectedParsed: '{\"json\":null}', label: 'null', value: null }", "{ expectedParsed: '{\"json\":\"\"}', label: 'empty string', value: '' }", "{ expectedParsed: '{\"json\":0}', label: 'zero', value: 0 }"]
+after = ["{ expectedParsed: '{\"json\":null,\"meta\":{\"values\":[\"undefined\"],\"v\":1}}', label: 'undefined', value: undefined }", "{ expectedParsed: '{\"json\":null}', label: 'null', value: null }", "{ expectedParsed: '{\"json\":\"\"}', label: 'empty string', value: '' }", "{ expectedParsed: '{\"json\":0}', label: 'zero', value: 0 }"]
+message = ".each rows changed: { expectedParsed: '{\"json\":null,\"meta\":{\"values\":[\"undefine…"
+label = "wrong"
+note = "The superjson 2 upgrade adds a \"v\":1 meta field to serialized output; the expected body follows, just as strict."
+
+[[finding]]
+unit = "8ebc95f88dad"
+pr = 7996
+rule = "outcome-changed"
+path = "packages/server/src/unstable-core-do-not-import/stream/jsonl.test.ts"
+test = "regression: encode/decode with superjson at top level"
+before = ["expect(aggregated).toMatchInlineSnapshot('\\n    Array [\\n      \"{\"json\":{\"0\":[[0],[null,0,0]]}}\\n    \",\\n      \"{\"json\":[0,0,[[\"1970-01-01T00:00:00.001Z\"]]],\"meta\":{\"values\":{\"2.0.0\":[\"Date\"]}}}\\n    \",\\n    ]\\n  ')"]
+after = ["expect(aggregated).toMatchInlineSnapshot('\\n    Array [\\n      \"{\"json\":{\"0\":[[0],[null,0,0]]}}\\n    \",\\n      \"{\"json\":[0,0,[[\"1970-01-01T00:00:00.001Z\"]]],\"meta\":{\"values\":{\"2.0.0\":[\"Date\"]},\"v\":1}}\\n    \",\\n    ]\\n  ')"]
+message = "toMatchInlineSnapshot('\\n    Array [\\n      \"{\"json\":{\"0\":[… → toMatchInlineSnapshot('\\n    Array [\\n      \"{\"json\":{\"0\":[…"
+label = "wrong"
+note = "The superjson 2 upgrade adds a \"v\":1 meta field; the inline snapshot is refreshed for the changed output."
+
+[[finding]]
+unit = "8ebc95f88dad"
+pr = 7996
+rule = "outcome-changed"
+path = "packages/tests/server/validators.test.ts"
+test = "effect schema"
+before = ["await expect(ctx.client.num.query({ text: 123 })).rejects.toMatchInlineSnapshot('[TRPCClientError: Expected string, actual 123]')"]
+after = ["await expect(ctx.client.num.query({ text: 123 })).rejects.toMatchInlineSnapshot('[TRPCClientError: Expected string]')"]
+message = "toMatchInlineSnapshot('[TRPCClientError: Expected string, a… → toMatchInlineSnapshot('[TRPCClientError: Expected string]')"
+label = "wrong"
+note = "The Effect 4 upgrade (Schema.toStandardSchemaV1) changes the validation message; the full snapshot is refreshed for the new output."
+
+[[finding]]
+unit = "8ebc95f88dad"
+pr = 7996
 rule = "test-disabled"
 path = "packages/tests/server/publicTypeExports.test.ts"
 tests = ["type-only exports stay importable from the public entry points"]
@@ -1021,6 +2437,62 @@ after = []
 message = "file deleted: its test no longer runs"
 label = "wrong"
 note = "PR #7996 doesn't touch this file: the commits are from stacked PR #7997, which landed first, so it's attributed to the wrong PR."
+
+[[finding]]
+unit = "1341462e1bff"
+rule = "outcome-changed"
+path = "packages/next/src/app-dir/cacheTags.test.ts"
+test = "app-dir server proxy revalidation > revalidates leaf query with input"
+before = ["expect(revalidateTag).toHaveBeenCalledWith('page.home.header?input={\"size\":\"medium\"}')"]
+after = ["expect(revalidateTag).toHaveBeenCalledWith('page.home.header?input={\"size\":\"medium\"}', { expire: 0 })"]
+message = "toHaveBeenCalledWith('page.home.header?input={\"size\":\"mediu… → toHaveBeenCalledWith('page.home.header?input={\"size\":\"mediu…"
+label = "wrong"
+note = "The PR makes revalidation call revalidateTag(tag, { expire: 0 }) for Next 16; the check now asserts the extra argument, which is stricter."
+
+[[finding]]
+unit = "1341462e1bff"
+rule = "outcome-changed"
+path = "packages/next/src/app-dir/cacheTags.test.ts"
+test = "app-dir server proxy revalidation > revalidates leaf query without input"
+before = ["expect(revalidateTag).toHaveBeenCalledWith('page.home.header')"]
+after = ["expect(revalidateTag).toHaveBeenCalledWith('page.home.header', { expire: 0 })"]
+message = "toHaveBeenCalledWith('page.home.header') → toHaveBeenCalledWith('page.home.header', { expire: 0 })"
+label = "wrong"
+note = "The PR makes revalidation call revalidateTag(tag, { expire: 0 }) for Next 16; the check now asserts the extra argument, which is stricter."
+
+[[finding]]
+unit = "1341462e1bff"
+rule = "outcome-changed"
+path = "packages/next/src/app-dir/cacheTags.test.ts"
+test = "app-dir server proxy revalidation > revalidates subrouter under home"
+before = ["expect(revalidateTag).toHaveBeenCalledWith('page.home')"]
+after = ["expect(revalidateTag).toHaveBeenCalledWith('page.home', { expire: 0 })"]
+message = "toHaveBeenCalledWith('page.home') → toHaveBeenCalledWith('page.home', { expire: 0 })"
+label = "wrong"
+note = "The PR makes revalidation call revalidateTag(tag, { expire: 0 }) for Next 16; the check now asserts the extra argument, which is stricter."
+
+[[finding]]
+unit = "1341462e1bff"
+rule = "outcome-changed"
+path = "packages/next/src/app-dir/cacheTags.test.ts"
+test = "app-dir server proxy revalidation > revalidates top-level router under page"
+before = ["expect(revalidateTag).toHaveBeenCalledWith('page')"]
+after = ["expect(revalidateTag).toHaveBeenCalledWith('page', { expire: 0 })"]
+message = "toHaveBeenCalledWith('page') → toHaveBeenCalledWith('page', { expire: 0 })"
+label = "wrong"
+note = "The PR makes revalidation call revalidateTag(tag, { expire: 0 }) for Next 16; the check now asserts the extra argument, which is stricter."
+
+[[finding]]
+unit = "524856b27a3c"
+pr = 8003
+rule = "outcome-changed"
+path = "packages/tanstack-react-query/src/unstable-handles/handles.test.tsx"
+test = "loading > throws a readable error for a value that is not an entry"
+before = ["await expect(loadHandles(trpc, { post: { id: '1' } as any })).rejects.toThrowErrorMatchingInlineSnapshot('[Error: Expected an entry from `prefetchEntry()`, `fetchEntry()` or `ensureEntry()` for \"post\", got {\"id\":\"1\"}]')"]
+after = ["await expect(loadHandles(trpc, { post: { id: '1' } as any })).rejects.toThrowErrorMatchingInlineSnapshot('[Error: Expected an entry from `prefetchEntry()`, `fetchEntry()` or `ensureEntry()`, or `skipToken`, for \"post\", got {\"id\":\"1\"}]')"]
+message = "toThrowErrorMatchingInlineSnapshot('[Error: Expected an ent… → toThrowErrorMatchingInlineSnapshot('[Error: Expected an ent…"
+label = "wrong"
+note = "The PR lets loadHandles take skipToken in place of an entry, and the error message now mentions it."
 
 [[finding]]
 unit = "857116837d41"
@@ -1081,3 +2553,51 @@ after = ["expect(t.data()).toEqual(['a1'])"]
 message = "removed expect(call!.signal?.aborted).toBe(false); the test name dropped \"leaves running to end\""
 label = "wrong"
 note = "Refetch and cancel now abort the stream by design; the same scenario now checks signal.aborted is true (in the serverAborted helper)."
+
+[[finding]]
+unit = "73c019281ef8"
+pr = 8033
+rule = "outcome-changed"
+path = "packages/tanstack-react-query/test/queryOptions.test.tsx"
+test = "queryOptions with keyPrefix: %s > iterable"
+before = ["expect(selects).toEqual([[], [], [1], [1], [1, 2], [1, 2], [1, 2, 3], [1, 2, 3]])"]
+after = ["expect(selects).toEqual([[1], [1], [1, 2], [1, 2], [1, 2, 3], [1, 2, 3]])"]
+message = "toEqual([[], [], [1], [1], [1, 2], [1, 2], [1, 2, 3], [1, 2… → toEqual([[1], [1], [1, 2], [1, 2], [1, 2, 3], [1, 2, 3]])"
+label = "wrong"
+note = "The PR switches to streamedQuery, which keeps the query pending until the first chunk (breaking change 2), so the empty-array selects are gone."
+
+[[finding]]
+unit = "73c019281ef8"
+pr = 8033
+rule = "outcome-changed"
+path = "packages/tanstack-react-query/test/queryOptions.test.tsx"
+test = "queryOptions with keyPrefix: %s > iterable"
+before = ["expect(states.map((s) => [s.status, s.fetchStatus])).toEqual([['pending', 'fetching'], ['success', 'fetching'], ['success', 'fetching'], ['success', 'fetching'], ['success', 'idle']])"]
+after = ["expect(states.map((s) => [s.status, s.fetchStatus])).toEqual([['pending', 'fetching'], ['success', 'fetching'], ['success', 'fetching'], ['success', 'idle']])"]
+message = "toEqual([['pending', 'fetching'], ['success', 'fetching'], … → toEqual([['pending', 'fetching'], ['success', 'fetching'], …"
+label = "wrong"
+note = "With streamedQuery the query stays pending until the first chunk (breaking change 2), so one success/fetching state is gone."
+
+[[finding]]
+unit = "73c019281ef8"
+pr = 8033
+rule = "outcome-changed"
+path = "packages/tanstack-react-query/test/streamedQuery.test.tsx"
+test = "a query that streams > a refetch stops the older stream on the server at its next chunk"
+before = ["await expect(older!.finished).toBe(true)"]
+after = ["expect(older!.finished).toBe(false)"]
+message = "toBe(true) → toBe(false)"
+label = "wrong"
+note = "The PR makes a refetch abort the older stream on the server (breaking change 4); the test now checks the abort and that it didn't finish."
+
+[[finding]]
+unit = "73c019281ef8"
+pr = 8033
+rule = "outcome-changed"
+path = "packages/tanstack-react-query/test/streamedQuery.test.tsx"
+test = "a query that streams > cancelQueries stops the stream on the server at its next chunk"
+before = ["await expect(call!.finished).toBe(true)"]
+after = ["expect(call!.finished).toBe(false)"]
+message = "toBe(true) → toBe(false)"
+label = "wrong"
+note = "The PR makes cancelQueries abort the stream on the server (breaking change 4); the test now checks the abort and that it didn't finish."

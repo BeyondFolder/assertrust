@@ -1,0 +1,27 @@
+[package]
+name = "assertrust-judge"
+description = "assertrust's optional AI judge: asks a model whether a weakened test still checks what it promises"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[features]
+# The model client. Without it the judge can still build prompts and read its cache, but
+# can't ask a model anything.
+llm = ["dep:futures", "dep:rig-core", "dep:tokio"]
+
+[dependencies]
+futures = { workspace = true, optional = true }
+rig-core = { workspace = true, optional = true }
+serde_json.workspace = true
+sha2.workspace = true
+tokio = { workspace = true, optional = true }
+
+[dev-dependencies]
+insta.workspace = true
+tempfile.workspace = true
+
+[lints]
+workspace = true

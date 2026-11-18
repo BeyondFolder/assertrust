@@ -136,6 +136,18 @@ label = "wrong"
 note = "The tests moved into the adapters/lambda-edge workspace package, whose test script runs them via test:adapters."
 
 [[finding]]
+unit = "645ddd6e6ceb"
+pr = 5466
+rule = "outcome-changed"
+path = "adapters/bun/test/index.test.ts"
+test = "serveStatic > Should return 404 response"
+before = ["expect(onNotFound).toHaveBeenCalledWith(process.platform === 'win32' ? 'runtime-tests\\\\bun\\\\favicon-notfound.ico' : 'runtime-tests/bun/favicon-notfound.ico', expect.anything())"]
+after = ["expect(onNotFound).toHaveBeenCalledWith(process.platform === 'win32' ? 'test\\\\favicon-notfound.ico' : 'test/favicon-notfound.ico', expect.anything())"]
+message = "toHaveBeenCalledWith(process.platform === 'win32' ? 'runtim… → toHaveBeenCalledWith(process.platform === 'win32' ? 'test\\\\…"
+label = "wrong"
+note = "The bun tests moved to adapters/bun/test and serveStatic now points at ./test/, so the onNotFound path follows the moved fixtures."
+
+[[finding]]
 unit = "8b05c774ef15"
 rule = "check-removed"
 path = "src/middleware/serve-static/index.test.ts"
@@ -147,6 +159,29 @@ label = "wrong"
 note = "Same request still asserted: percent paths now 404 by default (the security fix), so the body check became a status-404 check; nothing got weaker."
 
 [[finding]]
+unit = "8b05c774ef15"
+rule = "outcome-changed"
+path = "src/middleware/serve-static/index.test.ts"
+test = "Serve Static Middleware > Should decode URI strings - %s"
+before = ["expect(await res.text()).toBe('Hello in static/炎.txt')"]
+after = ["expect(await res.text()).toBe(`Hello in ${path}`)"]
+message = "toBe('Hello in static/炎.txt') → toBe(`Hello in ${path}`)"
+label = "wrong"
+note = "Converted to it.each: the first row is the old 炎.txt case with the same expected text, plus a new encoded-space case."
+
+[[finding]]
+unit = "deff529656cf"
+pr = 5439
+rule = "outcome-changed"
+path = "src/client/utils.test.ts"
+test = "parseResponse > should throw error matching snapshots"
+before = ["await expect(parseResponse(client['noRoute'].$get())).rejects.toThrowErrorMatchingInlineSnapshot('[TypeError: fetch failed]')"]
+after = ["await expect(parseResponse(client['noRoute'].$get())).rejects.toThrowErrorMatchingInlineSnapshot('[TypeError: Failed to fetch]')"]
+message = "toThrowErrorMatchingInlineSnapshot('[TypeError: fetch faile… → toThrowErrorMatchingInlineSnapshot('[TypeError: Failed to f…"
+label = "wrong"
+note = "The commit adds an MSW handler that makes noRoute a network error, so fetch's message changed; it's still an exact inline snapshot of the same rejection."
+
+[[finding]]
 unit = "8a103aa59bcf"
 rule = "test-disabled"
 path = "src/router/reg-exp-router/router.test.ts"
@@ -156,3 +191,37 @@ after = []
 message = "deleted: RegExpRouter > Wildcard after label > Should prioritize the only wildcard over the tail wildcard regardless of the order"
 label = "wrong"
 note = "Wildcard order deliberately became registration order; the same a* vs a/* both-orders scenario is pinned more fully in common.case.test.ts, which runs for RegExpRouter."
+
+[[finding]]
+unit = "8a103aa59bcf"
+rule = "outcome-changed"
+path = "src/router/reg-exp-router/prepared-router.test.ts"
+test = "buildInitParams() and serializeInitParams() > should build init params with wildcard"
+before = ["expect(params).toEqual([{ '[METHOD_NAME_ALL]': [/^.*$()/, [0, []], {}] }, {}])"]
+after = ["expect(params).toEqual([{ '[METHOD_NAME_ALL]': [/^[^]*$()/, [0, []], {}] }, {}])"]
+message = "toEqual([{ '[METHOD_NAME_ALL]': [/^.*$()/, [0, []], {}] }, … → toEqual([{ '[METHOD_NAME_ALL]': [/^[^]*$()/, [0, []], {}] }…"
+label = "wrong"
+note = "The security fix changed the wildcard regex from .* to [^]* to match line terminators, and the prepared-router params follow it."
+
+[[finding]]
+unit = "8a103aa59bcf"
+rule = "outcome-changed"
+path = "src/router/reg-exp-router/prepared-router.test.ts"
+test = "buildInitParams() and serializeInitParams() > should build init params with complex path"
+before = ["expect(params).toEqual([{ '[METHOD_NAME_ALL]': [/^(?:\\/hello\\/([^/]+)(?:$()|\\/posts\\/([^/]+)$())|.*$())/, [0, 0, [], 0, [], []], { '/hello': [[], []] }] }, { '/hello': [[['']]], '/hello/:name': [[[2], { name: 1 }]], '/hello/:name/posts/:postId': [[[4], { name: 1, postId: 3 }]] }])"]
+after = ["expect(params).toEqual([{ '[METHOD_NAME_ALL]': [/^(?:\\/hello\\/([^/]+)(?:$()|\\/posts\\/([^/]+)$())|[^]*$())/, [0, 0, [], 0, [], []], { '/hello': [[], []] }] }, { '/hello': [[['']]], '/hello/:name': [[[2], { name: 1 }]], '/hello/:name/posts/:postId': [[[4], { name: 1, postId: 3 }]] }])"]
+message = "toEqual([{ '[METHOD_NAME_ALL]': [/^(?:\\/hello\\/([^/]+)(?:$(… → toEqual([{ '[METHOD_NAME_ALL]': [/^(?:\\/hello\\/([^/]+)(?:$(…"
+label = "wrong"
+note = "The security fix changed the wildcard regex from .* to [^]* to match line terminators, and the prepared-router params follow it."
+
+[[finding]]
+unit = "bcfd02bb50fb"
+pr = 5430
+rule = "outcome-changed"
+path = "src/jsx/components.test.tsx"
+test = "ErrorBoundary > streaming > with StreamingContext"
+before = ["expect(chunks).toEqual([`<template id=\"E:${errorBoundaryCounter}\"></template><!--E:${errorBoundaryCounter}-->`, `<template data-hono-target=\"E:${errorBoundaryCounter}\"><template id=\"H:${suspenseCounter}\"></template><p>Loading...</p><!--/$--></template><script nonce=\"test-nonce\">\\n((d,c) => {\\nc=d.currentScript.previousSibling\\nd=d.getElementById('E:${errorBoundaryCounter}')\\nif(!d)return\\nd.parentElement.insertBefore(c.content,d.nextSibling)\\n})(document)\\n</script>`, `<template data-hono-target=\"H:${suspenseCounter}\"><div>Hello</div></template><script nonce=\"test-nonce\">\\n((d,c,n) => {\\nc=d.currentScript.previousSibling\\nd=d.getElementById('H:${suspenseCounter}')\\nif(!d)return\\ndo{n=d.nextSibling;n.remove()}while(n.nodeType!=8||n.nodeValue!='/$')\\nd.replaceWith(c.content)\\n})(document)\\n</script><script>\\n((d,c,n) => {\\nd=d.getElementById('E:${errorBoundaryCounter}')\\nif(!d)return\\nn=d.nextSibling\\nwhile(n.nodeType!=8||n.nodeValue!='E:${errorBoundaryCounter}'){n=n.nextSibling}\\nn.remove()\\nd.remove()\\n})(document)\\n</script>`])"]
+after = ["expect(chunks).toEqual([`<template id=\"E:${errorBoundaryCounter}\"></template><!--E:${errorBoundaryCounter}-->`, `<template data-hono-target=\"E:${errorBoundaryCounter}\"><template id=\"H:${suspenseCounter}\"></template><p>Loading...</p><!--/$--></template><script nonce=\"test-nonce\">\\n((d,c) => {\\nc=d.currentScript.previousSibling\\nd=d.getElementById('E:${errorBoundaryCounter}')\\nif(!d)return\\nd.parentElement.insertBefore(c.content,d.nextSibling)\\n})(document)\\n</script>`, `<template data-hono-target=\"H:${suspenseCounter}\"><div>Hello</div></template><script nonce=\"test-nonce\">\\n((d,c,n) => {\\nc=d.currentScript.previousSibling\\nd=d.getElementById('H:${suspenseCounter}')\\nif(!d)return\\ndo{n=d.nextSibling;n.remove()}while(n.nodeType!=8||n.nodeValue!='/$')\\nd.replaceWith(c.content)\\n})(document)\\n</script><script nonce=\"test-nonce\">\\n((d,c,n) => {\\nd=d.getElementById('E:${errorBoundaryCounter}')\\nif(!d)return\\nn=d.nextSibling\\nwhile(n.nodeType!=8||n.nodeValue!='E:${errorBoundaryCounter}'){n=n.nextSibling}\\nn.remove()\\nd.remove()\\n})(document)\\n</script>`])"]
+message = "toEqual([`<template id=\"E:${errorBoundaryCounter}\"></templa… → toEqual([`<template id=\"E:${errorBoundaryCounter}\"></templa…"
+label = "wrong"
+note = "The fix adds the CSP nonce to ErrorBoundary's cleanup script, and the commit says the test now expects it."

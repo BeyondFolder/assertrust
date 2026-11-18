@@ -17,3 +17,5 @@ install-path = "CARGO_HOME"
 hosting = "github"
 # Whether to install an updater program
 install-updater = false
+# TEMPORARY for PR 16: build every target on the PR to check the release; removed before merge
+pr-run-mode = "upload"

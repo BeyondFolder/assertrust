@@ -75,7 +75,7 @@ checksum = "7d902e3d592a523def97af8f317b08ce16b7ab854c1985a0c671e6f15cebc236"
 
 [[package]]
 name = "assertrust"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "assertrust-git",
  "assertrust-ir",
@@ -93,7 +93,7 @@ dependencies = [
 
 [[package]]
 name = "assertrust-git"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "globset",
  "tempfile",
@@ -101,7 +101,7 @@ dependencies = [
 
 [[package]]
 name = "assertrust-ir"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "oxc",
  "serde_json",
@@ -110,7 +110,7 @@ dependencies = [
 
 [[package]]
 name = "assertrust-judge"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "futures",
  "insta",
@@ -123,14 +123,14 @@ dependencies = [
 
 [[package]]
 name = "assertrust-match"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "assertrust-ir",
 ]
 
 [[package]]
 name = "assertrust-rules"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "assertrust-ir",
  "assertrust-match",

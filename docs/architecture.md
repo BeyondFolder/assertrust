@@ -1,6 +1,6 @@
 # assertrust architecture
 
-> Status: **v0.1.** This is the design, built in small public PRs. `assertrust check` runs every rule (step 5), with its output formats and config (step 6), and ships as release binaries and a GitHub Action (step 8). The optional AI judge (step 7) gives findings a verdict. When the code changes the design, the same PR updates this doc.
+> Status: **v0.2.** This is the design, built in small public PRs. `assertrust check` runs every rule (step 5), with its output formats and config (step 6), and ships as release binaries and a GitHub Action (step 8). The optional AI judge (step 7) gives findings a verdict. When the code changes the design, the same PR updates this doc.
 
 assertrust checks that a change didn't quietly make the test suite weaker. Examples: an assertion removed, a matcher loosened, a test skipped, a CI gate relaxed. It reports what got weaker, where, and which commit did it.
 

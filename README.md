@@ -15,6 +15,7 @@ It reads TypeScript and JavaScript tests written with vitest, jest or Playwright
 
 - [Quick start](#quick-start)
 - [What it catches](#what-it-catches)
+- [How it differs](#how-it-differs)
 - [The GitHub Action](#the-github-action)
 - [Commands](#commands)
 - [Output and exit codes](#output-and-exit-codes)
@@ -86,6 +87,16 @@ A few things make the findings worth reading:
 **Which files.** Tests are `*.test.*` and `*.spec.*` files (`.ts`, `.tsx`, `.js`, `.jsx`, `.mts`, `.cts`) and anything in `__tests__/`. Helpers are followed into code in `test/`, `tests/`, `__tests__/`, `__mocks__/` and `e2e/`. All of it can be changed in `assertrust.toml`.
 
 **Not yet:** other languages, `assert`-style checks (`node:test`, chai), and helpers outside test folders.
+
+## How it differs
+
+goodhart, Proof of Done, proctor, fakegreen and testseal also catch tests weakened on a diff, and they are worth a look. assertrust is narrower: TypeScript and JavaScript only (testseal is Python only), and deeper there.
+
+- **It follows checks into helpers.** When a PR loosens what a helper like `expectOk()` or a helper class method like `ctx.assertSyncResponse(…)` checks, assertrust flags it for every test that uses it, also when the helper is imported from another file in a test folder and no test file changed. goodhart and fakegreen match patterns on changed lines, proctor says a custom assertion helper changed elsewhere still needs review, and Proof of Done counts helpers declared in the same file.
+- **Its precision is measured by hand.** On the last 100 PRs and pushes of 10 public repos, plus a private app's 181, every finding is labelled: of the 194 a PR check would show, 50% are right, and 70% (68 of 97) at high confidence. The labels are in [`backtest/`](backtest), the details in [How well it works](#how-well-it-works).
+- **Later: ticket intent.** A planned module checks a test change against what the ticket asked for, not only against the old test. It isn't built yet.
+
+Where the others are ahead: goodhart, proctor and Proof of Done hook into Claude Code today and can stop the agent. The assertrust plugin is still to come; until then, see [Git hooks and coding agents](#git-hooks-and-coding-agents).
 
 ## The GitHub Action
 

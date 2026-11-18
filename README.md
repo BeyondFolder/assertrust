@@ -11,7 +11,7 @@ test/api/forwarding.test.ts:27  HIGH  expectation-loosened
 
 It reads TypeScript and JavaScript tests written with vitest, jest or Playwright, plus the CI and test config that decides whether they fail the build. It runs on every commit and on each PR as a whole, names the commit that weakened a test, and needs no API key: the rules are deterministic and never touch the network. An optional [AI judge](#the-ai-judge), with your own key, gives each finding a verdict.
 
-> **Status: v0.1, early.** On the history of 10 public repos and one private one, half of what it shows is right, and 70% at high confidence ("How well it works" below). So it warns by default and never fails a build unless you ask it to. With the optional AI judge on, the findings it confirms fail the build, and 88% of those are right.
+> **Status: v0.2, early.** On the history of 10 public repos and one private one, half of what it shows is right, and 70% at high confidence ("How well it works" below). So it warns by default and never fails a build unless you ask it to. With the optional AI judge on, the findings it confirms fail the build, and 88% of those are right.
 
 - [Quick start](#quick-start)
 - [What it catches](#what-it-catches)
@@ -54,7 +54,7 @@ jobs:
 curl --proto '=https' --tlsv1.2 -LsSf https://github.com/BeyondFolder/assertrust/releases/latest/download/assertrust-installer.sh | sh
 ```
 
-Or download a build from [Releases](https://github.com/BeyondFolder/assertrust/releases), or build it with Rust 1.97 or newer: `cargo install --git https://github.com/BeyondFolder/assertrust --tag v0.1.0 assertrust`. Windows builds and npm come later.
+Or download a build from [Releases](https://github.com/BeyondFolder/assertrust/releases), or build it with Rust 1.97.1 or newer: `cargo install --git https://github.com/BeyondFolder/assertrust --tag v0.2.0 assertrust`. Windows builds and npm come later.
 
 Then, in your repo:
 
@@ -120,7 +120,7 @@ It needs `fetch-depth: 0`, since it reads each commit, and runs on Linux and mac
 | `judge` | `false` | `true` asks the [AI judge](#the-ai-judge) about each finding, with the key you set on the step (below). `[judge]` in `assertrust.toml` turns it on too |
 | `judge-model` | `assertrust.toml`'s, or the built-in one | the judge's model, like `anthropic/claude-haiku-5-5` |
 | `judge-effort` | `assertrust.toml`'s, else `medium` for the built-in model and the model's own for others | how hard the judge's model thinks: `low`, `medium` or `high` |
-| `version` | the release this tag points to | the assertrust version to run, like `0.1.0` |
+| `version` | the release this tag points to | the assertrust version to run, like `0.2.0` |
 | `path` | | run this binary instead of downloading one |
 | `github-token` | `github.token` | the token that posts the comment. A bot's token (this one, or a GitHub App's), since the comment is found again by its author |
 
@@ -136,7 +136,7 @@ The step's `findings` output is how many findings it listed, for later steps (`s
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
 ```
 
-**To block merges**, set `fail-on: high` and make the job a required check. `@v0` always runs the newest 0.x release; pin `@v0.1.0` to stay on one. A branch or commit that isn't a release (`@main`) needs `version`, since it downloads the release its `Cargo.toml` names.
+**To block merges**, set `fail-on: high` and make the job a required check. `@v0` always runs the newest 0.x release; pin `@v0.2.0` to stay on one. A branch or commit that isn't a release (`@main`) needs `version`, since it downloads the release its `Cargo.toml` names.
 
 ## Commands
 
@@ -368,7 +368,7 @@ Opus never failed a false alarm. Haiku is nearly free and almost as careful, but
 ## Roadmap
 
 - [x] v0.1: CLI and GitHub Action for TS/JS
-- [x] AI judge
+- [x] v0.2: AI judge
 - [ ] npm package, crates.io, Claude Code plugin
 - [ ] Windows builds
 - [ ] More languages

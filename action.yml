@@ -7,7 +7,7 @@ branding:
 
 inputs:
   version:
-    description: The assertrust release to run, like `0.1.0`. By default, the one this action's tag was released with.
+    description: The assertrust release to run, like `0.2.0`. By default, the one this action's tag was released with.
     default: ""
   fail-on:
     description: Fail the job on findings this sure or surer, `high`, `medium` or `low`. By default it only warns, unless `fail-on` is set in assertrust.toml.
